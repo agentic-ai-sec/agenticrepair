@@ -1,0 +1,96 @@
+diff --git a/xinclude.c b/xinclude.c
+index f48e0af5..3ff7c04a 100644
+--- a/xinclude.c
++++ b/xinclude.c
+@@ -763,46 +763,64 @@ xmlXIncludeRecurseDoc(xmlXIncludeCtxtPtr ctxt, xmlDocPtr doc,
+  *
+  * Add a new text node to the list
+  */
+-static void
++static xmlNodePtr
+ xmlXIncludeAddTxt(xmlXIncludeCtxtPtr ctxt, xmlNodePtr txt, const xmlURL url) {
+ #ifdef DEBUG_XINCLUDE
+-    xmlGenericError(xmlGenericErrorContext, "Adding text %s\n", url);
++    xmlGenericError(xmlGenericErrorContext, "Adding text %s
++", url);
+ #endif
++    xmlNodePtr stored = NULL;
+     if (ctxt->txtMax == 0) {
+-	ctxt->txtMax = 4;
++    	ctxt->txtMax = 4;
+         ctxt->txtTab = (xmlNodePtr *) xmlMalloc(ctxt->txtMax *
+ 		                          sizeof(ctxt->txtTab[0]));
+         if (ctxt->txtTab == NULL) {
+-	    xmlXIncludeErrMemory(ctxt, NULL, "processing text");
+-	    return;
+-	}
++    	    xmlXIncludeErrMemory(ctxt, NULL, "processing text");
++    	    if (txt != NULL) xmlFreeNode(txt);
++    	    return(NULL);
++        }
+         ctxt->txturlTab = (xmlURL *) xmlMalloc(ctxt->txtMax *
+ 		                          sizeof(ctxt->txturlTab[0]));
+         if (ctxt->txturlTab == NULL) {
+-	    xmlXIncludeErrMemory(ctxt, NULL, "processing text");
+-	    return;
+-	}
++    	    xmlXIncludeErrMemory(ctxt, NULL, "processing text");
++    	    if (txt != NULL) xmlFreeNode(txt);
++    	    return(NULL);
++        }
+     }
+     if (ctxt->txtNr >= ctxt->txtMax) {
+-	ctxt->txtMax *= 2;
++    	ctxt->txtMax *= 2;
+         ctxt->txtTab = (xmlNodePtr *) xmlRealloc(ctxt->txtTab,
+ 	             ctxt->txtMax * sizeof(ctxt->txtTab[0]));
+         if (ctxt->txtTab == NULL) {
+-	    xmlXIncludeErrMemory(ctxt, NULL, "processing text");
+-	    return;
+-	}
++    	    xmlXIncludeErrMemory(ctxt, NULL, "processing text");
++    	    if (txt != NULL) xmlFreeNode(txt);
++    	    return(NULL);
++        }
+         ctxt->txturlTab = (xmlURL *) xmlRealloc(ctxt->txturlTab,
+ 	             ctxt->txtMax * sizeof(ctxt->txturlTab[0]));
+         if (ctxt->txturlTab == NULL) {
+-	    xmlXIncludeErrMemory(ctxt, NULL, "processing text");
+-	    return;
+-	}
++    	    xmlXIncludeErrMemory(ctxt, NULL, "processing text");
++    	    if (txt != NULL) xmlFreeNode(txt);
++    	    return(NULL);
++        }
+     }
+-    ctxt->txtTab[ctxt->txtNr] = txt;
++    /* Make a private copy of the node so it won't be freed by the reader */
++    stored = xmlCopyNode(txt, 1);
++    if (stored == NULL) {
++        xmlXIncludeErrMemory(ctxt, NULL, "processing text");
++        if (txt != NULL) xmlFreeNode(txt);
++        return(NULL);
++    }
++    /* free the original node which may be owned by the parser/reader */
++    if (txt != NULL)
++        xmlFreeNode(txt);
++
++    ctxt->txtTab[ctxt->txtNr] = stored;
+     ctxt->txturlTab[ctxt->txtNr] = xmlStrdup(url);
+     ctxt->txtNr++;
+-}
+ 
++    return(stored);
++}
+ /************************************************************************
+  *									*
+  *			Node copy with specific semantic		*
+@@ -1935,7 +1953,7 @@ xinclude_multibyte_fallback:
+ 	xmlBufShrink(buf->buffer, len);
+     }
+     xmlFreeParserCtxt(pctxt);
+-    xmlXIncludeAddTxt(ctxt, node, URL);
++    node = xmlXIncludeAddTxt(ctxt, node, URL);
+     xmlFreeInputStream(inputStream);
+ 
+ loaded:

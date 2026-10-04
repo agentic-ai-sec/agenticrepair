@@ -1,0 +1,15 @@
+diff --git a/src/vm.c b/src/vm.c
+index bff02877a..079833eef 100644
+--- a/src/vm.c
++++ b/src/vm.c
+@@ -525,6 +525,10 @@ mrb_funcall_with_block(mrb_state *mrb, mrb_value self, mrb_sym mid, mrb_int argc
+     c = mrb_class(mrb, self);
+     m = mrb_method_search_vm(mrb, &c, mid);
+     mrb_stack_extend(mrb, n + argc + 3);
++    if (voff >= 0) {
++      argv = mrb->c->stbase + voff;
++    }
++
+     if (argc >= 15) {
+       ci->stack[n+1] = mrb_ary_new_from_values(mrb, argc, argv);
+       ci->stack[n+2] = blk;

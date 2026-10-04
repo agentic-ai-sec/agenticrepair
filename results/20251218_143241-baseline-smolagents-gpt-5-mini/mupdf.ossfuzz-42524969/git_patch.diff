@@ -1,0 +1,36 @@
+diff --git a/source/fitz/load-bmp.c b/source/fitz/load-bmp.c
+index db173ce0a..e3ee2459c 100644
+--- a/source/fitz/load-bmp.c
++++ b/source/fitz/load-bmp.c
+@@ -940,7 +940,30 @@ bmp_read_palette(fz_context *ctx, struct info *info, const unsigned char *begin,
+ 	expected = fz_mini(info->colors, 1 << info->bitcount);
+ 	if (expected == 0)
+ 		expected = 1 << info->bitcount;
+-	present = fz_mini(expected, (bitmap - p) / entry_size);
++
++	/*
++	 * Ensure we never compute a negative number of present palette
++	 * entries. In malformed files "bitmap" may point before "p",
++	 * which would make (bitmap - p) negative and could lead to
++	 * calling bmp_load_default_palette with a negative readcolors
++	 * value, resulting in writes before the start of info->palette.
++	 *
++	 * Use size_t for the available bytes to ensure a well-defined
++	 * unsigned value when bitmap > p, and treat any case where
++	 * bitmap <= p or entry_size is zero as no palette present.
++	 */
++	if (bitmap <= p || entry_size <= 0)
++	{
++		present = 0;
++	}
++	else
++	{
++		size_t avail = (size_t)(bitmap - p);
++		present = fz_mini(expected, (int)(avail / (size_t)entry_size));
++		if (present < 0)
++			present = 0;
++	}
++
+ 
+ 	for (i = 0; i < present; i++)
+ 	{

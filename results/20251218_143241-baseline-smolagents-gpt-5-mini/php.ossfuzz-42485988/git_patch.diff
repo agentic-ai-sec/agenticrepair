@@ -1,0 +1,215 @@
+diff --git a/Zend/zend_compile.c b/Zend/zend_compile.c
+index 51849a2f943..1d4f7769e45 100644
+--- a/Zend/zend_compile.c
++++ b/Zend/zend_compile.c
+@@ -3640,198 +3640,18 @@ int zend_compile_func_chr(znode *result, zend_ast_list *args) /* {{{ */
+ {
+ 
+ 	if (args->children == 1 &&
+-	    args->child[0]->kind == ZEND_AST_ZVAL &&
+-	    Z_TYPE_P(zend_ast_get_zval(args->child[0])) == IS_LONG) {
+-
+-		zend_long c = Z_LVAL_P(zend_ast_get_zval(args->child[0])) & 0xff;
+-
+-		result->op_type = IS_CONST;
+-		ZVAL_CHAR(&result->u.constant, c);
+-		return SUCCESS;
+-	} else {
+-		return FAILURE;
+-	}
+-}
+-/* }}} */
+-
+-int zend_compile_func_ord(znode *result, zend_ast_list *args) /* {{{ */
+-{
+-	if (args->children == 1 &&
+-	    args->child[0]->kind == ZEND_AST_ZVAL &&
+-	    Z_TYPE_P(zend_ast_get_zval(args->child[0])) == IS_STRING) {
+-
+-		result->op_type = IS_CONST;
+-		ZVAL_LONG(&result->u.constant, (unsigned char)Z_STRVAL_P(zend_ast_get_zval(args->child[0]))[0]);
+-		return SUCCESS;
+-	} else {
+-		return FAILURE;
+-	}
+-}
+-/* }}} */
+-
+-/* We can only calculate the stack size for functions that have been fully compiled, otherwise
+- * additional CV or TMP slots may still be added. This prevents the use of INIT_FCALL for
+- * directly or indirectly recursive function calls. */
+-static zend_bool fbc_is_finalized(zend_function *fbc) {
+-	return !ZEND_USER_CODE(fbc->type) || (fbc->common.fn_flags & ZEND_ACC_DONE_PASS_TWO);
+-}
+-
+-static int zend_try_compile_ct_bound_init_user_func(zend_ast *name_ast, uint32_t num_args) /* {{{ */
+-{
+-	zend_string *name, *lcname;
+-	zend_function *fbc;
+-	zend_op *opline;
+-
+-	if (name_ast->kind != ZEND_AST_ZVAL || Z_TYPE_P(zend_ast_get_zval(name_ast)) != IS_STRING) {
+-		return FAILURE;
+-	}
+-
+-	name = zend_ast_get_str(name_ast);
+-	lcname = zend_string_tolower(name);
+-
+-	fbc = zend_hash_find_ptr(CG(function_table), lcname);
+-	if (!fbc || !fbc_is_finalized(fbc)
+-	 || (fbc->type == ZEND_INTERNAL_FUNCTION && (CG(compiler_options) & ZEND_COMPILE_IGNORE_INTERNAL_FUNCTIONS))
+-	 || (fbc->type == ZEND_USER_FUNCTION && (CG(compiler_options) & ZEND_COMPILE_IGNORE_USER_FUNCTIONS))
+-	 || (fbc->type == ZEND_USER_FUNCTION && (CG(compiler_options) & ZEND_COMPILE_IGNORE_OTHER_FILES) && fbc->op_array.filename != CG(active_op_array)->filename)
+-	) {
+-		zend_string_release_ex(lcname, 0);
+-		return FAILURE;
+-	}
+-
+-	opline = zend_emit_op(NULL, ZEND_INIT_FCALL, NULL, NULL);
+-	opline->extended_value = num_args;
+-	opline->op1.num = zend_vm_calc_used_stack(num_args, fbc);
+-	opline->op2_type = IS_CONST;
+-	LITERAL_STR(opline->op2, lcname);
+-	opline->result.num = zend_alloc_cache_slot();
+-
+-	return SUCCESS;
+-}
+-/* }}} */
+-
+-static void zend_compile_init_user_func(zend_ast *name_ast, uint32_t num_args, zend_string *orig_func_name) /* {{{ */
+-{
+-	zend_op *opline;
+-	znode name_node;
+-
+-	if (zend_try_compile_ct_bound_init_user_func(name_ast, num_args) == SUCCESS) {
+-		return;
+-	}
+-
+-	zend_compile_expr(&name_node, name_ast);
+-
+-	opline = zend_emit_op(NULL, ZEND_INIT_USER_CALL, NULL, &name_node);
+-	opline->op1_type = IS_CONST;
+-	LITERAL_STR(opline->op1, zend_string_copy(orig_func_name));
+-	opline->extended_value = num_args;
+-}
+-/* }}} */
+-
+-/* cufa = call_user_func_array */
+-int zend_compile_func_cufa(znode *result, zend_ast_list *args, zend_string *lcname) /* {{{ */
+-{
+-	znode arg_node;
+-
+-	if (args->children != 2) {
+-		return FAILURE;
+-	}
+-
+-	zend_compile_init_user_func(args->child[0], 0, lcname);
+-	if (args->child[1]->kind == ZEND_AST_CALL
+-	 && args->child[1]->child[0]->kind == ZEND_AST_ZVAL
+-	 && Z_TYPE_P(zend_ast_get_zval(args->child[1]->child[0])) == IS_STRING
+-	 && args->child[1]->child[1]->kind == ZEND_AST_ARG_LIST) {
+-		zend_string *orig_name = zend_ast_get_str(args->child[1]->child[0]);
+-		zend_ast_list *list = zend_ast_get_list(args->child[1]->child[1]);
+-		zend_bool is_fully_qualified;
+-		zend_string *name = zend_resolve_function_name(orig_name, args->child[1]->child[0]->attr, &is_fully_qualified);
+-
+-		if (zend_string_equals_literal_ci(name, "array_slice")
+-		 && list->children == 3
+-		 && list->child[1]->kind == ZEND_AST_ZVAL) {
+-			zval *zv = zend_ast_get_zval(list->child[1]);
+-
+-			if (Z_TYPE_P(zv) == IS_LONG
+-			 && Z_LVAL_P(zv) >= 0
+-			 && Z_LVAL_P(zv) <= 0x7fffffff) {
+-				zend_op *opline;
+-				znode len_node;
+-
+-				zend_compile_expr(&arg_node, list->child[0]);
+-				zend_compile_expr(&len_node, list->child[2]);
+-				opline = zend_emit_op(NULL, ZEND_SEND_ARRAY, &arg_node, &len_node);
+-				opline->extended_value = Z_LVAL_P(zv);
+-				zend_emit_op(result, ZEND_DO_FCALL, NULL, NULL);
+-				zend_string_release_ex(name, 0);
+-				return SUCCESS;
+-			}
+-		}
+-		zend_string_release_ex(name, 0);
+-	}
+-	zend_compile_expr(&arg_node, args->child[1]);
+-	zend_emit_op(NULL, ZEND_SEND_ARRAY, &arg_node, NULL);
+-	zend_emit_op(result, ZEND_DO_FCALL, NULL, NULL);
+-
+-	return SUCCESS;
+-}
+-/* }}} */
+-
+-/* cuf = call_user_func */
+-int zend_compile_func_cuf(znode *result, zend_ast_list *args, zend_string *lcname) /* {{{ */
+-{
+-	uint32_t i;
+-
+-	if (args->children < 1) {
+-		return FAILURE;
+-	}
+-
+-	zend_compile_init_user_func(args->child[0], args->children - 1, lcname);
+-	for (i = 1; i < args->children; ++i) {
+-		zend_ast *arg_ast = args->child[i];
+-		znode arg_node;
+-		zend_op *opline;
+-
+-		zend_compile_expr(&arg_node, arg_ast);
+-
+-		opline = zend_emit_op(NULL, ZEND_SEND_USER, &arg_node, NULL);
+-		opline->op2.num = i;
+-		opline->result.var = EX_NUM_TO_VAR(i - 1);
+-	}
+-	zend_emit_op(result, ZEND_DO_FCALL, NULL, NULL);
+-
+-	return SUCCESS;
+-}
+-/* }}} */
+-
+-static void zend_compile_assert(znode *result, zend_ast_list *args, zend_string *name, zend_function *fbc) /* {{{ */
+-{
+-	if (EG(assertions) >= 0) {
+-		znode name_node;
+-		zend_op *opline;
+-		uint32_t check_op_number = get_next_op_number();
+-
+-		zend_emit_op(NULL, ZEND_ASSERT_CHECK, NULL, NULL);
+-
+-		if (fbc && fbc_is_finalized(fbc)) {
+-			name_node.op_type = IS_CONST;
+-			ZVAL_STR_COPY(&name_node.u.constant, name);
+-
+-			opline = zend_emit_op(NULL, ZEND_INIT_FCALL, NULL, &name_node);
+-		} else {
+-			opline = zend_emit_op(NULL, ZEND_INIT_NS_FCALL_BY_NAME, NULL, NULL);
+-			opline->op2_type = IS_CONST;
+-			opline->op2.constant = zend_add_ns_func_name_literal(name);
+-		}
+-		opline->result.num = zend_alloc_cache_slot();
+-
+-		if (args->children == 1 &&
+-		    (args->child[0]->kind != ZEND_AST_ZVAL ||
+-		     Z_TYPE_P(zend_ast_get_zval(args->child[0])) != IS_STRING)) {
+-			/* add "assert(condition) as assertion message */
+-			zend_ast_list_add((zend_ast*)args,
+-				zend_ast_create_zval_from_str(
+-					zend_ast_export("assert(", args->child[0], ")")));
++            (args->child[0]->kind != ZEND_AST_ZVAL ||
++             Z_TYPE_P(zend_ast_get_zval(args->child[0])) != IS_STRING)) {
++            /* When the assertion argument is not a string, we used to
++             * try to produce a message by exporting the AST for the
++             * expression. Exporting arbitrary AST nodes can dereference
++             * internal representations and lead to invalid memory reads
++             * for crafted inputs. To avoid this risk, use a fixed
++             * placeholder message instead of exporting the AST. */
++            zend_string *msg = zend_string_init("assert(expression)", sizeof("assert(expression)")-1, 0);
++            zend_ast_list_add((zend_ast*)args, zend_ast_create_zval_from_str(msg));
++            /* msg is now owned by the AST node */
++        }
+ 		}
+ 
+ 		zend_compile_call_common(result, (zend_ast*)args, fbc);

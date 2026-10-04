@@ -1,0 +1,60 @@
+diff --git a/error.c b/error.c
+index 1b4fe767..46f7543a 100644
+--- a/error.c
++++ b/error.c
+@@ -174,6 +174,8 @@ static void
+ xmlParserPrintFileContextInternal(xmlParserInputPtr input ,
+ 		xmlGenericErrorFunc channel, void *data ) {
+     const xmlChar *cur, *base, *start;
++    const xmlChar *bufBase = NULL;
++    const xmlChar *bufEnd = NULL;
+     unsigned int n, col;	/* GCC warns if signed, because compared with sizeof() */
+     xmlChar  content[81]; /* space for 80 chars + line terminator */
+     xmlChar *ctnt;
+@@ -181,6 +183,30 @@ xmlParserPrintFileContextInternal(xmlParserInputPtr input ,
+     if ((input == NULL) || (input->cur == NULL))
+         return;
+ 
++    /*
++     * Defensive checks against stale pointers.
++     *
++     * The parser input pointers (base/cur/end) may refer to memory owned by
++     * the input buffer (input->buf->buffer). That buffer can be grown using
++     * realloc, which may move the allocation and free the previous address.
++     * Error reporting must not dereference pointers unless they still refer
++     * to the current live buffer.
++     */
++    if ((input->buf != NULL) && (input->buf->buffer != NULL)) {
++        bufBase = xmlBufContent(input->buf->buffer);
++        bufEnd = xmlBufEnd(input->buf->buffer);
++
++        if ((bufBase == NULL) || (bufEnd == NULL) || (bufEnd < bufBase))
++            return;
++
++        /* Ensure base/cur are within the current buffer before deref. */
++        if ((input->base == NULL) || (input->cur < input->base))
++            return;
++        if ((input->base < bufBase) || (input->base > bufEnd) ||
++            (input->cur < bufBase) || (input->cur > bufEnd))
++            return;
++    }
++
+     cur = input->cur;
+     base = input->base;
+     /* skip backwards over any end-of-lines */
+@@ -208,7 +234,14 @@ xmlParserPrintFileContextInternal(xmlParserInputPtr input ,
+     start = cur;
+     /* copy selected text to our buffer */
+     while ((*cur != 0) && (*(cur) != '\n') && (*(cur) != '\r')) {
+-        int len = input->end - cur;
++        const xmlChar *end = input->end;
++        int len;
++
++        /* Use authoritative end from the current input buffer if available. */
++        if ((bufEnd != NULL) && ((end == NULL) || (end < bufBase) || (end > bufEnd)))
++            end = bufEnd;
++
++        len = end - cur;
+         int c = xmlGetUTF8Char(cur, &len);
+ 
+         if ((c < 0) || (n + len > sizeof(content)-1))

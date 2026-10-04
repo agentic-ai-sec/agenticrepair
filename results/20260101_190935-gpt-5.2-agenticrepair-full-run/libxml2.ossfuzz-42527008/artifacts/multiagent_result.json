@@ -1,0 +1,193 @@
+{
+  "instance_id": "libxml2.ossfuzz-42527008",
+  "final_status": "success",
+  "static_analyzer_output": {
+    "role": "static_analyzer",
+    "raw_output": "{\n  \"analysis_type\": \"allocation\",\n  \"findings\": [\n    {\n      \"file\": \"src/libxml2/schematron.c\",\n      \"line\": 1026,\n      \"message\": \"Allocation may be missing a NULL check (unrelated to reported UAF).\",\n      \"severity\": \"warning\"\n    }\n  ],\n  \"dataflow_summary\": \"\",\n  \"key_insight\": \"CodeQL did not directly flag the reported use-after-free, but manual inspection of the reported stack location shows htmlCurrentChar frees the encoding name buffer (guess) before passing it to htmlParseErr/__xmlRaiseError (HTMLparser.c: xmlFree(guess) around line 448, then htmlParseErr(..., guess, ...) around line 457\u2013458), so error formatting can read freed heap memory.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Reorder logic in htmlCurrentChar: call htmlParseErr first, then free guess (or set guess=NULL before returning).\",\n      \"reasoning\": \"The vulnerable sequence is free-before-use along the error-reporting path; delaying free ensures __xmlRaiseError formats with a valid pointer.\",\n      \"trade_offs\": \"Small lifetime extension of a tiny buffer; must ensure all branches still free guess to avoid leaks.\"\n    },\n    {\n      \"approach\": \"Pass a safe copy to the error path: e.g., tmp = xmlStrdup(guess); htmlParseErr(..., tmp,...); xmlFree(tmp); (or change htmlParseErr to duplicate str1/str2 internally).\",\n      \"reasoning\": \"Makes error reporting robust even if caller frees/overwrites the original buffer; avoids hidden ownership assumptions.\",\n      \"trade_offs\": \"Extra allocation on error paths (usually rare), and requires careful consistent ownership conventions.\"\n    },\n    {\n      \"approach\": \"Change handler lookup to not require freeing guess before error: use handler = xmlFindCharEncodingHandler((const char*)guess) and, on failure, report using handler->name or a static string and free guess immediately.\",\n      \"reasoning\": \"Avoids passing transient heap pointers into variadic error formatting by ensuring error strings are stable.\",\n      \"trade_offs\": \"More refactoring; must ensure any new string used in errors has stable storage duration or well-defined ownership.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "analysis_type": "allocation",
+      "findings": [
+        {
+          "file": "src/libxml2/schematron.c",
+          "line": 1026,
+          "message": "Allocation may be missing a NULL check (unrelated to reported UAF).",
+          "severity": "warning"
+        }
+      ],
+      "dataflow_summary": "",
+      "key_insight": "CodeQL did not directly flag the reported use-after-free, but manual inspection of the reported stack location shows htmlCurrentChar frees the encoding name buffer (guess) before passing it to htmlParseErr/__xmlRaiseError (HTMLparser.c: xmlFree(guess) around line 448, then htmlParseErr(..., guess, ...) around line 457\u2013458), so error formatting can read freed heap memory.",
+      "fix_suggestions": [
+        {
+          "approach": "Reorder logic in htmlCurrentChar: call htmlParseErr first, then free guess (or set guess=NULL before returning).",
+          "reasoning": "The vulnerable sequence is free-before-use along the error-reporting path; delaying free ensures __xmlRaiseError formats with a valid pointer.",
+          "trade_offs": "Small lifetime extension of a tiny buffer; must ensure all branches still free guess to avoid leaks."
+        },
+        {
+          "approach": "Pass a safe copy to the error path: e.g., tmp = xmlStrdup(guess); htmlParseErr(..., tmp,...); xmlFree(tmp); (or change htmlParseErr to duplicate str1/str2 internally).",
+          "reasoning": "Makes error reporting robust even if caller frees/overwrites the original buffer; avoids hidden ownership assumptions.",
+          "trade_offs": "Extra allocation on error paths (usually rare), and requires careful consistent ownership conventions."
+        },
+        {
+          "approach": "Change handler lookup to not require freeing guess before error: use handler = xmlFindCharEncodingHandler((const char*)guess) and, on failure, report using handler->name or a static string and free guess immediately.",
+          "reasoning": "Avoids passing transient heap pointers into variadic error formatting by ensuring error strings are stable.",
+          "trade_offs": "More refactoring; must ensure any new string used in errors has stable storage duration or well-defined ownership."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 106717,
+      "output_tokens": 4352
+    },
+    "timing": {
+      "start_time": 1768803797.8597748,
+      "end_time": 1768804085.8135421,
+      "duration": 287.9537672996521
+    },
+    "trajectory": {
+      "agent_role": "static_analyzer",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nHeap-use-after-free in htmlCurrentChar (HTMLparser.c): an encoding name buffer is freed while still referenced by the HTML error reporting path (htmlParseErr / __xmlRaiseError), causing subsequent formatted error output to read freed heap memory. This can lead to crashes (denial of service) and may be exploitable for arbit",
+      "total_steps": 9,
+      "total_duration": 287.9537672996521,
+      "total_input_tokens": 106717,
+      "total_output_tokens": 4352,
+      "total_cost": 0.11059475,
+      "final_state": "success"
+    }
+  },
+  "dynamic_analyzer_output": {
+    "role": "dynamic_analyzer",
+    "raw_output": "{\n  \"tools_used\": [\"gdb\"],\n  \"crash_info\": {\n    \"address\": \"0x502000000150\",\n    \"type\": \"heap-use-after-free\",\n    \"location\": \"error.c:529 (__xmlRaiseError via vsnprintf/XML_GET_VAR_STR)\"\n  },\n  \"backtrace\": [\n    \"__xmlRaiseError (error.c:529) -> vsnprintf/printf_common reads freed %s\",\n    \"htmlParseErr (HTMLparser.c:106)\",\n    \"htmlCurrentChar (HTMLparser.c:457)\"\n  ],\n  \"memory_state\": \"ASan reports READ of size 2 at 0x502000000150, which is the start of a 6-byte heap region holding the encoding name (allocated by xmlStrndup in htmlFindEncoding, freed in htmlCurrentChar at HTMLparser.c:448, then referenced as %s at HTMLparser.c:458 during error formatting).\",\n  \"root_cause_hint\": \"In htmlCurrentChar, the encoding guess buffer is freed (xmlFree(guess)) before all code paths are finished using it. When xmlFindCharEncodingHandler returns NULL, htmlParseErr is invoked with the freed pointer as str1 for a \\\"%s\\\" format, causing __xmlRaiseError/XML_GET_VAR_STR to call vsnprintf on freed heap memory.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Reorder lifetime management in htmlCurrentChar: only free `guess` after the last possible use (i.e., move `xmlFree(guess)` to after the handler!=NULL / error-reporting branches, or free in each branch after usage).\",\n      \"reasoning\": \"Dynamic trace shows the UAF occurs because `guess` is freed at HTMLparser.c:448 and then immediately passed to htmlParseErr at HTMLparser.c:457-459. Keeping `guess` alive until after htmlParseErr prevents vsnprintf from reading freed memory.\",\n      \"trade_offs\": \"Minimal code change and no API changes; must ensure all branches free `guess` exactly once to avoid leaks/double-free.\"\n    },\n    {\n      \"approach\": \"Defensive copy before reporting: when calling htmlParseErr with `guess`, pass a duplicated copy (e.g., tmp=xmlStrdup(guess); htmlParseErr(..., tmp,...); xmlFree(tmp);) and keep existing free ordering.\",\n      \"reasoning\": \"Guarantees the error path never formats transient buffers; directly addresses the formatted error output UAF observed in __xmlRaiseError.\",\n      \"trade_offs\": \"Adds extra allocation on rare error paths; still requires care to free both buffers and handle OOM gracefully.\"\n    },\n    {\n      \"approach\": \"Harden __xmlRaiseError usage contract by ensuring error formatting never dereferences caller-owned pointers: e.g., adjust callers (like htmlParseErr) to always pass stable strings (owned by context or static), or add a wrapper that copies str1/str2 if needed.\",\n      \"reasoning\": \"The crash is triggered during formatting; making error paths independent of external pointer lifetimes prevents similar bugs across the codebase.\",\n      \"trade_offs\": \"Broader change with more churn; may have performance/behavior implications and requires auditing other call sites.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "tools_used": [
+        "gdb"
+      ],
+      "crash_info": {
+        "address": "0x502000000150",
+        "type": "heap-use-after-free",
+        "location": "error.c:529 (__xmlRaiseError via vsnprintf/XML_GET_VAR_STR)"
+      },
+      "backtrace": [
+        "__xmlRaiseError (error.c:529) -> vsnprintf/printf_common reads freed %s",
+        "htmlParseErr (HTMLparser.c:106)",
+        "htmlCurrentChar (HTMLparser.c:457)"
+      ],
+      "memory_state": "ASan reports READ of size 2 at 0x502000000150, which is the start of a 6-byte heap region holding the encoding name (allocated by xmlStrndup in htmlFindEncoding, freed in htmlCurrentChar at HTMLparser.c:448, then referenced as %s at HTMLparser.c:458 during error formatting).",
+      "root_cause_hint": "In htmlCurrentChar, the encoding guess buffer is freed (xmlFree(guess)) before all code paths are finished using it. When xmlFindCharEncodingHandler returns NULL, htmlParseErr is invoked with the freed pointer as str1 for a \"%s\" format, causing __xmlRaiseError/XML_GET_VAR_STR to call vsnprintf on freed heap memory.",
+      "fix_suggestions": [
+        {
+          "approach": "Reorder lifetime management in htmlCurrentChar: only free `guess` after the last possible use (i.e., move `xmlFree(guess)` to after the handler!=NULL / error-reporting branches, or free in each branch after usage).",
+          "reasoning": "Dynamic trace shows the UAF occurs because `guess` is freed at HTMLparser.c:448 and then immediately passed to htmlParseErr at HTMLparser.c:457-459. Keeping `guess` alive until after htmlParseErr prevents vsnprintf from reading freed memory.",
+          "trade_offs": "Minimal code change and no API changes; must ensure all branches free `guess` exactly once to avoid leaks/double-free."
+        },
+        {
+          "approach": "Defensive copy before reporting: when calling htmlParseErr with `guess`, pass a duplicated copy (e.g., tmp=xmlStrdup(guess); htmlParseErr(..., tmp,...); xmlFree(tmp);) and keep existing free ordering.",
+          "reasoning": "Guarantees the error path never formats transient buffers; directly addresses the formatted error output UAF observed in __xmlRaiseError.",
+          "trade_offs": "Adds extra allocation on rare error paths; still requires care to free both buffers and handle OOM gracefully."
+        },
+        {
+          "approach": "Harden __xmlRaiseError usage contract by ensuring error formatting never dereferences caller-owned pointers: e.g., adjust callers (like htmlParseErr) to always pass stable strings (owned by context or static), or add a wrapper that copies str1/str2 if needed.",
+          "reasoning": "The crash is triggered during formatting; making error paths independent of external pointer lifetimes prevents similar bugs across the codebase.",
+          "trade_offs": "Broader change with more churn; may have performance/behavior implications and requires auditing other call sites."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 117276,
+      "output_tokens": 3885
+    },
+    "timing": {
+      "start_time": 1768804085.8203723,
+      "end_time": 1768804289.1852133,
+      "duration": 203.36484098434448
+    },
+    "trajectory": {
+      "agent_role": "dynamic_analyzer",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nHeap-use-after-free in htmlCurrentChar (HTMLparser.c): an encoding name buffer is freed while still referenced by the HTML error reporting path (htmlParseErr / __xmlRaiseError), causing subsequent formatted error output to read freed heap memory. This can lead to crashes (denial of service) and may be exploitable for arbit",
+      "total_steps": 9,
+      "total_duration": 203.36484098434448,
+      "total_input_tokens": 117276,
+      "total_output_tokens": 3885,
+      "total_cost": 0.10257659999999999,
+      "final_state": "success"
+    }
+  },
+  "history_miner_output": {
+    "role": "history_miner",
+    "raw_output": "{\n  \"file_analyzed\": \"HTMLparser.c\",\n  \"function_analyzed\": \"htmlCurrentChar\",\n  \"relevant_commits\": [\n    {\n      \"hash\": \"7fbd454d9f70\",\n      \"message\": \"parser: Grow input buffer earlier when reading characters\",\n      \"changes\": \"Changed grow condition from <4 bytes to <INPUT_CHUNK before reading current/next char.\",\n      \"relevance\": \"Touches htmlCurrentChar control flow (input growth), not the UAF itself but relevant context for recent edits in this function.\"\n    },\n    {\n      \"hash\": \"20f5c73457df\",\n      \"message\": \"parser: Recover more input from encoding errors\",\n      \"changes\": \"Adjusted htmlCurrentChar to call xmlParserGrow without immediate failure; only returns 0 on EOF state.\",\n      \"relevance\": \"More encoding-error recovery paths exercised; can increase likelihood of hitting encoding-detection/error-reporting code involved in the UAF.\"\n    },\n    {\n      \"hash\": \"ec7be50662ec\",\n      \"message\": \"parser: Rework encoding detection\",\n      \"changes\": \"Reworked encoding detection/flags; in htmlCurrentChar the detected encoding string 'guess' is freed immediately after lookup, but later still used in htmlParseErr(\"Unsupported encoding %s\", guess, ... ) when handler==NULL.\",\n      \"relevance\": \"This introduces the core bug pattern: freeing the encoding name buffer before the error-reporting path formats it, leading to heap-use-after-free.\"\n    }\n  ],\n  \"vulnerability_origin\": \"Most likely introduced in ec7be50662ec (2023-08-08) during the encoding-detection rework: 'guess' started being freed early (xmlFree(guess)) while still referenced by the subsequent error message formatting path when no handler is found.\",\n  \"fix_hints\": \"Current code calls xmlFree(guess) before invoking htmlParseErr with %s=guess in the handler==NULL branch. History shows this was a refactor mistake (moving away from storing encoding on ctxt->input->encoding). Fix by ensuring the string lives through error formatting or by passing a safe copy.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Delay freeing 'guess' until after all uses (especially after htmlParseErr), and set guess=NULL after freeing.\",\n      \"reasoning\": \"Matches pre-refactor lifetime expectations: the encoding string remains valid while constructing the formatted error message. Minimal change and aligns with intent of ec7be rework.\",\n      \"trade_offs\": \"Slightly longer lifetime for a small allocation; must ensure all branches free exactly once to avoid leaks.\"\n    },\n    {\n      \"approach\": \"In the error path, pass a stable string: store encoding name in a separate variable (e.g., const char *name = (const char*)guess; call htmlParseErr; then xmlFree(guess)) or use a stack/heap duplicate specifically for error reporting.\",\n      \"reasoning\": \"Makes the dependency explicit and prevents accidental early frees during future refactors.\",\n      \"trade_offs\": \"If duplicating, adds an extra allocation; if just reordering, similar to approach 1.\"\n    },\n    {\n      \"approach\": \"Change htmlParseErr call to avoid using freed dynamic memory: pass handler->name (when available) or a constant like \"(unknown)\" when handler==NULL.\",\n      \"reasoning\": \"Reduces reliance on transient buffers in error reporting, a common source of UAFs.\",\n      \"trade_offs\": \"May reduce fidelity of error messages (won't show the exact declared encoding string unless preserved elsewhere).\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "raw": "{\n  \"file_analyzed\": \"HTMLparser.c\",\n  \"function_analyzed\": \"htmlCurrentChar\",\n  \"relevant_commits\": [\n    {\n      \"hash\": \"7fbd454d9f70\",\n      \"message\": \"parser: Grow input buffer earlier when reading characters\",\n      \"changes\": \"Changed grow condition from <4 bytes to <INPUT_CHUNK before reading current/next char.\",\n      \"relevance\": \"Touches htmlCurrentChar control flow (input growth), not the UAF itself but relevant context for recent edits in this function.\"\n    },\n    {\n      \"hash\": \"20f5c73457df\",\n      \"message\": \"parser: Recover more input from encoding errors\",\n      \"changes\": \"Adjusted htmlCurrentChar to call xmlParserGrow without immediate failure; only returns 0 on EOF state.\",\n      \"relevance\": \"More encoding-error recovery paths exercised; can increase likelihood of hitting encoding-detection/error-reporting code involved in the UAF.\"\n    },\n    {\n      \"hash\": \"ec7be50662ec\",\n      \"message\": \"parser: Rework encoding detection\",\n      \"changes\": \"Reworked encoding detection/flags; in htmlCurrentChar the detected encoding string 'guess' is freed immediately after lookup, but later still used in htmlParseErr(\"Unsupported encoding %s\", guess, ... ) when handler==NULL.\",\n      \"relevance\": \"This introduces the core bug pattern: freeing the encoding name buffer before the error-reporting path formats it, leading to heap-use-after-free.\"\n    }\n  ],\n  \"vulnerability_origin\": \"Most likely introduced in ec7be50662ec (2023-08-08) during the encoding-detection rework: 'guess' started being freed early (xmlFree(guess)) while still referenced by the subsequent error message formatting path when no handler is found.\",\n  \"fix_hints\": \"Current code calls xmlFree(guess) before invoking htmlParseErr with %s=guess in the handler==NULL branch. History shows this was a refactor mistake (moving away from storing encoding on ctxt->input->encoding). Fix by ensuring the string lives through error formatting or by passing a safe copy.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Delay freeing 'guess' until after all uses (especially after htmlParseErr), and set guess=NULL after freeing.\",\n      \"reasoning\": \"Matches pre-refactor lifetime expectations: the encoding string remains valid while constructing the formatted error message. Minimal change and aligns with intent of ec7be rework.\",\n      \"trade_offs\": \"Slightly longer lifetime for a small allocation; must ensure all branches free exactly once to avoid leaks.\"\n    },\n    {\n      \"approach\": \"In the error path, pass a stable string: store encoding name in a separate variable (e.g., const char *name = (const char*)guess; call htmlParseErr; then xmlFree(guess)) or use a stack/heap duplicate specifically for error reporting.\",\n      \"reasoning\": \"Makes the dependency explicit and prevents accidental early frees during future refactors.\",\n      \"trade_offs\": \"If duplicating, adds an extra allocation; if just reordering, similar to approach 1.\"\n    },\n    {\n      \"approach\": \"Change htmlParseErr call to avoid using freed dynamic memory: pass handler->name (when available) or a constant like \"(unknown)\" when handler==NULL.\",\n      \"reasoning\": \"Reduces reliance on transient buffers in error reporting, a common source of UAFs.\",\n      \"trade_offs\": \"May reduce fidelity of error messages (won't show the exact declared encoding string unless preserved elsewhere).\"\n    }\n  ]\n}",
+      "parse_error": true
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 42026,
+      "output_tokens": 1827
+    },
+    "timing": {
+      "start_time": 1768804289.1920514,
+      "end_time": 1768804994.4877,
+      "duration": 705.2956485748291
+    },
+    "trajectory": {
+      "agent_role": "history_miner",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nHeap-use-after-free in htmlCurrentChar (HTMLparser.c): an encoding name buffer is freed while still referenced by the HTML error reporting path (htmlParseErr / __xmlRaiseError), causing subsequent formatted error output to read freed heap memory. This can lead to crashes (denial of service) and may be exploitable for arbit",
+      "total_steps": 4,
+      "total_duration": 705.2956485748291,
+      "total_input_tokens": 42026,
+      "total_output_tokens": 1827,
+      "total_cost": 0.0586019,
+      "final_state": "success"
+    }
+  },
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "{\n  \"root_cause\": \"In htmlCurrentChar, the encoding name buffer `guess` (allocated by htmlFindEncoding/xmlStrndup) was freed with xmlFree(guess) immediately after xmlFindCharEncodingHandler(), but the subsequent error path (htmlParseErr -> __xmlRaiseError -> vsnprintf) still formatted the string via a %s argument, causing heap-use-after-free.\",\n  \"fix_approach\": \"Delay freeing `guess` until after all possible uses, especially after the htmlParseErr(\\\"Unsupported encoding %s\\\", guess, ...) call. This keeps the pointer valid during formatted error reporting and prevents __xmlRaiseError from reading freed heap memory.\",\n  \"files_modified\": [\n    \"HTMLparser.c\"\n  ],\n  \"verification\": {\n    \"build_success\": true,\n    \"repro_success\": true,\n    \"exit_code\": 0,\n    \"asan_output\": \"No sanitizer errors detected\"\n  },\n  \"confidence\": \"high\"\n}",
+    "parsed_output": {
+      "root_cause": "In htmlCurrentChar, the encoding name buffer `guess` (allocated by htmlFindEncoding/xmlStrndup) was freed with xmlFree(guess) immediately after xmlFindCharEncodingHandler(), but the subsequent error path (htmlParseErr -> __xmlRaiseError -> vsnprintf) still formatted the string via a %s argument, causing heap-use-after-free.",
+      "fix_approach": "Delay freeing `guess` until after all possible uses, especially after the htmlParseErr(\"Unsupported encoding %s\", guess, ...) call. This keeps the pointer valid during formatted error reporting and prevents __xmlRaiseError from reading freed heap memory.",
+      "files_modified": [
+        "HTMLparser.c"
+      ],
+      "verification": {
+        "build_success": true,
+        "repro_success": true,
+        "exit_code": 0,
+        "asan_output": "No sanitizer errors detected"
+      },
+      "confidence": "high"
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 120473,
+      "output_tokens": 1815
+    },
+    "timing": {
+      "start_time": 1768804994.4940367,
+      "end_time": 1768805064.594549,
+      "duration": 70.10051226615906
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nHeap-use-after-free in htmlCurrentChar (HTMLparser.c): an encoding name buffer is freed while still referenced by the HTML error reporting path (htmlParseErr / __xmlRaiseError), causing subsequent formatted error output to read freed heap memory. This can lead to crashes (denial of service) and may be exploitable for arbit",
+      "total_steps": 9,
+      "total_duration": 70.10051226615906,
+      "total_input_tokens": 120473,
+      "total_output_tokens": 1815,
+      "total_cost": 0.06951455000000001,
+      "final_state": "success"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 386492,
+    "output_tokens": 11879
+  },
+  "timing": {
+    "total_duration": 1266.7400918006897
+  }
+}

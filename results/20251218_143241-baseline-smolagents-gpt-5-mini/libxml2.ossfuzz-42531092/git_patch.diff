@@ -1,0 +1,119 @@
+diff --git a/dict.c b/dict.c
+index a0d311a2..15519c5a 100644
+--- a/dict.c
++++ b/dict.c
+@@ -24,6 +24,7 @@
+ #include <time.h>
+ 
+ #include "private/dict.h"
++#include <libxml/parserInternals.h>
+ #include "private/threads.h"
+ 
+ #include <libxml/parser.h>
+@@ -465,10 +466,19 @@ xmlDictHashName(unsigned seed, const xmlChar* data, size_t maxLen,
+                 size_t *plen) {
+     unsigned h1, h2;
+     size_t i;
++    size_t effectiveMax = maxLen;
++
++#ifdef XML_MAX_NAME_LENGTH
++    if (maxLen == SIZE_MAX)
++        effectiveMax = XML_MAX_NAME_LENGTH;
++#else
++    if (maxLen == SIZE_MAX)
++        effectiveMax = 50000;
++#endif
+ 
+     HASH_INIT(h1, h2, seed);
+ 
+-    for (i = 0; i < maxLen && data[i]; i++) {
++    for (i = 0; i < effectiveMax && data[i]; i++) {
+         HASH_UPDATE(h1, h2, data[i]);
+     }
+ 
+@@ -484,17 +494,26 @@ xmlDictHashQName(unsigned seed, const xmlChar *prefix, const xmlChar *name,
+                  size_t *pplen, size_t *plen) {
+     unsigned h1, h2;
+     size_t i;
++    size_t prefixMax = XML_MAX_NAME_LENGTH;
++    size_t nameMax = XML_MAX_NAME_LENGTH;
++
++#ifdef XML_MAX_NAME_LENGTH
++    /* use the configured max name length */
++#else
++    prefixMax = 50000;
++    nameMax = 50000;
++#endif
+ 
+     HASH_INIT(h1, h2, seed);
+ 
+-    for (i = 0; prefix[i] != 0; i++) {
++    for (i = 0; (i < prefixMax) && (prefix[i] != 0); i++) {
+         HASH_UPDATE(h1, h2, prefix[i]);
+     }
+     *pplen = i;
+ 
+     HASH_UPDATE(h1, h2, ':');
+ 
+-    for (i = 0; name[i] != 0; i++) {
++    for (i = 0; (i < nameMax) && (name[i] != 0); i++) {
+         HASH_UPDATE(h1, h2, name[i]);
+     }
+     *plen = i;
+diff --git a/parser.c b/parser.c
+index 43ef214e..3f76f983 100644
+--- a/parser.c
++++ b/parser.c
+@@ -3505,10 +3505,33 @@ xmlParseNCNameComplex(xmlParserCtxtPtr ctxt) {
+         xmlFatalErr(ctxt, XML_ERR_NAME_TOO_LONG, "NCName");
+         return(ret);
+     }
+-    ret = xmlDictLookupHashed(ctxt->dict, (BASE_PTR + startPosition), len);
++        /*
++     * Ensure we don't compute a start pointer before the input base.
++     * If the scanned length exceeds the available data, clamp it.
++     */
++    {
++        size_t avail = (size_t)(ctxt->input->cur - ctxt->input->base);
++        int needs_cr = 0;
++        if (avail > 0 && (*ctxt->input->cur == '\n') && (ctxt->input->cur[-1] == '\r'))
++            needs_cr = 1;
++        /* clamp len so that startptr >= base */
++        if ((size_t)len + needs_cr > avail) {
++            if (avail <= (size_t)needs_cr) {
++                len = 0;
++            } else {
++                len = (int)(avail - needs_cr);
++            }
++        }
++        if (needs_cr)
++            ret = xmlDictLookupHashed(ctxt->dict, ctxt->input->cur - (len + 1), len);
++        else
++            ret = xmlDictLookupHashed(ctxt->dict, ctxt->input->cur - len, len);
++    }
++
+     if (ret.name == NULL)
+         xmlErrMemory(ctxt, NULL);
+     return(ret);
++
+ }
+ 
+ /**
+@@ -8823,8 +8846,15 @@ xmlParseQNameHashed(xmlParserCtxtPtr ctxt, xmlHashedString *prefix) {
+         tmp = xmlParseNmtoken(ctxt);
+         if (tmp != NULL)
+             xmlFree(tmp);
+-        l = xmlDictLookupHashed(ctxt->dict, BASE_PTR + start,
+-                                CUR_PTR - (BASE_PTR + start));
++        {
++            size_t _len = CUR_PTR - (BASE_PTR + start);
++            const xmlChar *_startptr;
++            if ((*ctxt->input->cur == '\n') && (ctxt->input->cur[-1] == '\r'))
++                _startptr = ctxt->input->cur - (_len + 1);
++            else
++                _startptr = ctxt->input->cur - _len;
++            l = xmlDictLookupHashed(ctxt->dict, _startptr, _len);
++        }
+         if (l.name == NULL) {
+             xmlErrMemory(ctxt, NULL);
+             return(l);

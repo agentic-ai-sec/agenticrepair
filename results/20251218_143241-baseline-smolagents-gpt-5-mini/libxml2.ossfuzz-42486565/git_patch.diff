@@ -1,0 +1,15 @@
+diff --git a/xinclude.c b/xinclude.c
+index 41ff4e5f..cb223d80 100644
+--- a/xinclude.c
++++ b/xinclude.c
+@@ -2265,6 +2265,11 @@ xmlXIncludeIncludeNode(xmlXIncludeCtxtPtr ctxt, int nr) {
+ 	}
+ 	xmlUnlinkNode(cur);
+ 	xmlFreeNode(cur);
++		/* Clear the stored reference since the node was freed to avoid
++		 * potential use-after-free if ctxt->incTab[nr]->ref is referenced
++		 * later. */
++		if (ctxt->incTab != NULL && nr >= 0 && nr < ctxt->incNr && ctxt->incTab[nr] != NULL && ctxt->incTab[nr]->ref == cur)
++			ctxt->incTab[nr]->ref = NULL;
+     } else {
+         xmlNodePtr child, next;

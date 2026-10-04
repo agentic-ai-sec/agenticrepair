@@ -1,0 +1,23 @@
+diff --git a/parser.c b/parser.c
+index cd89fdb6..fab2da94 100644
+--- a/parser.c
++++ b/parser.c
+@@ -5088,11 +5088,13 @@ get_more:
+                 (ctxt->disableSAX == 0) &&
+ 		(ctxt->sax->comment != NULL)) {
+ 		if (buf == NULL) {
+-		    if ((*in == '-') && (in[1] == '-'))
+-		        size = nbchar + 1;
+-		    else
+-		        size = XML_PARSER_BUFFER_SIZE + nbchar;
+-		    buf = (xmlChar *) xmlMallocAtomic(size);
++            /*
++             * Always allocate a reasonable initial buffer so that
++             * multi-byte UTF-8 characters copied later won't overflow
++             * small allocations.
++             */
++            size = XML_PARSER_BUFFER_SIZE + nbchar;
++            buf = (xmlChar *) xmlMallocAtomic(size);
+ 		    if (buf == NULL) {
+ 		        xmlErrMemory(ctxt, NULL);
+ 			ctxt->instate = state;

@@ -1,0 +1,325 @@
+diff --git a/source/m3_compile.c b/source/m3_compile.c
+index a895c49..5df0dc0 100644
+--- a/source/m3_compile.c
++++ b/source/m3_compile.c
+@@ -59,6 +59,9 @@ static const u16 c_slotUnused = 0xffff;
+ M3Result  AcquireCompilationCodePage  (IM3Compilation o, IM3CodePage * o_codePage)
+ {
+     M3Result result = m3Err_none;
++    const uint32_t ext = i_opcode & 0xFF;
++    const uint32_t n = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
++    if (ext >= n) { _throw (m3Err_unknownOpcode); return m3Err_unknownOpcode; }
+ 
+     IM3CodePage page = AcquireCodePage (o->runtime);
+ 
+@@ -283,6 +286,9 @@ M3Result  AllocateConstantSlots  (IM3Compilation o, u16 * o_slot, u8 i_type)
+ M3Result  IncrementSlotUsageCount  (IM3Compilation o, u16 i_slot)
+ {                                                                                       d_m3Assert (i_slot < d_m3MaxFunctionSlots);
+     M3Result result = m3Err_none;                                                       d_m3Assert (o->m3Slots [i_slot] > 0);
++    const uint32_t ext = i_opcode & 0xFF;
++    const uint32_t n = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
++    if (ext >= n) { _throw (m3Err_unknownOpcode); return m3Err_unknownOpcode; }
+ 
+     // OPTZ (memory): 'm3Slots' could still be fused with 'typeStack' if 4 bits were used to indicate: [0,1,2,many]. The many-case
+     // would scan 'wasmStack' to determine the actual usage count
+@@ -357,6 +363,9 @@ u16  GetMaxUsedSlotPlusOne  (IM3Compilation o)
+ M3Result  PreserveRegisterIfOccupied  (IM3Compilation o, u8 i_registerType)
+ {
+     M3Result result = m3Err_none;
++    const uint32_t ext = i_opcode & 0xFF;
++    const uint32_t n = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
++    if (ext >= n) { _throw (m3Err_unknownOpcode); return m3Err_unknownOpcode; }
+ 
+     u32 regSelect = IsFpType (i_registerType);
+ 
+@@ -396,6 +405,9 @@ _   (PreserveRegisterIfOccupied (o, c_m3Type_i64));
+ M3Result  PreserveNonTopRegisters  (IM3Compilation o)
+ {
+     M3Result result = m3Err_none;
++    const uint32_t ext = i_opcode & 0xFF;
++    const uint32_t n = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
++    if (ext >= n) { _throw (m3Err_unknownOpcode); return m3Err_unknownOpcode; }
+ 
+     i16 stackTop = GetStackTopIndex (o);
+ 
+@@ -424,6 +436,9 @@ _               (PreserveRegisterIfOccupied (o, c_m3Type_f64));
+ M3Result  Push  (IM3Compilation o, u8 i_type, u16 i_location)
+ {
+     M3Result result = m3Err_none;
++    const uint32_t ext = i_opcode & 0xFF;
++    const uint32_t n = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
++    if (ext >= n) { _throw (m3Err_unknownOpcode); return m3Err_unknownOpcode; }
+ 
+ #if !d_m3HasFloat
+     if (i_type == c_m3Type_f32 || i_type == c_m3Type_f64) {
+@@ -470,6 +485,9 @@ M3Result  PushRegister  (IM3Compilation o, u8 i_type)
+ M3Result  Pop  (IM3Compilation o)
+ {
+     M3Result result = m3Err_none;
++    const uint32_t ext = i_opcode & 0xFF;
++    const uint32_t n = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
++    if (ext >= n) { _throw (m3Err_unknownOpcode); return m3Err_unknownOpcode; }
+ 
+     if (o->stackIndex > o->block.initStackIndex)
+     {
+@@ -503,6 +521,9 @@ M3Result  Pop  (IM3Compilation o)
+ M3Result  PopType  (IM3Compilation o, u8 i_type)
+ {
+     M3Result result = m3Err_none;
++    const uint32_t ext = i_opcode & 0xFF;
++    const uint32_t n = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
++    if (ext >= n) { _throw (m3Err_unknownOpcode); return m3Err_unknownOpcode; }
+ 
+     u8 topType = GetStackTopType (o);
+ 
+@@ -520,6 +541,9 @@ _       (Pop (o));
+ M3Result  UnwindBlockStack  (IM3Compilation o)
+ {
+     M3Result result = m3Err_none;
++    const uint32_t ext = i_opcode & 0xFF;
++    const uint32_t n = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
++    if (ext >= n) { _throw (m3Err_unknownOpcode); return m3Err_unknownOpcode; }
+ 
+     i16 initStackIndex = o->block.initStackIndex;
+ 
+@@ -540,6 +564,9 @@ _       (Pop (o));
+ M3Result  _PushAllocatedSlotAndEmit  (IM3Compilation o, u8 i_type, bool i_doEmit)
+ {
+     M3Result result = m3Err_none;
++    const uint32_t ext = i_opcode & 0xFF;
++    const uint32_t n = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
++    if (ext >= n) { _throw (m3Err_unknownOpcode); return m3Err_unknownOpcode; }
+ 
+     u16 slot = c_slotUnused;
+ 
+@@ -570,6 +597,9 @@ M3Result  PushAllocatedSlot  (IM3Compilation o, u8 i_type)
+ M3Result  PushConst  (IM3Compilation o, u64 i_word, u8 i_type)
+ {
+     M3Result result = m3Err_none;
++    const uint32_t ext = i_opcode & 0xFF;
++    const uint32_t n = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
++    if (ext >= n) { _throw (m3Err_unknownOpcode); return m3Err_unknownOpcode; }
+ 
+     // Early-exit if we're not emitting
+     if (!o->page) return result;
+@@ -687,6 +717,9 @@ M3Result  EmitTopSlotAndPop  (IM3Compilation o)
+ M3Result  AddTrapRecord  (IM3Compilation o)
+ {
+     M3Result result = m3Err_none;
++    const uint32_t ext = i_opcode & 0xFF;
++    const uint32_t n = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
++    if (ext >= n) { _throw (m3Err_unknownOpcode); return m3Err_unknownOpcode; }
+ 
+     if (o->function)
+     {
+@@ -699,6 +732,9 @@ M3Result  AddTrapRecord  (IM3Compilation o)
+ M3Result  AcquirePatch  (IM3Compilation o, IM3BranchPatch * o_patch)
+ {
+     M3Result result = m3Err_none;
++    const uint32_t ext = i_opcode & 0xFF;
++    const uint32_t n = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
++    if (ext >= n) { _throw (m3Err_unknownOpcode); return m3Err_unknownOpcode; }
+ 
+     IM3BranchPatch patch = o->releasedPatches;
+ 
+@@ -758,6 +794,9 @@ bool  PatchBranches  (IM3Compilation o)
+ M3Result CopyStackSlot (IM3Compilation o, u16 i_stackIndex, u16 i_destSlot)
+ {
+     M3Result result = m3Err_none;
++    const uint32_t ext = i_opcode & 0xFF;
++    const uint32_t n = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
++    if (ext >= n) { _throw (m3Err_unknownOpcode); return m3Err_unknownOpcode; }
+ 
+     IM3Operation op;
+ 
+@@ -803,6 +842,9 @@ _   (CopyStackSlot (o, (u16) stackTop, i_destSlot));
+ M3Result  PreservedCopyTopSlot  (IM3Compilation o, u16 i_destSlot, u16 i_preserveSlot)
+ {
+     M3Result result = m3Err_none;             d_m3Assert (i_destSlot != i_preserveSlot);
++    const uint32_t ext = i_opcode & 0xFF;
++    const uint32_t n = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
++    if (ext >= n) { _throw (m3Err_unknownOpcode); return m3Err_unknownOpcode; }
+ 
+     IM3Operation op;
+ 
+@@ -830,6 +872,9 @@ _   (EmitOp (o, op));
+ M3Result  MoveStackTopToRegister  (IM3Compilation o)
+ {
+     M3Result result = m3Err_none;
++    const uint32_t ext = i_opcode & 0xFF;
++    const uint32_t n = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
++    if (ext >= n) { _throw (m3Err_unknownOpcode); return m3Err_unknownOpcode; }
+ 
+     if (IsStackTopInSlot (o))
+     {
+@@ -852,6 +897,9 @@ _       (PushRegister (o, type));
+ M3Result  ReturnStackTop  (IM3Compilation o)
+ {
+     M3Result result = m3Err_none;
++    const uint32_t ext = i_opcode & 0xFF;
++    const uint32_t n = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
++    if (ext >= n) { _throw (m3Err_unknownOpcode); return m3Err_unknownOpcode; }
+ 
+     i16 top = GetStackTopIndex (o);
+ 
+@@ -875,6 +923,9 @@ _catch:
+ M3Result  FindReferencedLocalWithinCurrentBlock  (IM3Compilation o, u16 * o_preservedSlotIndex, u32 i_localSlot)
+ {
+     M3Result result = m3Err_none;
++    const uint32_t ext = i_opcode & 0xFF;
++    const uint32_t n = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
++    if (ext >= n) { _throw (m3Err_unknownOpcode); return m3Err_unknownOpcode; }
+ 
+     IM3CompilationScope scope = & o->block;
+     i16 startIndex = scope->initStackIndex;
+@@ -915,6 +966,9 @@ _               (IncrementSlotUsageCount (o, * o_preservedSlotIndex));
+ M3Result  GetBlockScope  (IM3Compilation o, IM3CompilationScope * o_scope, i32 i_depth)
+ {
+     M3Result result = m3Err_none;
++    const uint32_t ext = i_opcode & 0xFF;
++    const uint32_t n = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
++    if (ext >= n) { _throw (m3Err_unknownOpcode); return m3Err_unknownOpcode; }
+     
+     IM3CompilationScope scope = & o->block;
+ 
+@@ -1033,6 +1087,9 @@ _   (EmitOp (o, op_Return));
+ M3Result  Compile_End  (IM3Compilation o, m3opcode_t i_opcode)
+ {
+     M3Result result = m3Err_none;
++    const uint32_t ext = i_opcode & 0xFF;
++    const uint32_t n = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
++    if (ext >= n) { _throw (m3Err_unknownOpcode); return m3Err_unknownOpcode; }
+ 
+     // function end:
+     if (o->block.depth == 0)
+@@ -1143,6 +1200,9 @@ _   (PushAllocatedSlotAndEmit (o, i_global->type));
+ M3Result  Compile_SetGlobal  (IM3Compilation o, M3Global * i_global)
+ {
+     M3Result result = m3Err_none;
++    const uint32_t ext = i_opcode & 0xFF;
++    const uint32_t n = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
++    if (ext >= n) { _throw (m3Err_unknownOpcode); return m3Err_unknownOpcode; }
+ 
+     if (i_global->isMutable)
+     {
+@@ -1172,6 +1232,9 @@ _      (Pop (o));
+ M3Result  Compile_GetSetGlobal  (IM3Compilation o, m3opcode_t i_opcode)
+ {
+     M3Result result = m3Err_none;
++    const uint32_t ext = i_opcode & 0xFF;
++    const uint32_t n = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
++    if (ext >= n) { _throw (m3Err_unknownOpcode); return m3Err_unknownOpcode; }
+ 
+     u32 globalIndex;
+ _   (ReadLEB_u32 (& globalIndex, & o->wasm, o->wasmEnd));
+@@ -1368,6 +1431,9 @@ void  AlignSlotIndexToType  (u16 * io_slotIndex, u8 i_type)
+ M3Result  CompileCallArgsAndReturn  (IM3Compilation o, u16 * o_stackOffset, IM3FuncType i_type, bool i_isIndirect)
+ {
+     M3Result result = m3Err_none;
++    const uint32_t ext = i_opcode & 0xFF;
++    const uint32_t n = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
++    if (ext >= n) { _throw (m3Err_unknownOpcode); return m3Err_unknownOpcode; }
+ 
+ _try {
+ 
+@@ -1554,6 +1620,9 @@ _       (NormalizeType (&valueType, type));                                m3log
+ M3Result  PreserveArgsAndLocals  (IM3Compilation o)
+ {
+     M3Result result = m3Err_none;
++    const uint32_t ext = i_opcode & 0xFF;
++    const uint32_t n = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
++    if (ext >= n) { _throw (m3Err_unknownOpcode); return m3Err_unknownOpcode; }
+     
+     if (o->stackIndex > o->firstDynamicStackIndex)
+     {
+@@ -1669,6 +1738,9 @@ _       (CompileElseBlock (o, pc, blockType));
+ M3Result  Compile_Select  (IM3Compilation o, m3opcode_t i_opcode)
+ {
+     M3Result result = m3Err_none;
++    const uint32_t ext = i_opcode & 0xFF;
++    const uint32_t n = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
++    if (ext >= n) { _throw (m3Err_unknownOpcode); return m3Err_unknownOpcode; }
+ 
+     u16 slots [3] = { c_slotUnused, c_slotUnused, c_slotUnused };
+ 
+@@ -1860,6 +1932,9 @@ _           (PushRegister (o, op->type));
+ M3Result  Compile_Convert  (IM3Compilation o, m3opcode_t i_opcode)
+ {
+     M3Result result = m3Err_none;
++    const uint32_t ext = i_opcode & 0xFF;
++    const uint32_t n = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
++    if (ext >= n) { _throw (m3Err_unknownOpcode); return m3Err_unknownOpcode; }
+ 
+     const M3OpInfo * opInfo = GetOpInfo(i_opcode);
+ 
+@@ -2197,6 +2272,9 @@ const M3OpInfo c_operationsFC [] =
+ M3Result  Compile_BlockStatements  (IM3Compilation o)
+ {
+     M3Result result = m3Err_none;
++    const uint32_t ext = i_opcode & 0xFF;
++    const uint32_t n = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
++    if (ext >= n) { _throw (m3Err_unknownOpcode); return m3Err_unknownOpcode; }
+ 
+     while (o->wasm < o->wasmEnd)
+     {                                                                   emit_stack_dump (o);
+@@ -2230,6 +2308,9 @@ _catch:
+ M3Result  ValidateBlockEnd  (IM3Compilation o, bool * o_copyStackTopToRegister)
+ {
+     M3Result result = m3Err_none;
++    const uint32_t ext = i_opcode & 0xFF;
++    const uint32_t n = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
++    if (ext >= n) { _throw (m3Err_unknownOpcode); return m3Err_unknownOpcode; }
+ 
+     * o_copyStackTopToRegister = false;
+ 
+@@ -2322,6 +2403,9 @@ _           (PushAllocatedSlot (o, localType));
+ M3Result  Compile_ReserveConstants  (IM3Compilation o)
+ {
+     M3Result result = m3Err_none;
++    const uint32_t ext = i_opcode & 0xFF;
++    const uint32_t n = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
++    if (ext >= n) { _throw (m3Err_unknownOpcode); return m3Err_unknownOpcode; }
+ 
+     // in the interest of speed, this blindly scans the Wasm code looking for any byte
+     // that looks like an const opcode.
+@@ -2367,6 +2451,9 @@ M3Result  Compile_Function  (IM3Function io_function)
+     IM3FuncType funcType = io_function->funcType;
+ 
+     M3Result result = m3Err_none;                                   m3log (compile, "compiling: '%s'; wasm-size: %d; numArgs: %d; return: %s",
++    const uint32_t ext = i_opcode & 0xFF;
++    const uint32_t n = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
++    if (ext >= n) { _throw (m3Err_unknownOpcode); return m3Err_unknownOpcode; }
+                                                                            m3_GetFunctionName(io_function), (u32) (io_function->wasmEnd - io_function->wasm), GetFunctionNumArgs (io_function),
+                                                                            c_waTypes [GetSingleRetType(funcType)]);
+     IM3Runtime runtime = io_function->module->runtime;
+@@ -2453,3 +2540,7 @@ _   (Compile_BlockStatements (o));
+ 
+     return result;
+ }
++
++const unsigned c_operationsFC_count = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
++
++const unsigned c_operationsFC_count = sizeof (c_operationsFC) / sizeof (c_operationsFC[0]);
+diff --git a/source/m3_compile.h b/source/m3_compile.h
+index ece7ad6..a570039 100644
+--- a/source/m3_compile.h
++++ b/source/m3_compile.h
+@@ -145,7 +145,10 @@ static inline
+ const M3OpInfo* GetOpInfo(m3opcode_t opcode) {
+     switch (opcode >> 8) {
+     case 0x00: return &c_operations[opcode];
+-    case 0xFC: return &c_operationsFC[opcode & 0xFF];
++case 0xFC:
++  {
++    unsigned idx = opcode & 0xFF;
++  }
+     default:   return NULL;
+     }
+ }
+@@ -195,3 +198,6 @@ u16         GetMaxUsedSlotPlusOne       (IM3Compilation o);
+ d_m3EndExternC
+ 
+ #endif // m3_compile_h
++
++extern const unsigned c_operationsFC_count;
++nstatic inline const M3OpInfo* GetOpInfoFC(m3opcode_t opcode) { unsigned idx = opcode & 0xFF; if (idx >= c_operationsFC_count) return NULL; return & c_operationsFC[idx]; }

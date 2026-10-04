@@ -1,0 +1,59 @@
+diff --git a/valid.c b/valid.c
+index 5ee391c0..09b153bb 100644
+--- a/valid.c
++++ b/valid.c
+@@ -2869,6 +2869,15 @@ xmlGetID(xmlDocPtr doc, const xmlChar *ID) {
+ 	 */
+ 	return((xmlAttrPtr) doc);
+     }
++    /*
++     * Defensive: ensure the attribute's parent still belongs to the
++     * expected document. In some streaming/freeing scenarios the
++     * attribute or its parent may have been removed; in that case
++     * return the document marker so callers avoid dereferencing
++     * a potentially freed pointer.
++     */
++    if (id->attr->parent == NULL || id->attr->parent->doc != doc)
++	return((xmlAttrPtr) doc);
+     return(id->attr);
+ }
+ 
+diff --git a/xpath.c b/xpath.c
+index 2850a1ac..334b73c8 100644
+--- a/xpath.c
++++ b/xpath.c
+@@ -8589,16 +8589,26 @@ xmlXPathGetElementsByIds (xmlDocPtr doc, const xmlChar *ids) {
+ 	     */
+ 	    attr = xmlGetID(doc, ID);
+ 	    if (attr != NULL) {
+-		if (attr->type == XML_ATTRIBUTE_NODE)
+-		    elem = attr->parent;
+-		else if (attr->type == XML_ELEMENT_NODE)
+-		    elem = (xmlNodePtr) attr;
+-		else
+-		    elem = NULL;
+-                /* TODO: Check memory error. */
++		/*
++		 * xmlGetID may return a special marker (the doc pointer
++		 * cast to xmlAttrPtr) to indicate that the attribute
++		 * node has been processed in streaming mode and no
++		 * attribute node exists anymore.  Avoid dereferencing
++		 * that marker as an attribute.
++		 */
++		if (attr == (xmlAttrPtr) doc) {
++			elem = NULL;
++		} else if (attr->type == XML_ATTRIBUTE_NODE) {
++			elem = attr->parent;
++		} else if (attr->type == XML_ELEMENT_NODE) {
++			elem = (xmlNodePtr) attr;
++		} else
++			elem = NULL;
++		/* TODO: Check memory error. */
+ 		if (elem != NULL)
+-		    xmlXPathNodeSetAdd(ret, elem);
+-	    }
++			xmlXPathNodeSetAdd(ret, elem);
++		}
++
+ 	    xmlFree(ID);
+ 	}

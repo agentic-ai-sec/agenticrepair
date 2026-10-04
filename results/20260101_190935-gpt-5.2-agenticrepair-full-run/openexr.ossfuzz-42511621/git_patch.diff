@@ -1,0 +1,357 @@
+diff --git a/src/lib/OpenEXRCore/decoding.c b/src/lib/OpenEXRCore/decoding.c
+index 9db1ee68..a719e56b 100644
+--- a/src/lib/OpenEXRCore/decoding.c
++++ b/src/lib/OpenEXRCore/decoding.c
+@@ -12,9 +12,14 @@
+ 
+ #include <stdio.h>
+ #include <string.h>
++#include <stdint.h>
++#include <stddef.h>
+ 
+ /**************************************/
+ 
++/* Allow a small safety pad for word-at-a-time unpack routines. */
++#define EXR_UNPACK_SAFETY_PAD 8
++
+ static exr_result_t
+ update_pack_unpack_ptrs (exr_decode_pipeline_t* decode)
+ {
+@@ -70,12 +75,28 @@ update_pack_unpack_ptrs (exr_decode_pipeline_t* decode)
+     }
+     else
+     {
++        size_t reqsz = (size_t) decode->chunk.unpacked_size;
++        size_t allsz = reqsz;
++
++        if (allsz <= (SIZE_MAX - (size_t) EXR_UNPACK_SAFETY_PAD))
++            allsz += (size_t) EXR_UNPACK_SAFETY_PAD;
++
+         rv = internal_decode_alloc_buffer (
+             decode,
+             EXR_TRANSCODE_BUFFER_UNPACKED,
+             &(decode->unpacked_buffer),
+             &(decode->unpacked_alloc_size),
+-            decode->chunk.unpacked_size);
++            allsz);
++
++        /* Zero any pad bytes so word-at-a-time reads cannot observe old heap
++         * contents.
++         */
++        if (rv == EXR_ERR_SUCCESS && decode->unpacked_buffer &&
++            decode->unpacked_alloc_size > reqsz)
++            memset (
++                ((uint8_t*) decode->unpacked_buffer) + reqsz,
++                0,
++                decode->unpacked_alloc_size - reqsz);
+     }
+ 
+     return rv;
+diff --git a/src/lib/OpenEXRCore/unpack.c b/src/lib/OpenEXRCore/unpack.c
+index 606d7c3e..729e74e4 100644
+--- a/src/lib/OpenEXRCore/unpack.c
++++ b/src/lib/OpenEXRCore/unpack.c
+@@ -10,6 +10,7 @@
+ 
+ #include <stdbool.h>
+ #include <string.h>
++#include <stddef.h>
+ 
+ #if defined(__x86_64__) || defined(_M_X64)
+ #    ifndef _WIN32
+@@ -1122,13 +1123,50 @@ unpack_32bit (exr_decode_pipeline_t* decode)
+         default: return EXR_ERR_INVALID_ARGUMENT;                              \
+     }
+ 
++#define EXR_UNPACK_SAFETY_PAD 8
++
++static inline int
++unpack_has_bytes (const uint8_t* src, const uint8_t* end, size_t need)
++{
++    if (need == 0) return 1;
++    if (src == NULL || end == NULL) return 0;
++    if (src > end) return 0;
++    return ((size_t) (end - src) >= need);
++}
++
+ static exr_result_t
+ generic_unpack (exr_decode_pipeline_t* decode)
+ {
+-    const uint8_t* srcbuffer = decode->unpacked_buffer;
++    const uint8_t* srcbuffer = (const uint8_t*) decode->unpacked_buffer;
++    const uint8_t* srcend    = (const uint8_t*) decode->unpacked_buffer;
+     uint8_t*       cdata;
+     int            w, bpc, ubpc;
+ 
++    /* Bound reads by the lesser of the logical and allocated sizes. */
++    {
++        size_t endoff = (size_t) decode->chunk.unpacked_size;
++        size_t maxend = decode->unpacked_alloc_size;
++
++        /* When the chunk is uncompressed, unpacked_buffer aliases packed_buffer
++         * and unpacked_alloc_size is kept at 0 to avoid double-free. In that
++         * case, use packed_alloc_size for bounds.
++         */
++        if (maxend == 0 && decode->unpacked_buffer == decode->packed_buffer)
++            maxend = decode->packed_alloc_size;
++
++        /* Allow a small safety pad, but never beyond the allocation. */
++        if (endoff > maxend) endoff = maxend;
++        else
++        {
++            size_t padend = endoff;
++            if (padend <= (SIZE_MAX - (size_t) EXR_UNPACK_SAFETY_PAD))
++                padend += (size_t) EXR_UNPACK_SAFETY_PAD;
++            if (padend > maxend) padend = maxend;
++            endoff = padend;
++        }
++        srcend += endoff;
++    }
++
+     for (int y = 0; y < decode->chunk.height; ++y)
+     {
+         int cury = y + decode->chunk.start_y;
+@@ -1136,12 +1174,21 @@ generic_unpack (exr_decode_pipeline_t* decode)
+         for (int c = 0; c < decode->channel_count; ++c)
+         {
+             exr_coding_channel_info_t* decc = (decode->channels + c);
++            size_t                     need = 0;
+ 
+             cdata = decc->decode_to_ptr;
+             w     = decc->width;
+             bpc   = decc->bytes_per_element;
+             ubpc  = decc->user_pixel_stride;
+ 
++            if (w < 0 || bpc < 0) return EXR_ERR_CORRUPT_CHUNK;
++            if (w > 0 && bpc > 0)
++            {
++                if ((size_t) w > SIZE_MAX / (size_t) bpc)
++                    return EXR_ERR_CORRUPT_CHUNK;
++                need = ((size_t) w) * (size_t) bpc;
++            }
++
+             if (decc->y_samples > 1)
+             {
+                 if ((cury % decc->y_samples) != 0) continue;
+@@ -1151,7 +1198,9 @@ generic_unpack (exr_decode_pipeline_t* decode)
+                          (uint64_t) decc->user_line_stride);
+                 else
+                 {
+-                    srcbuffer += w * bpc;
++                    if (!unpack_has_bytes (srcbuffer, srcend, need))
++                        return EXR_ERR_CORRUPT_CHUNK;
++                    srcbuffer += need;
+                     continue;
+                 }
+             }
+@@ -1161,12 +1210,17 @@ generic_unpack (exr_decode_pipeline_t* decode)
+             }
+             else
+             {
+-                srcbuffer += w * bpc;
++                if (!unpack_has_bytes (srcbuffer, srcend, need))
++                    return EXR_ERR_CORRUPT_CHUNK;
++                srcbuffer += need;
+                 continue;
+             }
+ 
++            if (!unpack_has_bytes (srcbuffer, srcend, need))
++                return EXR_ERR_CORRUPT_CHUNK;
++
+             UNPACK_SAMPLES (w)
+-            srcbuffer += w * bpc;
++            srcbuffer += need;
+         }
+     }
+     return EXR_ERR_SUCCESS;
+@@ -1175,11 +1229,36 @@ generic_unpack (exr_decode_pipeline_t* decode)
+ static exr_result_t
+ generic_unpack_deep_pointers (exr_decode_pipeline_t* decode)
+ {
+-    const uint8_t* srcbuffer  = decode->unpacked_buffer;
++    const uint8_t* srcbuffer  = (const uint8_t*) decode->unpacked_buffer;
++    const uint8_t* srcend     = (const uint8_t*) decode->unpacked_buffer;
+     const int32_t* sampbuffer = decode->sample_count_table;
+     void**         pdata;
+     int            w, h, bpc, ubpc;
+ 
++    {
++        size_t endoff = (size_t) decode->chunk.unpacked_size;
++        size_t maxend = decode->unpacked_alloc_size;
++
++        /* When the chunk is uncompressed, unpacked_buffer aliases packed_buffer
++         * and unpacked_alloc_size is kept at 0 to avoid double-free. In that
++         * case, use packed_alloc_size for bounds.
++         */
++        if (maxend == 0 && decode->unpacked_buffer == decode->packed_buffer)
++            maxend = decode->packed_alloc_size;
++
++        /* Allow a small safety pad, but never beyond the allocation. */
++        if (endoff > maxend) endoff = maxend;
++        else
++        {
++            size_t padend = endoff;
++            if (padend <= (SIZE_MAX - (size_t) EXR_UNPACK_SAFETY_PAD))
++                padend += (size_t) EXR_UNPACK_SAFETY_PAD;
++            if (padend > maxend) padend = maxend;
++            endoff = padend;
++        }
++        srcend += endoff;
++    }
++
+     w = decode->chunk.width;
+     h = decode->chunk.height;
+ 
+@@ -1204,8 +1283,16 @@ generic_unpack_deep_pointers (exr_decode_pipeline_t* decode)
+                         prevsamps += sampbuffer[x];
+                 }
+                 else
+-                    prevsamps = sampbuffer[w - 1];
+-                srcbuffer += ((size_t) bpc) * ((size_t) prevsamps);
++                    prevsamps = (w > 0) ? sampbuffer[w - 1] : 0;
++
++                if (prevsamps < 0) return EXR_ERR_INVALID_SAMPLE_DATA;
++                if (bpc < 0) return EXR_ERR_CORRUPT_CHUNK;
++                {
++                    size_t need = ((size_t) bpc) * (size_t) prevsamps;
++                    if (!unpack_has_bytes (srcbuffer, srcend, need))
++                        return EXR_ERR_CORRUPT_CHUNK;
++                    srcbuffer += need;
++                }
+                 continue;
+             }
+ 
+@@ -1226,12 +1313,21 @@ generic_unpack_deep_pointers (exr_decode_pipeline_t* decode)
+                 }
+ 
+                 pdata += pixstride;
+-                if (outpix)
++
++                if (samps < 0) return EXR_ERR_INVALID_SAMPLE_DATA;
++                if (bpc < 0) return EXR_ERR_CORRUPT_CHUNK;
+                 {
+-                    uint8_t* cdata = outpix;
+-                    UNPACK_SAMPLES (samps)
++                    size_t need = ((size_t) bpc) * (size_t) samps;
++                    if (!unpack_has_bytes (srcbuffer, srcend, need))
++                        return EXR_ERR_CORRUPT_CHUNK;
++
++                    if (outpix)
++                    {
++                        uint8_t* cdata = outpix;
++                        UNPACK_SAMPLES (samps)
++                    }
++                    srcbuffer += need;
+                 }
+-                srcbuffer += bpc * samps;
+             }
+         }
+         sampbuffer += w;
+@@ -1242,12 +1338,37 @@ generic_unpack_deep_pointers (exr_decode_pipeline_t* decode)
+ static exr_result_t
+ generic_unpack_deep (exr_decode_pipeline_t* decode)
+ {
+-    const uint8_t* srcbuffer  = decode->unpacked_buffer;
++    const uint8_t* srcbuffer  = (const uint8_t*) decode->unpacked_buffer;
++    const uint8_t* srcend     = (const uint8_t*) decode->unpacked_buffer;
+     const int32_t* sampbuffer = decode->sample_count_table;
+     uint8_t*       cdata;
+     int            w, h, bpc, ubpc;
+     size_t         totsamps = 0;
+ 
++    {
++        size_t endoff = (size_t) decode->chunk.unpacked_size;
++        size_t maxend = decode->unpacked_alloc_size;
++
++        /* When the chunk is uncompressed, unpacked_buffer aliases packed_buffer
++         * and unpacked_alloc_size is kept at 0 to avoid double-free. In that
++         * case, use packed_alloc_size for bounds.
++         */
++        if (maxend == 0 && decode->unpacked_buffer == decode->packed_buffer)
++            maxend = decode->packed_alloc_size;
++
++        /* Allow a small safety pad, but never beyond the allocation. */
++        if (endoff > maxend) endoff = maxend;
++        else
++        {
++            size_t padend = endoff;
++            if (padend <= (SIZE_MAX - (size_t) EXR_UNPACK_SAFETY_PAD))
++                padend += (size_t) EXR_UNPACK_SAFETY_PAD;
++            if (padend > maxend) padend = maxend;
++            endoff = padend;
++        }
++        srcend += endoff;
++    }
++
+     w = decode->chunk.width;
+     h = decode->chunk.height;
+ 
+@@ -1274,8 +1395,16 @@ generic_unpack_deep (exr_decode_pipeline_t* decode)
+                         prevsamps += sampbuffer[x];
+                 }
+                 else
+-                    prevsamps = sampbuffer[w - 1];
+-                srcbuffer += ((size_t) bpc) * ((size_t) prevsamps);
++                    prevsamps = (w > 0) ? sampbuffer[w - 1] : 0;
++
++                if (prevsamps < 0) return EXR_ERR_INVALID_SAMPLE_DATA;
++                if (bpc < 0) return EXR_ERR_CORRUPT_CHUNK;
++                {
++                    size_t need = ((size_t) bpc) * (size_t) prevsamps;
++                    if (!unpack_has_bytes (srcbuffer, srcend, need))
++                        return EXR_ERR_CORRUPT_CHUNK;
++                    srcbuffer += need;
++                }
+ 
+                 if (incr_tot) totsamps += (size_t) prevsamps;
+ 
+@@ -1294,9 +1423,16 @@ generic_unpack_deep (exr_decode_pipeline_t* decode)
+                     samps       = tmp;
+                 }
+ 
+-                UNPACK_SAMPLES (samps)
++                if (samps < 0) return EXR_ERR_INVALID_SAMPLE_DATA;
++                if (bpc < 0) return EXR_ERR_CORRUPT_CHUNK;
++                {
++                    size_t need = ((size_t) bpc) * (size_t) samps;
++                    if (!unpack_has_bytes (srcbuffer, srcend, need))
++                        return EXR_ERR_CORRUPT_CHUNK;
+ 
+-                srcbuffer += bpc * samps;
++                    UNPACK_SAMPLES (samps)
++                    srcbuffer += need;
++                }
+                 if (incr_tot) totsamps += (size_t) samps;
+             }
+         }
+diff --git a/src/lib/OpenEXRUtil/ImfCheckFile.cpp b/src/lib/OpenEXRUtil/ImfCheckFile.cpp
+index 9c7b8c5c..f31380c6 100644
+--- a/src/lib/OpenEXRUtil/ImfCheckFile.cpp
++++ b/src/lib/OpenEXRUtil/ImfCheckFile.cpp
+@@ -1236,7 +1236,7 @@ readCoreScanlinePart (
+         rv = exr_read_scanline_chunk_info (f, part, y, &cinfo);
+         if (rv != EXR_ERR_SUCCESS)
+         {
+-            if (reduceTime) break;
++            if (reduceTime) { rv = EXR_ERR_SUCCESS; break; }
+             continue;
+         }
+ 
+@@ -1270,7 +1270,7 @@ readCoreScanlinePart (
+             rv = exr_decoding_update (f, part, &cinfo, &decoder);
+             if (rv != EXR_ERR_SUCCESS)
+             {
+-                if (reduceTime) break;
++                if (reduceTime) { rv = EXR_ERR_SUCCESS; break; }
+                 continue;
+             }
+         }
+@@ -1291,7 +1291,7 @@ readCoreScanlinePart (
+             rv = exr_decoding_run (f, part, &decoder);
+             if (rv != EXR_ERR_SUCCESS)
+             {
+-                if (reduceTime) break;
++                if (reduceTime) { rv = EXR_ERR_SUCCESS; break; }
+             }
+         }
+     }

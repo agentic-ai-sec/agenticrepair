@@ -1,0 +1,87 @@
+diff --git a/src/p_lx_elf.cpp b/src/p_lx_elf.cpp
+index a12757ab..a301dffd 100644
+--- a/src/p_lx_elf.cpp
++++ b/src/p_lx_elf.cpp
+@@ -3841,9 +3841,22 @@ static char const abs_symbol_names[][14] = {
+ int
+ PackLinuxElf32::adjABS(Elf32_Sym *sym, unsigned delta)
+ {
++    // dynstr may be missing/invalid for malformed inputs while unpacking.
++    // Be robust: never dereference dynstr (or read past strtab_max) here.
++    if (!dynstr || !strtab_max) {
++        return 0;
++    }
+     unsigned st_name = get_te32(&sym->st_name);
++    if (strtab_max <= st_name) {
++        return 0;
++    }
++    unsigned const remain = strtab_max - st_name;
+     for (int j = 0; abs_symbol_names[j][0]; ++j) {
+-        if (!strcmp(abs_symbol_names[j], get_str_name(st_name, (unsigned)-1))) {
++        // Avoid strcmp() on malformed/unterminated dynstr by using a bounded
++        // comparison against the known short constant strings.
++        unsigned const n = (unsigned)strlen(abs_symbol_names[j]);
++        if (n + 1 <= remain
++        &&  0 == memcmp(abs_symbol_names[j], dynstr + st_name, n + 1)) {
+             sym->st_value += delta;
+             return 1;
+         }
+@@ -3854,9 +3867,22 @@ PackLinuxElf32::adjABS(Elf32_Sym *sym, unsigned delta)
+ int
+ PackLinuxElf64::adjABS(Elf64_Sym *sym, unsigned long delta)
+ {
++    // dynstr may be missing/invalid for malformed inputs while unpacking.
++    // Be robust: never dereference dynstr (or read past strtab_max) here.
++    if (!dynstr || !strtab_max) {
++        return 0;
++    }
+     unsigned st_name = get_te32(&sym->st_name);
++    if (strtab_max <= st_name) {
++        return 0;
++    }
++    unsigned const remain = strtab_max - st_name;
+     for (int j = 0; abs_symbol_names[j][0]; ++j) {
+-        if (!strcmp(abs_symbol_names[j], get_str_name(st_name, (unsigned)-1))) {
++        // Avoid strcmp() on malformed/unterminated dynstr by using a bounded
++        // comparison against the known short constant strings.
++        unsigned const n = (unsigned)strlen(abs_symbol_names[j]);
++        if (n + 1 <= remain
++        &&  0 == memcmp(abs_symbol_names[j], dynstr + st_name, n + 1)) {
+             sym->st_value += delta;
+             return 1;
+         }
+@@ -7781,7 +7807,9 @@ PackLinuxElf32::elf_find_dynamic(unsigned int key) const
+     Elf32_Dyn const *dynp= elf_find_dynptr(key);
+     if (dynp) {
+         unsigned const t= elf_get_offset_from_address(get_te32(&dynp->d_val));
+-        if (t && t < (unsigned)file_size) {
++        // When unpacking we may not have a valid in-memory file image mapping.
++        // Avoid returning a pointer derived from a null/invalid base.
++        if (file_image && t && t < (unsigned)file_size) {
+             return t + file_image;
+         }
+     }
+@@ -7794,7 +7822,9 @@ PackLinuxElf64::elf_find_dynamic(unsigned int key) const
+     Elf64_Dyn const *dynp= elf_find_dynptr(key);
+     if (dynp) {
+         upx_uint64_t const t= elf_get_offset_from_address(get_te64(&dynp->d_val));
+-        if (t && t < (upx_uint64_t)file_size) {
++        // When unpacking we may not have a valid in-memory file image mapping.
++        // Avoid returning a pointer derived from a null/invalid base.
++        if (file_image && t && t < (upx_uint64_t)file_size) {
+             return t + file_image;
+         }
+     }
+diff --git a/src/util/util.cpp b/src/util/util.cpp
+index 914f1592..d5b3109e 100644
+--- a/src/util/util.cpp
++++ b/src/util/util.cpp
+@@ -278,7 +278,7 @@ void upx_memswap(void *a, void *b, size_t n) noexcept {
+ 
+ // much better memswap(), optimized for our use case in sort functions below
+ static void memswap_no_overlap(byte *a, byte *b, size_t n) noexcept {
+-#if defined(__clang__) && __clang_major__ < 15
++#if defined(__clang__)
+     // work around a clang < 15 ICE (Internal Compiler Error)
+     // @COMPILER_BUG @CLANG_BUG
+     upx_memswap(a, b, n);

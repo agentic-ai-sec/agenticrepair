@@ -1,0 +1,115 @@
+diff --git a/mrbgems/mruby-sprintf/src/sprintf.c b/mrbgems/mruby-sprintf/src/sprintf.c
+index 03e5729c6..1474274da 100644
+--- a/mrbgems/mruby-sprintf/src/sprintf.c
++++ b/mrbgems/mruby-sprintf/src/sprintf.c
+@@ -157,25 +157,41 @@ fmt_float(char *buf, size_t buf_size, char fmt, int flags, mrb_int width, int pr
+ }
+ #endif
+ 
++/*
++ * All writes to the output buffer funnel through PUSH/FILL.
++ * Guard against negative sizes and signed overflows before calling
++ * memcpy/memset (which take size_t).
++ */
+ #define CHECK(l) do {                           \
+-  while ((l) >= bsiz - blen) {\
++  mrb_int __len_chk = (mrb_int)(l);                  \
++  if (__len_chk < 0) {                               \
++    mrb_raise(mrb, E_ARGUMENT_ERROR, "invalid (negative) format size"); \
++  }                                            \
++  if (blen > MRB_INT_MAX - __len_chk) {              \
++    mrb_raise(mrb, E_ARGUMENT_ERROR, "too big specifier"); \
++  }                                            \
++  while (__len_chk >= bsiz - blen) {                 \
+     if (bsiz > MRB_INT_MAX/2) mrb_raise(mrb, E_ARGUMENT_ERROR, "too big specifier"); \
+-    bsiz*=2;\
+-  }\
+-  mrb_str_resize(mrb, result, bsiz);\
+-  buf = RSTRING_PTR(result);\
++    bsiz*=2;                                   \
++  }                                            \
++  mrb_str_resize(mrb, result, bsiz);           \
++  buf = RSTRING_PTR(result);                   \
+ } while (0)
+ 
+-#define PUSH(s, l) do { \
+-  CHECK(l);\
+-  memcpy(&buf[blen], s, l);\
+-  blen += (mrb_int)(l);\
++
++#define PUSH(s, l) do {                         \
++  mrb_int __l = (mrb_int)(l);                  \
++  CHECK(__l);                                  \
++  memcpy(&buf[blen], (s), (size_t)__l);        \
++  blen += __l;                                 \
+ } while (0)
+ 
+-#define FILL(c, l) do { \
+-  CHECK(l);\
+-  memset(&buf[blen], c, l);\
+-  blen += (l);\
++
++#define FILL(c, l) do {                         \
++  mrb_int __l = (mrb_int)(l);                  \
++  CHECK(__l);                                  \
++  memset(&buf[blen], (c), (size_t)__l);        \
++  blen += __l;                                 \
+ } while (0)
+ 
+ static void
+@@ -260,15 +276,38 @@ check_name_arg(mrb_state *mrb, int posarg, const char *name, size_t len)
+ static const char *
+ get_num(mrb_state *mrb, const char *p, const char *end, int *valp)
+ {
+-  mrb_int next_n = (int)*valp;
++  /*
++   * Width/precision are stored in 'int'.
++   *
++   * Historically this parser accumulated into a wider type and then cast to
++   * int without checking the int-range, allowing values like 2147483648 to
++   * wrap to INT_MIN and later be used as negative sizes.
++   *
++   * To be robust (and to keep formatting of short strings cheap), saturate
++   * overly-large values to INT_MAX while still consuming all digits.
++   */
++  mrb_int next_n = (mrb_int)*valp;
++  int overflowed = 0;
++
+   for (; p < end && ISDIGIT(*p); p++) {
+-    if (mrb_int_mul_overflow(10, next_n, &next_n)) {
+-      return NULL;
+-    }
+-    if (MRB_INT_MAX - (*p - '0') < next_n) {
+-      return NULL;
++    if (!overflowed) {
++      if (mrb_int_mul_overflow(10, next_n, &next_n)) {
++        overflowed = 1;
++        next_n = INT_MAX;
++        continue;
++      }
++      if (INT_MAX - (*p - '0') < next_n) {
++        overflowed = 1;
++        next_n = INT_MAX;
++        continue;
++      }
++      next_n += *p - '0';
++      if (next_n > INT_MAX) {
++        overflowed = 1;
++        next_n = INT_MAX;
++      }
+     }
+-    next_n += *p - '0';
++    /* if overflowed: just consume remaining digits */
+   }
+   if (p >= end) {
+     mrb_raise(mrb, E_ARGUMENT_ERROR, "malformed format string - %%*[0-9]");
+@@ -710,6 +749,9 @@ retry:
+         GETASTER(width);
+         if (width < 0) {
+           flags |= FMINUS;
++          if (width == INT_MIN) {
++            mrb_raise(mrb, E_ARGUMENT_ERROR, "width too big");
++          }
+           width = -width;
+         }
+         p++;

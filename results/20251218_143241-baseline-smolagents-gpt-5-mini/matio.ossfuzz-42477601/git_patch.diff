@@ -1,0 +1,20 @@
+diff --git a/src/mat4.c b/src/mat4.c
+index 601a3d6..8f797f3 100644
+--- a/src/mat4.c
++++ b/src/mat4.c
+@@ -908,12 +908,14 @@ Mat_VarReadNextInfo4(mat_t *mat)
+         Mat_VarFree(matvar);
+         return NULL;
+     }
+-    matvar->name = (char*)malloc(tmp);
++    matvar->name = (char*)malloc((size_t)tmp + 1);
+     if ( NULL == matvar->name ) {
+         Mat_VarFree(matvar);
+         return NULL;
+     }
+     readresult = fread(matvar->name,1,tmp,(FILE*)mat->fp);
++    /* Ensure NUL-termination of the variable name to avoid overreads */
++    matvar->name[tmp] = '\0';
+     if ( tmp != readresult ) {
+         Mat_VarFree(matvar);
+         return NULL;

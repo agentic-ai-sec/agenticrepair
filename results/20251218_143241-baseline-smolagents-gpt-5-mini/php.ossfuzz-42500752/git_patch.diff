@@ -1,0 +1,14 @@
+diff --git a/Zend/zend_closures.c b/Zend/zend_closures.c
+index ceeac23531c..aa651b5f6c5 100644
+--- a/Zend/zend_closures.c
++++ b/Zend/zend_closures.c
+@@ -739,6 +739,9 @@ static void zend_create_closure_ex(zval *res, zend_function *func, zend_class_en
+ 			closure->orig_internal_handler = closure->func.internal_function.handler;
+ 		}
+ 		closure->func.internal_function.handler = zend_closure_internal_handler;
++		if (closure->func.common.function_name) {
++			zend_string_addref(closure->func.common.function_name);
++		}
+ 		if (!func->common.scope) {
+ 			/* if it's a free function, we won't set scope & this since they're meaningless */
+ 			this_ptr = NULL;

@@ -1,0 +1,14 @@
+diff --git a/src/array.c b/src/array.c
+index 739b2b3e1..50b1a13c0 100644
+--- a/src/array.c
++++ b/src/array.c
+@@ -590,6 +590,9 @@ mrb_ary_shift_m(mrb_state *mrb, mrb_value self)
+     return mrb_ary_shift(mrb, self);
+   };
+   ary_modify_check(mrb, a);
++  if (n < 0) {
++    mrb_raise(mrb, E_ARGUMENT_ERROR, "negative array size");
++  }
+   if (len == 0 || n == 0) return mrb_ary_new(mrb);
+   if (n > len) n = len;
+   val = mrb_ary_new_from_values(mrb, n, ARY_PTR(a));

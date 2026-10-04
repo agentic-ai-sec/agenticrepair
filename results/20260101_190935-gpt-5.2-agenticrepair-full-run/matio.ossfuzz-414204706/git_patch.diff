@@ -1,0 +1,28 @@
+diff --git a/src/mat.c b/src/mat.c
+index 76ba769..9480c7c 100644
+--- a/src/mat.c
++++ b/src/mat.c
+@@ -2450,8 +2450,11 @@ Mat_VarPrint(const matvar_t *matvar, int printdata)
+                     break;
+ #endif
+                 sparse = (mat_sparse_t *)matvar->data;
++                /* Defensive checks: malformed/corrupt sparse metadata can otherwise drive
++                 * out-of-bounds reads when iterating via jc/ir.
++                 */
+                 if ( sparse == NULL || sparse->ndata == 0 || sparse->nir == 0 || sparse->njc == 0 ||
+-                     sparse->data == NULL ) {
++                     sparse->data == NULL || sparse->ir == NULL || sparse->jc == NULL ) {
+                     break;
+                 }
+                 if ( matvar->isComplex ) {
+@@ -2474,7 +2477,9 @@ Mat_VarPrint(const matvar_t *matvar, int printdata)
+                     const char *data = (const char *)sparse->data;
+                     for ( i = 0; i < (size_t)sparse->njc - 1; i++ ) {
+                         for ( j = sparse->jc[i];
+-                              j < (size_t)sparse->jc[i + 1] && j < (size_t)sparse->ndata; j++ ) {
++                              j < (size_t)sparse->jc[i + 1] && j < (size_t)sparse->ndata &&
++                              j < (size_t)sparse->nir;
++                              j++ ) {
+                             printf("    (%u,%" SIZE_T_FMTSTR ")  ", sparse->ir[j] + 1, i + 1);
+                             Mat_PrintNumber(matvar->data_type, data + j * stride);
+                             printf("\n");

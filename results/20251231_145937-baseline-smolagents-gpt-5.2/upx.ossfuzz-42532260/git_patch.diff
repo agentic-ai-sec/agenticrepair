@@ -1,0 +1,79 @@
+diff --git a/src/p_lx_elf.cpp b/src/p_lx_elf.cpp
+index a3178d18..40d100b2 100644
+--- a/src/p_lx_elf.cpp
++++ b/src/p_lx_elf.cpp
+@@ -2351,7 +2351,29 @@ char const *PackLinuxElf64::get_str_name(unsigned st_name, unsigned symnum) cons
+             "bad .st_name %#x in DT_SYMTAB[%d]", st_name, symnum);
+         throwCantPack(msg);
+     }
+-    return &dynstr[st_name];
++    // Ensure the string is NUL-terminated within the mapped string table.
++    // Otherwise callers like strcmp() can read past the end of the mapped file
++    // buffer when processing crafted/malformed ELF files.
++    char const *const p = &dynstr[st_name];
++    // dynstr is an in-file pointer (DT_STRTAB). DT_STRSZ (strtab_end) is a size.
++    // Validate that dynstr[0..strtab_end) lies inside the mapped file image.
++    if (file_image && dynstr) {
++        char const *const base = (char const *)(void const *)&file_image[0];
++        char const *const end  = base + (size_t)file_size_u;
++        if (dynstr < base || end < dynstr || (size_t)(end - dynstr) < (size_t)strtab_end) {
++            char msg[110]; snprintf(msg, sizeof(msg),
++                "bad DT_STRTAB/DT_STRSZ off=%#tx size=%#x",
++                (ptrdiff_t)(dynstr - base), strtab_end);
++            throwCantPack(msg);
++        }
++    }
++    size_t const maxlen = (size_t) (strtab_end - st_name);
++    if (nullptr == memchr(p, '\0', maxlen)) {
++        char msg[90]; snprintf(msg, sizeof(msg),
++            "unterminated dynstr at %#x in DT_SYMTAB[%d]", st_name, symnum);
++        throwCantPack(msg);
++    }
++    return p;
+ }
+ 
+ char const *PackLinuxElf64::get_dynsym_name(unsigned symnum, unsigned relnum) const
+@@ -2388,7 +2410,29 @@ char const *PackLinuxElf32::get_str_name(unsigned st_name, unsigned symnum) cons
+             "bad .st_name %#x in DT_SYMTAB[%d]\n", st_name, symnum);
+         throwCantPack(msg);
+     }
+-    return &dynstr[st_name];
++    // Ensure the string is NUL-terminated within the mapped string table.
++    // Otherwise callers like strcmp() can read past the end of the mapped file
++    // buffer when processing crafted/malformed ELF files.
++    char const *const p = &dynstr[st_name];
++    // dynstr is an in-file pointer (DT_STRTAB). DT_STRSZ (strtab_end) is a size.
++    // Validate that dynstr[0..strtab_end) lies inside the mapped file image.
++    if (file_image && dynstr) {
++        char const *const base = (char const *)(void const *)&file_image[0];
++        char const *const end  = base + (size_t)file_size_u;
++        if (dynstr < base || end < dynstr || (size_t)(end - dynstr) < (size_t)strtab_end) {
++            char msg[110]; snprintf(msg, sizeof(msg),
++                "bad DT_STRTAB/DT_STRSZ off=%#tx size=%#x",
++                (ptrdiff_t)(dynstr - base), strtab_end);
++            throwCantPack(msg);
++        }
++    }
++    size_t const maxlen = (size_t) (strtab_end - st_name);
++    if (nullptr == memchr(p, '\0', maxlen)) {
++        char msg[90]; snprintf(msg, sizeof(msg),
++            "unterminated dynstr at %#x in DT_SYMTAB[%d]", st_name, symnum);
++        throwCantPack(msg);
++    }
++    return p;
+ }
+ 
+ char const *PackLinuxElf32::get_dynsym_name(unsigned symnum, unsigned relnum) const
+diff --git a/src/util/util.cpp b/src/util/util.cpp
+index 507195ac..36253056 100644
+--- a/src/util/util.cpp
++++ b/src/util/util.cpp
+@@ -278,7 +278,7 @@ void upx_memswap(void *a, void *b, size_t n) {
+ 
+ // much better memswap(), optimized for our use case in sort functions below
+ static void memswap_no_overlap(byte *a, byte *b, size_t n) {
+-#if defined(__clang__) && __clang_major__ < 15
++#if defined(__clang__)
+     // work around a clang < 15 ICE (Internal Compiler Error)
+     // @COMPILER_BUG @CLANG_BUG
+     upx_memswap(a, b, n);

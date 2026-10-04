@@ -1,0 +1,92 @@
+diff --git a/ext/hash/hash_xxhash.c b/ext/hash/hash_xxhash.c
+index 28d9d11af71..2b310823aba 100644
+--- a/ext/hash/hash_xxhash.c
++++ b/ext/hash/hash_xxhash.c
+@@ -17,6 +17,16 @@
+ #include "php_hash.h"
+ #include "php_hash_xxhash.h"
+ 
++/*
++ * XXHash streaming states contain small internal buffers (e.g. 16 or 32 bytes)
++ * with a size field (memsize) which is assumed to be in a narrow range.
++ * When a context is unserialized, memsize comes from user-controlled data.
++ * Validate it to prevent memcpy() size underflow/overflow inside xxhash.
++ */
++
++static int PHP_XXH32Unserialize(php_hashcontext_object *hash, zend_long magic, const zval *zv);
++static int PHP_XXH64Unserialize(php_hashcontext_object *hash, zend_long magic, const zval *zv);
++
+ const php_hash_ops php_hash_xxh32_ops = {
+ 	"xxh32",
+ 	(php_hash_init_func_t) PHP_XXH32Init,
+@@ -24,7 +34,7 @@ const php_hash_ops php_hash_xxh32_ops = {
+ 	(php_hash_final_func_t) PHP_XXH32Final,
+ 	(php_hash_copy_func_t) PHP_XXH32Copy,
+ 	php_hash_serialize,
+-	php_hash_unserialize,
++	PHP_XXH32Unserialize,
+ 	PHP_XXH32_SPEC,
+ 	4,
+ 	4,
+@@ -79,7 +89,7 @@ const php_hash_ops php_hash_xxh64_ops = {
+ 	(php_hash_final_func_t) PHP_XXH64Final,
+ 	(php_hash_copy_func_t) PHP_XXH64Copy,
+ 	php_hash_serialize,
+-	php_hash_unserialize,
++	PHP_XXH64Unserialize,
+ 	PHP_XXH64_SPEC,
+ 	8,
+ 	8,
+@@ -87,6 +97,52 @@ const php_hash_ops php_hash_xxh64_ops = {
+ 	0
+ };
+ 
++static int PHP_XXH32Unserialize(php_hashcontext_object *hash, zend_long magic, const zval *zv)
++{
++	int r;
++	PHP_XXH32_CTX *ctx;
++
++	if (magic != PHP_HASH_SERIALIZE_MAGIC_SPEC) {
++		return FAILURE;
++	}
++
++	r = php_hash_unserialize_spec(hash, zv, PHP_XXH32_SPEC);
++	if (r != SUCCESS) {
++		return r;
++	}
++
++	ctx = (PHP_XXH32_CTX *) hash->context;
++	/* mem32 is 16 bytes. memsize is always in [0..15] for valid states. */
++	if (ctx->s.memsize > 15) {
++		return FAILURE;
++	}
++
++	return SUCCESS;
++}
++
++static int PHP_XXH64Unserialize(php_hashcontext_object *hash, zend_long magic, const zval *zv)
++{
++	int r;
++	PHP_XXH64_CTX *ctx;
++
++	if (magic != PHP_HASH_SERIALIZE_MAGIC_SPEC) {
++		return FAILURE;
++	}
++
++	r = php_hash_unserialize_spec(hash, zv, PHP_XXH64_SPEC);
++	if (r != SUCCESS) {
++		return r;
++	}
++
++	ctx = (PHP_XXH64_CTX *) hash->context;
++	/* mem64 is 32 bytes. memsize is always in [0..31] for valid states. */
++	if (ctx->s.memsize > 31) {
++		return FAILURE;
++	}
++
++	return SUCCESS;
++}
++
+ PHP_HASH_API void PHP_XXH64Init(PHP_XXH64_CTX *ctx, HashTable *args)
+ {
+ 	/* XXH64_createState() is not used intentionally. */

@@ -1,0 +1,14 @@
+diff --git a/xmlreader.c b/xmlreader.c
+index 3fd9aa4c..cdee58e5 100644
+--- a/xmlreader.c
++++ b/xmlreader.c
+@@ -304,6 +304,9 @@ xmlTextReaderFreeProp(xmlTextReaderPtr reader, xmlAttrPtr cur) {
+ 	 (cur->parent->doc->extSubset != NULL))) {
+         if (xmlIsID(cur->parent->doc, cur->parent, cur))
+ 	    xmlTextReaderRemoveID(cur->parent->doc, cur);
++        /* Check for Ref removal -> avoid stale references in doc->refs */
++        if (xmlIsRef(cur->parent->doc, cur->parent, cur))
++            xmlRemoveRef(cur->parent->doc, cur);
+     }
+     if (cur->children != NULL)
+         xmlTextReaderFreeNodeList(reader, cur->children);

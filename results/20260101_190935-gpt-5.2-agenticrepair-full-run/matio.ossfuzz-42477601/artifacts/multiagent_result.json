@@ -1,0 +1,209 @@
+{
+  "instance_id": "matio.ossfuzz-42477601",
+  "final_status": "success",
+  "static_analyzer_output": {
+    "role": "static_analyzer",
+    "raw_output": "{\n  \"analysis_type\": \"memory\",\n  \"findings\": [\n    {\n      \"file\": \"src/mat.c\",\n      \"line\": 1968,\n      \"message\": \"printf(\\\"%s\\\") prints matvar->name as a C-string; if name is not NUL-terminated this can read past the heap buffer (OOB read).\",\n      \"severity\": \"error\"\n    },\n    {\n      \"file\": \"src/mat4.c\",\n      \"line\": 911,\n      \"message\": \"matvar->name allocated with malloc(tmp) and filled by fread(tmp bytes) without adding a terminating NUL; later treated as a C-string.\",\n      \"severity\": \"error\"\n    },\n    {\n      \"file\": \"src/mat.c\",\n      \"line\": 2011,\n      \"message\": \"printf(\\\"%s\\\") prints matvar->internal->fieldnames[...] as a C-string; ensure fieldname buffers are NUL-terminated as well.\",\n      \"severity\": \"warning\"\n    }\n  ],\n  \"dataflow_summary\": \"Not produced (memory-focused analysis). Conceptual flow: fread() into heap buffer (mat4.c:916) -> matvar->name -> printf(%s) in Mat_VarPrint (mat.c:1968) causing out-of-bounds read if missing NUL terminator.\",\n  \"key_insight\": \"Mat_VarReadNextInfo4 reads a name of length tmp into a tmp-byte heap allocation without appending '\\\\0', but Mat_VarPrint assumes matvar->name is a NUL-terminated C-string and prints it with %s (mat.c:1968), enabling a 1+ byte heap OOB read.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Guarantee NUL-termination when reading MAT4 variable names: allocate tmp+1, read tmp bytes, then set matvar->name[tmp] = '\\\\0'.\",\n      \"reasoning\": \"Directly addresses the root cause (non-NUL-terminated buffer later used with %s) while preserving existing APIs and call sites.\",\n      \"trade_offs\": \"Slight memory overhead (+1 byte per name). Must ensure tmp is sane (e.g., upper bound) to avoid huge allocations from malformed files.\"\n    },\n    {\n      \"approach\": \"Track name length and print with a bounded format: printf(\"      Name: %.*s\\\\n\", (int)name_len, matvar->name) (or fwrite).\",\n      \"reasoning\": \"Eliminates reliance on NUL-termination; robust even if input is intentionally non-terminated.\",\n      \"trade_offs\": \"Requires storing/passing name length through matvar_t (API/ABI impact) or recomputing length safely; more invasive refactor.\"\n    },\n    {\n      \"approach\": \"Add defensive normalization in Mat_VarPrint: use strnlen with a known max/allocated size and print with %.*s.\",\n      \"reasoning\": \"Mitigates OOB reads even if upstream parsing paths miss termination (defense-in-depth).\",\n      \"trade_offs\": \"Needs access to the allocation size/maximum safe bound; choosing an arbitrary cap may truncate output and could still be wrong if size is unknown.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "raw": "{\n  \"analysis_type\": \"memory\",\n  \"findings\": [\n    {\n      \"file\": \"src/mat.c\",\n      \"line\": 1968,\n      \"message\": \"printf(\\\"%s\\\") prints matvar->name as a C-string; if name is not NUL-terminated this can read past the heap buffer (OOB read).\",\n      \"severity\": \"error\"\n    },\n    {\n      \"file\": \"src/mat4.c\",\n      \"line\": 911,\n      \"message\": \"matvar->name allocated with malloc(tmp) and filled by fread(tmp bytes) without adding a terminating NUL; later treated as a C-string.\",\n      \"severity\": \"error\"\n    },\n    {\n      \"file\": \"src/mat.c\",\n      \"line\": 2011,\n      \"message\": \"printf(\\\"%s\\\") prints matvar->internal->fieldnames[...] as a C-string; ensure fieldname buffers are NUL-terminated as well.\",\n      \"severity\": \"warning\"\n    }\n  ],\n  \"dataflow_summary\": \"Not produced (memory-focused analysis). Conceptual flow: fread() into heap buffer (mat4.c:916) -> matvar->name -> printf(%s) in Mat_VarPrint (mat.c:1968) causing out-of-bounds read if missing NUL terminator.\",\n  \"key_insight\": \"Mat_VarReadNextInfo4 reads a name of length tmp into a tmp-byte heap allocation without appending '\\\\0', but Mat_VarPrint assumes matvar->name is a NUL-terminated C-string and prints it with %s (mat.c:1968), enabling a 1+ byte heap OOB read.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Guarantee NUL-termination when reading MAT4 variable names: allocate tmp+1, read tmp bytes, then set matvar->name[tmp] = '\\\\0'.\",\n      \"reasoning\": \"Directly addresses the root cause (non-NUL-terminated buffer later used with %s) while preserving existing APIs and call sites.\",\n      \"trade_offs\": \"Slight memory overhead (+1 byte per name). Must ensure tmp is sane (e.g., upper bound) to avoid huge allocations from malformed files.\"\n    },\n    {\n      \"approach\": \"Track name length and print with a bounded format: printf(\"      Name: %.*s\\\\n\", (int)name_len, matvar->name) (or fwrite).\",\n      \"reasoning\": \"Eliminates reliance on NUL-termination; robust even if input is intentionally non-terminated.\",\n      \"trade_offs\": \"Requires storing/passing name length through matvar_t (API/ABI impact) or recomputing length safely; more invasive refactor.\"\n    },\n    {\n      \"approach\": \"Add defensive normalization in Mat_VarPrint: use strnlen with a known max/allocated size and print with %.*s.\",\n      \"reasoning\": \"Mitigates OOB reads even if upstream parsing paths miss termination (defense-in-depth).\",\n      \"trade_offs\": \"Needs access to the allocation size/maximum safe bound; choosing an arbitrary cap may truncate output and could still be wrong if size is unknown.\"\n    }\n  ]\n}",
+      "parse_error": true
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 96710,
+      "output_tokens": 5073
+    },
+    "timing": {
+      "start_time": 1768824065.525966,
+      "end_time": 1768824229.5912638,
+      "duration": 164.06529784202576
+    },
+    "trajectory": {
+      "agent_role": "static_analyzer",
+      "task": "<uploaded_files>\n/src/matio\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/matio`. Consider the following issue description:\n\n<issue_description>\nA heap-buffer-overflow in MatIO: Mat_VarPrint (src/matio/src/mat.c) calls printf/vprintf on a variable name buffer that is not guaranteed to be NUL-terminated (the buffer allocated in Mat_VarReadNextInfo4 in src/matio/src/mat4.c is 32 bytes). printf reads past the end of the allocated buffer (one byte over), causing a heap out",
+      "total_steps": 9,
+      "total_duration": 164.06529784202576,
+      "total_input_tokens": 96710,
+      "total_output_tokens": 5073,
+      "total_cost": 0.11930450000000001,
+      "final_state": "success"
+    }
+  },
+  "dynamic_analyzer_output": {
+    "role": "dynamic_analyzer",
+    "raw_output": "{\n  \"tools_used\": [\"gdb\", \"ubsan\"],\n  \"crash_info\": {\n    \"address\": \"0x503000000060\",\n    \"type\": \"heap-buffer-overflow (heap out-of-bounds read)\",\n    \"location\": \"/src/matio/src/mat.c:1968 (Mat_VarPrint)\"\n  },\n  \"backtrace\": [\n    \"#0 printf_common(...) sanitizer_common_interceptors_format.inc:563\",\n    \"#1 vprintf sanitizer_common_interceptors.inc:1644\",\n    \"#2 Mat_VarPrint /src/matio/src/mat.c:1968\",\n    \"#3 main /src/matio/tools/matdump.c:945\",\n    \"#4 Mat_VarReadNextInfo4 /src/matio/src/mat4.c:911 (allocation site in ASan report)\"\n  ],\n  \"memory_state\": \"ASan reports READ of size 33 at 0x503000000060, which is exactly 0 bytes past the end of a 32-byte heap allocation [0x503000000040, 0x503000000060) made by Mat_VarReadNextInfo4 (mat4.c:911). This is consistent with printf scanning for a NUL terminator one byte beyond the allocated buffer.\",\n  \"root_cause_hint\": \"Dynamic evidence (ASan backtrace captured via gdb/ubsan runs) shows Mat_VarPrint printing matvar->name with printf(\\\"%s\\\"), but Mat_VarReadNextInfo4 allocates matvar->name with malloc(tmp) and reads exactly tmp bytes from the file without appending a NUL terminator. If the on-disk name field is not NUL-terminated, printf will read past the heap buffer until it finds a NUL, triggering the observed 1-byte OOB read (32-byte alloc, 33-byte read).\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Ensure matvar->name is always NUL-terminated when reading MAT4 variable names: allocate tmp+1 bytes, read tmp bytes, and set matvar->name[tmp] = '\\\\0'.\",\n      \"reasoning\": \"This directly addresses the runtime failure mode: the crash happens because printf expects a C-string. Making the buffer a valid C-string prevents reads past the allocation regardless of file contents.\",\n      \"trade_offs\": \"Small memory overhead (+1 byte per name) and requires touching all readers that populate matvar->name (MAT4/MAT5/etc.) to keep behavior consistent. Also consider sanity limits on tmp to avoid huge allocations from corrupted files.\"\n    },\n    {\n      \"approach\": \"Avoid assuming NUL-termination at print time: change Mat_VarPrint to use a length-bounded print (e.g., printf(\\\"%.*s\\\", (int)name_len, name)) or write with fwrite. Store/propagate a name length alongside matvar->name.\",\n      \"reasoning\": \"Eliminates reliance on NUL terminators entirely, which is safer for data parsed from files.\",\n      \"trade_offs\": \"Requires API/struct changes to carry the name length (or re-derive it safely), touching more code and possibly ABI compatibility concerns.\"\n    },\n    {\n      \"approach\": \"Defensive parsing: cap tmp to a reasonable maximum and/or use calloc(tmp+1,1) so the trailing byte is zero even if later logic changes.\",\n      \"reasoning\": \"Mitigates both the immediate OOB read and potential DoS via extremely large name lengths from malformed files.\",\n      \"trade_offs\": \"Choosing a max length may reject some unusual-but-valid files; using calloc can be slightly slower than malloc for large allocations (though name buffers are typically small).\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "tools_used": [
+        "gdb",
+        "ubsan"
+      ],
+      "crash_info": {
+        "address": "0x503000000060",
+        "type": "heap-buffer-overflow (heap out-of-bounds read)",
+        "location": "/src/matio/src/mat.c:1968 (Mat_VarPrint)"
+      },
+      "backtrace": [
+        "#0 printf_common(...) sanitizer_common_interceptors_format.inc:563",
+        "#1 vprintf sanitizer_common_interceptors.inc:1644",
+        "#2 Mat_VarPrint /src/matio/src/mat.c:1968",
+        "#3 main /src/matio/tools/matdump.c:945",
+        "#4 Mat_VarReadNextInfo4 /src/matio/src/mat4.c:911 (allocation site in ASan report)"
+      ],
+      "memory_state": "ASan reports READ of size 33 at 0x503000000060, which is exactly 0 bytes past the end of a 32-byte heap allocation [0x503000000040, 0x503000000060) made by Mat_VarReadNextInfo4 (mat4.c:911). This is consistent with printf scanning for a NUL terminator one byte beyond the allocated buffer.",
+      "root_cause_hint": "Dynamic evidence (ASan backtrace captured via gdb/ubsan runs) shows Mat_VarPrint printing matvar->name with printf(\"%s\"), but Mat_VarReadNextInfo4 allocates matvar->name with malloc(tmp) and reads exactly tmp bytes from the file without appending a NUL terminator. If the on-disk name field is not NUL-terminated, printf will read past the heap buffer until it finds a NUL, triggering the observed 1-byte OOB read (32-byte alloc, 33-byte read).",
+      "fix_suggestions": [
+        {
+          "approach": "Ensure matvar->name is always NUL-terminated when reading MAT4 variable names: allocate tmp+1 bytes, read tmp bytes, and set matvar->name[tmp] = '\\0'.",
+          "reasoning": "This directly addresses the runtime failure mode: the crash happens because printf expects a C-string. Making the buffer a valid C-string prevents reads past the allocation regardless of file contents.",
+          "trade_offs": "Small memory overhead (+1 byte per name) and requires touching all readers that populate matvar->name (MAT4/MAT5/etc.) to keep behavior consistent. Also consider sanity limits on tmp to avoid huge allocations from corrupted files."
+        },
+        {
+          "approach": "Avoid assuming NUL-termination at print time: change Mat_VarPrint to use a length-bounded print (e.g., printf(\"%.*s\", (int)name_len, name)) or write with fwrite. Store/propagate a name length alongside matvar->name.",
+          "reasoning": "Eliminates reliance on NUL terminators entirely, which is safer for data parsed from files.",
+          "trade_offs": "Requires API/struct changes to carry the name length (or re-derive it safely), touching more code and possibly ABI compatibility concerns."
+        },
+        {
+          "approach": "Defensive parsing: cap tmp to a reasonable maximum and/or use calloc(tmp+1,1) so the trailing byte is zero even if later logic changes.",
+          "reasoning": "Mitigates both the immediate OOB read and potential DoS via extremely large name lengths from malformed files.",
+          "trade_offs": "Choosing a max length may reject some unusual-but-valid files; using calloc can be slightly slower than malloc for large allocations (though name buffers are typically small)."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 40875,
+      "output_tokens": 1792
+    },
+    "timing": {
+      "start_time": 1768824229.5965214,
+      "end_time": 1768824421.8664718,
+      "duration": 192.26995038986206
+    },
+    "trajectory": {
+      "agent_role": "dynamic_analyzer",
+      "task": "<uploaded_files>\n/src/matio\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/matio`. Consider the following issue description:\n\n<issue_description>\nA heap-buffer-overflow in MatIO: Mat_VarPrint (src/matio/src/mat.c) calls printf/vprintf on a variable name buffer that is not guaranteed to be NUL-terminated (the buffer allocated in Mat_VarReadNextInfo4 in src/matio/src/mat4.c is 32 bytes). printf reads past the end of the allocated buffer (one byte over), causing a heap out",
+      "total_steps": 4,
+      "total_duration": 192.26995038986206,
+      "total_input_tokens": 40875,
+      "total_output_tokens": 1792,
+      "total_cost": 0.057710449999999996,
+      "final_state": "success"
+    }
+  },
+  "history_miner_output": {
+    "role": "history_miner",
+    "raw_output": "{\n  \"file_analyzed\": \"src/mat.c\",\n  \"function_analyzed\": \"Mat_VarPrint\",\n  \"relevant_commits\": [\n    {\n      \"hash\": \"a55b9c2c\",\n      \"message\": \"Fix null pointer dereference (honggfuzz)\",\n      \"changes\": \"Added NULL checks in Mat_VarPrint before printing matvar->name/dims and handling rank<=0.\",\n      \"relevance\": \"Shows Mat_VarPrint assumes matvar->name is a valid C string (prints with %s); the fix focused on NULL, not NUL-termination.\" \n    },\n    {\n      \"hash\": \"fa354097\",\n      \"message\": \"Revert error handling in Mat_VarPrint\",\n      \"changes\": \"Removed early returns on SafeMulDims/SafeMul overflow checks.\",\n      \"relevance\": \"Demonstrates Mat_VarPrint prioritizes printing even on suspicious inputs; similar mindset increases risk when name buffers are not validated/terminated.\" \n    },\n    {\n      \"hash\": \"2c20d217\",\n      \"message\": \"Fix printing variables from v5 MAT file\",\n      \"changes\": \"Adjusted printing logic (data_type_desc size, other print fixes) after illegal memory access reports.\",\n      \"relevance\": \"Historical precedent that Mat_VarPrint has been a hotspot for memory-safety bugs; reinforces that safer printing/validation is expected here.\" \n    }\n  ],\n  \"vulnerability_origin\": \"Not clearly introduced by the last commits touching Mat_VarPrint; the root cause is a longstanding contract mismatch: Mat_VarPrint uses printf(\\\"%s\\\") on matvar->name, while MAT v4 reader (Mat_VarReadNextInfo4 in src/mat4.c) allocates exactly tmp bytes and reads tmp bytes without guaranteeing a trailing NUL. This likely predates the 2017\u20132019 changes shown by history mining.\",\n  \"fix_hints\": \"The MAT v4 reader should guarantee matvar->name is a NUL-terminated C string (or Mat_VarPrint must use length-bounded printing). Current src/mat4.c shows malloc(tmp) + fread(tmp) with no terminator.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Ensure NUL-termination at the source: in Mat_VarReadNextInfo4 allocate tmp+1 and set matvar->name[tmp] = '\\\\0' after fread.\",\n      \"reasoning\": \"Matches the implicit assumption in Mat_VarPrint (and likely many other callers) that matvar->name is a standard C string.\",\n      \"trade_offs\": \"Slightly more memory; must add overflow-safe add (tmp+1) and consider whether tmp includes an on-disk NUL already (still safe).\"\n    },\n    {\n      \"approach\": \"Defensive printing: change Mat_VarPrint to avoid unbounded %s (e.g., use strnlen with a cap, then printf(\\\"%.*s\\\", len, name)).\",\n      \"reasoning\": \"Reduces exploitability even if other readers/paths forget to terminate strings (history shows Mat_VarPrint has had memory issues before).\",\n      \"trade_offs\": \"Requires choosing a maximum length (format-specific) or storing name length in matvar_t; otherwise could truncate.\" \n    },\n    {\n      \"approach\": \"Normalize/validate variable names on read: reject names without NUL within expected bounds, or sanitize by copying into a new NUL-terminated buffer.\",\n      \"reasoning\": \"Aligns with past hardening work (integer overflow checks) by treating malformed files as invalid input.\",\n      \"trade_offs\": \"May reject some nonconforming files; extra allocation/copy.\" \n    }\n  ]\n}",
+    "parsed_output": {
+      "file_analyzed": "src/mat.c",
+      "function_analyzed": "Mat_VarPrint",
+      "relevant_commits": [
+        {
+          "hash": "a55b9c2c",
+          "message": "Fix null pointer dereference (honggfuzz)",
+          "changes": "Added NULL checks in Mat_VarPrint before printing matvar->name/dims and handling rank<=0.",
+          "relevance": "Shows Mat_VarPrint assumes matvar->name is a valid C string (prints with %s); the fix focused on NULL, not NUL-termination."
+        },
+        {
+          "hash": "fa354097",
+          "message": "Revert error handling in Mat_VarPrint",
+          "changes": "Removed early returns on SafeMulDims/SafeMul overflow checks.",
+          "relevance": "Demonstrates Mat_VarPrint prioritizes printing even on suspicious inputs; similar mindset increases risk when name buffers are not validated/terminated."
+        },
+        {
+          "hash": "2c20d217",
+          "message": "Fix printing variables from v5 MAT file",
+          "changes": "Adjusted printing logic (data_type_desc size, other print fixes) after illegal memory access reports.",
+          "relevance": "Historical precedent that Mat_VarPrint has been a hotspot for memory-safety bugs; reinforces that safer printing/validation is expected here."
+        }
+      ],
+      "vulnerability_origin": "Not clearly introduced by the last commits touching Mat_VarPrint; the root cause is a longstanding contract mismatch: Mat_VarPrint uses printf(\"%s\") on matvar->name, while MAT v4 reader (Mat_VarReadNextInfo4 in src/mat4.c) allocates exactly tmp bytes and reads tmp bytes without guaranteeing a trailing NUL. This likely predates the 2017\u20132019 changes shown by history mining.",
+      "fix_hints": "The MAT v4 reader should guarantee matvar->name is a NUL-terminated C string (or Mat_VarPrint must use length-bounded printing). Current src/mat4.c shows malloc(tmp) + fread(tmp) with no terminator.",
+      "fix_suggestions": [
+        {
+          "approach": "Ensure NUL-termination at the source: in Mat_VarReadNextInfo4 allocate tmp+1 and set matvar->name[tmp] = '\\0' after fread.",
+          "reasoning": "Matches the implicit assumption in Mat_VarPrint (and likely many other callers) that matvar->name is a standard C string.",
+          "trade_offs": "Slightly more memory; must add overflow-safe add (tmp+1) and consider whether tmp includes an on-disk NUL already (still safe)."
+        },
+        {
+          "approach": "Defensive printing: change Mat_VarPrint to avoid unbounded %s (e.g., use strnlen with a cap, then printf(\"%.*s\", len, name)).",
+          "reasoning": "Reduces exploitability even if other readers/paths forget to terminate strings (history shows Mat_VarPrint has had memory issues before).",
+          "trade_offs": "Requires choosing a maximum length (format-specific) or storing name length in matvar_t; otherwise could truncate."
+        },
+        {
+          "approach": "Normalize/validate variable names on read: reject names without NUL within expected bounds, or sanitize by copying into a new NUL-terminated buffer.",
+          "reasoning": "Aligns with past hardening work (integer overflow checks) by treating malformed files as invalid input.",
+          "trade_offs": "May reject some nonconforming files; extra allocation/copy."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 149646,
+      "output_tokens": 4830
+    },
+    "timing": {
+      "start_time": 1768824421.8704104,
+      "end_time": 1768824561.4585388,
+      "duration": 139.58812832832336
+    },
+    "trajectory": {
+      "agent_role": "history_miner",
+      "task": "<uploaded_files>\n/src/matio\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/matio`. Consider the following issue description:\n\n<issue_description>\nA heap-buffer-overflow in MatIO: Mat_VarPrint (src/matio/src/mat.c) calls printf/vprintf on a variable name buffer that is not guaranteed to be NUL-terminated (the buffer allocated in Mat_VarReadNextInfo4 in src/matio/src/mat4.c is 32 bytes). printf reads past the end of the allocated buffer (one byte over), causing a heap out",
+      "total_steps": 9,
+      "total_duration": 139.58812832832336,
+      "total_input_tokens": 149646,
+      "total_output_tokens": 4830,
+      "total_cost": 0.14019810000000002,
+      "final_state": "success"
+    }
+  },
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "{\n  \"root_cause\": \"Mat_VarReadNextInfo4 (src/mat4.c) allocated exactly tmp bytes for matvar->name and read tmp bytes from the file without guaranteeing a terminating NUL. Mat_VarPrint (src/mat.c) prints matvar->name with printf(\\\"%s\\\"), causing printf to scan past the end of the heap buffer when the on-disk name is not NUL-terminated, triggering an ASan heap-buffer-overflow read.\",\n  \"fix_approach\": \"Ensure MAT v4 variable names are always safe C-strings by allocating extra space and zero-initializing the buffer when reading the name in Mat_VarReadNextInfo4. Specifically, allocate namelen+8 bytes with calloc() (with overflow check), read namelen bytes from the file, and explicitly set matvar->name[namelen] = '\\\\0'. This prevents printf/%s from reading past the allocation even when the file provides an unterminated name.\",\n  \"files_modified\": [\n    \"src/mat4.c\"\n  ],\n  \"verification\": {\n    \"build_success\": true,\n    \"repro_success\": true,\n    \"exit_code\": 0,\n    \"asan_output\": \"No sanitizer errors detected\"\n  },\n  \"confidence\": \"high\"\n}",
+    "parsed_output": {
+      "root_cause": "Mat_VarReadNextInfo4 (src/mat4.c) allocated exactly tmp bytes for matvar->name and read tmp bytes from the file without guaranteeing a terminating NUL. Mat_VarPrint (src/mat.c) prints matvar->name with printf(\"%s\"), causing printf to scan past the end of the heap buffer when the on-disk name is not NUL-terminated, triggering an ASan heap-buffer-overflow read.",
+      "fix_approach": "Ensure MAT v4 variable names are always safe C-strings by allocating extra space and zero-initializing the buffer when reading the name in Mat_VarReadNextInfo4. Specifically, allocate namelen+8 bytes with calloc() (with overflow check), read namelen bytes from the file, and explicitly set matvar->name[namelen] = '\\0'. This prevents printf/%s from reading past the allocation even when the file provides an unterminated name.",
+      "files_modified": [
+        "src/mat4.c"
+      ],
+      "verification": {
+        "build_success": true,
+        "repro_success": true,
+        "exit_code": 0,
+        "asan_output": "No sanitizer errors detected"
+      },
+      "confidence": "high"
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 223131,
+      "output_tokens": 4903
+    },
+    "timing": {
+      "start_time": 1768824561.4680753,
+      "end_time": 1768824707.723527,
+      "duration": 146.25545167922974
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/matio\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/matio`. Consider the following issue description:\n\n<issue_description>\nA heap-buffer-overflow in MatIO: Mat_VarPrint (src/matio/src/mat.c) calls printf/vprintf on a variable name buffer that is not guaranteed to be NUL-terminated (the buffer allocated in Mat_VarReadNextInfo4 in src/matio/src/mat4.c is 32 bytes). printf reads past the end of the allocated buffer (one byte over), causing a heap out",
+      "total_steps": 15,
+      "total_duration": 146.25545167922974,
+      "total_input_tokens": 223131,
+      "total_output_tokens": 4903,
+      "total_cost": 0.21558845000000004,
+      "final_state": "success"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 510362,
+    "output_tokens": 16598
+  },
+  "timing": {
+    "total_duration": 642.2041149139404
+  }
+}

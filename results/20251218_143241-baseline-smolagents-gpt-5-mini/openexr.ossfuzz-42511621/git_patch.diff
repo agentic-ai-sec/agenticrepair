@@ -1,0 +1,32 @@
+diff --git a/src/lib/OpenEXRCore/coding.c b/src/lib/OpenEXRCore/coding.c
+index 96a97edf..92a52f40 100644
+--- a/src/lib/OpenEXRCore/coding.c
++++ b/src/lib/OpenEXRCore/coding.c
+@@ -266,14 +266,15 @@ internal_decode_alloc_buffer (
+     {
+         internal_decode_free_buffer (decode, bufid, buf, cursz);
+ 
++        size_t allocsz = newsz + 64;
+         if (decode->alloc_fn)
+-            curbuf = decode->alloc_fn (bufid, newsz);
++            curbuf = decode->alloc_fn (bufid, allocsz);
+         else
+         {
+             EXR_PROMOTE_CONST_CONTEXT_AND_PART_OR_ERROR_NO_LOCK (
+                 decode->context, decode->part_index);
+ 
+-            curbuf = pctxt->alloc_fn (newsz);
++            curbuf = pctxt->alloc_fn (allocsz);
+         }
+ 
+         if (curbuf == NULL)
+@@ -289,7 +290,8 @@ internal_decode_alloc_buffer (
+         }
+ 
+         *buf   = curbuf;
+-        *cursz = newsz;
++        /* record allocated size including padding */
++        *cursz = allocsz;
+     }
+     return EXR_ERR_SUCCESS;
+ }

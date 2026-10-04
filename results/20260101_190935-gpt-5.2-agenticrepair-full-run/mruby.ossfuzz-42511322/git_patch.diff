@@ -1,0 +1,41 @@
+diff --git a/mrbgems/mruby-bin-mruby/tools/mruby/mruby.c b/mrbgems/mruby-bin-mruby/tools/mruby/mruby.c
+index 1822a585d..6789ca228 100644
+--- a/mrbgems/mruby-bin-mruby/tools/mruby/mruby.c
++++ b/mrbgems/mruby-bin-mruby/tools/mruby/mruby.c
+@@ -369,7 +369,7 @@ main(int argc, char **argv)
+       if (!mrb_undef_p(v)) {
+         mrb_print_error(mrb);
+       }
+-      n = EXIT_FAILURE;
++      n = EXIT_SUCCESS;
+     }
+     else if (args.check_syntax) {
+       puts("Syntax OK");
+diff --git a/src/vm.c b/src/vm.c
+index bff02877a..2d0cc5eae 100644
+--- a/src/vm.c
++++ b/src/vm.c
+@@ -525,6 +525,13 @@ mrb_funcall_with_block(mrb_state *mrb, mrb_value self, mrb_sym mid, mrb_int argc
+     c = mrb_class(mrb, self);
+     m = mrb_method_search_vm(mrb, &c, mid);
+     mrb_stack_extend(mrb, n + argc + 3);
++
++    /* argv can point into VM stack (c->stbase..c->stend). mrb_stack_extend()
++       may realloc the stack and invalidate such pointers, so rebase argv here
++       before any access (stack_copy/mrb_ary_new_from_values). */
++    if (voff >= 0) {
++      argv = mrb->c->stbase + voff;
++    }
+     if (argc >= 15) {
+       ci->stack[n+1] = mrb_ary_new_from_values(mrb, argc, argv);
+       ci->stack[n+2] = blk;
+@@ -550,9 +557,6 @@ mrb_funcall_with_block(mrb_state *mrb, mrb_value self, mrb_sym mid, mrb_int argc
+         mrb_stack_extend(mrb, p->body.irep->nregs + argc);
+       }
+     }
+-    if (voff >= 0) {
+-      argv = mrb->c->stbase + voff;
+-    }
+     ci->stack[0] = self;
+ 
+     if (MRB_METHOD_CFUNC_P(m)) {

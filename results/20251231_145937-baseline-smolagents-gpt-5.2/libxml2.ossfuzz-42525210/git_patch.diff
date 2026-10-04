@@ -1,0 +1,133 @@
+diff --git a/HTMLparser.c b/HTMLparser.c
+index a3c47f69..d50339f3 100644
+--- a/HTMLparser.c
++++ b/HTMLparser.c
+@@ -286,9 +286,9 @@ htmlNodeInfoPop(htmlParserCtxtPtr ctxt)
+ 
+ #define SKIP(val) ctxt->input->cur += (val),ctxt->input->col+=(val)
+ 
+-#define NXT(val) ctxt->input->cur[(val)]
++#define NXT(val) (((ctxt->input->cur + (val)) < ctxt->input->end) ? ctxt->input->cur[(val)] : 0)
+ 
+-#define UPP(val) (toupper(ctxt->input->cur[(val)]))
++#define UPP(val) (((ctxt->input->cur + (val)) < ctxt->input->end) ? (toupper(ctxt->input->cur[(val)])) : 0)
+ 
+ #define CUR_PTR ctxt->input->cur
+ #define BASE_PTR ctxt->input->base
+@@ -305,10 +305,10 @@ htmlNodeInfoPop(htmlParserCtxtPtr ctxt)
+ 
+ /* Imported from XML */
+ 
+-#define CUR (*ctxt->input->cur)
++#define CUR ((ctxt->input->cur < ctxt->input->end) ? (*ctxt->input->cur) : 0)
+ #define NEXT xmlNextChar(ctxt)
+ 
+-#define RAW (ctxt->token ? -1 : (*ctxt->input->cur))
++#define RAW (ctxt->token ? -1 : ((ctxt->input->cur < ctxt->input->end) ? (*ctxt->input->cur) : 0))
+ 
+ 
+ #define NEXTL(l) do {							\
+@@ -586,15 +586,35 @@ static int
+ htmlSkipBlankChars(xmlParserCtxtPtr ctxt) {
+     int res = 0;
+ 
+-    while (IS_BLANK_CH(*(ctxt->input->cur))) {
+-        if (*(ctxt->input->cur) == '\n') {
+-            ctxt->input->line++; ctxt->input->col = 1;
+-        } else ctxt->input->col++;
++    if ((ctxt == NULL) || (ctxt->input == NULL) ||
++        (ctxt->input->cur == NULL) || (ctxt->input->end == NULL))
++        return(0);
++
++    while ((ctxt->input->cur < ctxt->input->end) &&
++           (IS_BLANK_CH(*ctxt->input->cur))) {
++        if (*ctxt->input->cur == '\n') {
++            ctxt->input->line++;
++            ctxt->input->col = 1;
++        } else {
++            ctxt->input->col++;
++        }
+         ctxt->input->cur++;
+-        if (*ctxt->input->cur == 0)
++
++        /* Grow input safely if we reached the end of the current buffer. */
++        if (ctxt->input->cur >= ctxt->input->end) {
+             xmlParserGrow(ctxt);
+-	if (res < INT_MAX)
+-	    res++;
++            if ((ctxt->input->cur == NULL) || (ctxt->input->end == NULL) ||
++                (ctxt->input->cur >= ctxt->input->end))
++                break;
++        } else if (*ctxt->input->cur == 0) {
++            xmlParserGrow(ctxt);
++            if ((ctxt->input->cur == NULL) || (ctxt->input->end == NULL) ||
++                (ctxt->input->cur >= ctxt->input->end))
++                break;
++        }
++
++        if (res < INT_MAX)
++            res++;
+     }
+     return(res);
+ }
+diff --git a/error.c b/error.c
+index 4de1418e..ecdc5da9 100644
+--- a/error.c
++++ b/error.c
+@@ -174,7 +174,7 @@ xmlParserPrintFileInfo(xmlParserInputPtr input) {
+ static void
+ xmlParserPrintFileContextInternal(xmlParserInputPtr input ,
+ 		xmlGenericErrorFunc channel, void *data ) {
+-    const xmlChar *cur, *base, *start;
++    const xmlChar *cur, *base, *start, *end, *icur;
+     unsigned int n, col;	/* GCC warns if signed, because compared with sizeof() */
+     xmlChar  content[81]; /* space for 80 chars + line terminator */
+     xmlChar *ctnt;
+@@ -184,6 +184,25 @@ xmlParserPrintFileContextInternal(xmlParserInputPtr input ,
+ 
+     cur = input->cur;
+     base = input->base;
++    end = input->end;
++    icur = input->cur;
++
++    if ((base == NULL) || (end == NULL))
++        return;
++
++    if (icur < base)
++        icur = base;
++    if (icur > end)
++        icur = end;
++
++    if (cur < base)
++        cur = base;
++    if (cur >= end) {
++        if (end > base)
++            cur = end - 1;
++        else
++            return;
++    }
+     /* skip backwards over any end-of-lines */
+     while ((cur > base) && ((*(cur) == '\n') || (*(cur) == '\r'))) {
+ 	cur--;
+@@ -199,17 +218,17 @@ xmlParserPrintFileContextInternal(xmlParserInputPtr input ,
+         cur++;
+     } else {
+         /* skip over continuation bytes */
+-        while ((cur < input->cur) && ((*cur & 0xC0) == 0x80))
++        while ((cur < icur) && (cur < end) && ((*cur & 0xC0) == 0x80))
+             cur++;
+     }
+     /* calculate the error position in terms of the current position */
+-    col = input->cur - cur;
++    col = icur - cur;
+     /* search forward for end-of-line (to max buff size) */
+     n = 0;
+     start = cur;
+     /* copy selected text to our buffer */
+-    while ((*cur != 0) && (*(cur) != '\n') && (*(cur) != '\r')) {
+-        int len = input->end - cur;
++    while ((cur < end) && (*cur != 0) && (*cur != '\n') && (*cur != '\r')) {
++        int len = end - cur;
+         int c = xmlGetUTF8Char(cur, &len);
+ 
+         if ((c < 0) || (n + len > sizeof(content)-1))

@@ -1,0 +1,44 @@
+diff --git a/HTMLparser.c b/HTMLparser.c
+index b8b6bd23..fe5c4c88 100644
+--- a/HTMLparser.c
++++ b/HTMLparser.c
+@@ -13,6 +13,7 @@
+ #include <string.h>
+ #include <ctype.h>
+ #include <stdlib.h>
++#include <limits.h>
+ 
+ #include <libxml/xmlmemory.h>
+ #include <libxml/tree.h>
+@@ -3012,7 +3013,14 @@ htmlParseSystemLiteral(htmlParserCtxtPtr ctxt) {
+     } else {
+         NEXT;
+         if (err == 0)
+-            ret = xmlStrndup((BASE_PTR+startPosition), len);
++            {
++        size_t _avail = 0;
++        if (ctxt->input && ctxt->input->end && (BASE_PTR + startPosition) <= ctxt->input->end)
++            _avail = (size_t)(ctxt->input->end - (BASE_PTR + startPosition));
++        if (len > _avail) len = _avail;
++        if (len > (size_t)INT_MAX) len = (size_t)INT_MAX;
++        ret = xmlStrndup((BASE_PTR+startPosition), (int)len);
++    }
+     }
+ 
+     return(ret);
+@@ -3067,7 +3075,14 @@ htmlParsePubidLiteral(htmlParserCtxtPtr ctxt) {
+     } else {
+         NEXT;
+         if (err == 0)
+-            ret = xmlStrndup((BASE_PTR + startPosition), len);
++            {
++        size_t _avail = 0;
++        if (ctxt->input && ctxt->input->end && (BASE_PTR + startPosition) <= ctxt->input->end)
++            _avail = (size_t)(ctxt->input->end - (BASE_PTR + startPosition));
++        if (len > _avail) len = _avail;
++        if (len > (size_t)INT_MAX) len = (size_t)INT_MAX;
++        ret = xmlStrndup((BASE_PTR + startPosition), (int)len);
++    }
+     }
+ 
+     return(ret);

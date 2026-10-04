@@ -1,0 +1,48 @@
+diff --git a/xinclude.c b/xinclude.c
+index 3c810ca1..c6c6d28f 100644
+--- a/xinclude.c
++++ b/xinclude.c
+@@ -2219,6 +2219,7 @@ xmlXIncludeIncludeNode(xmlXIncludeCtxtPtr ctxt, int nr) {
+     }
+ 
+     if (ctxt->parseFlags & XML_PARSE_NOXINCNODE) {
++	int nsFailed = 0;
+ 	/*
+ 	 * Add the list of nodes
+ 	 */
+@@ -2227,9 +2228,34 @@ xmlXIncludeIncludeNode(xmlXIncludeCtxtPtr ctxt, int nr) {
+ 	    list = list->next;
+ 
+ 	    xmlAddPrevSibling(cur, end);
++
++	    /*
++	     * The inserted nodes (especially from xi:fallback) might still
++	     * reference namespace declarations owned by the xi:include node.
++	     * If we free the include node, its nsDef list (xmlNs) is freed too
++	     * and those pointers can become dangling and later dereferenced by
++	     * serialization (xmlsave.c).
++	     *
++	     * Reconcile namespaces for inserted element subtrees in their new
++	     * environment before freeing the include node.
++	     */
++#ifdef LIBXML_TREE_ENABLED
++	    if ((!nsFailed) && (end != NULL) && (end->type == XML_ELEMENT_NODE)) {
++		if (xmlReconciliateNs(cur->doc, end) < 0)
++		    nsFailed = 1;
++	    }
++#endif
++	}
++
++	/*
++	 * Only free the xi:include node if namespace reconciliation succeeded.
++	 * On failure, keep the node in the tree to preserve namespace lifetime
++	 * and avoid use-after-free.
++	 */
++	if (!nsFailed) {
++	    xmlUnlinkNode(cur);
++	    xmlFreeNode(cur);
+ 	}
+-	xmlUnlinkNode(cur);
+-	xmlFreeNode(cur);
+     } else {
+         xmlNodePtr child, next;

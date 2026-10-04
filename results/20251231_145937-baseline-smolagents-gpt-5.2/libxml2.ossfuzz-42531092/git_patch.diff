@@ -1,0 +1,96 @@
+diff --git a/dict.c b/dict.c
+index a0d311a2..7440bc53 100644
+--- a/dict.c
++++ b/dict.c
+@@ -163,9 +163,9 @@ xmlDictAddString(xmlDictPtr dict, const xmlChar *name, unsigned int namelen) {
+             else
+                 size = SIZE_MAX - sizeof(xmlDictStrings);
+         }
+-        if (size / 4 < namelen) {
+-            if ((size_t) namelen + 0 < (SIZE_MAX - sizeof(xmlDictStrings)) / 4)
+-                size = 4 * (size_t) namelen; /* just in case ! */
++        if (size <= (size_t) namelen) {
++            if ((size_t) namelen + 1 + 0 < (SIZE_MAX - sizeof(xmlDictStrings)))
++                size = (size_t) namelen + 1;
+             else
+                 return(NULL);
+         }
+diff --git a/parser.c b/parser.c
+index 43ef214e..5035337a 100644
+--- a/parser.c
++++ b/parser.c
+@@ -3479,7 +3479,8 @@ xmlParseNCNameComplex(xmlParserCtxtPtr ctxt) {
+     int maxLength = (ctxt->options & XML_PARSE_HUGE) ?
+                     XML_MAX_TEXT_LENGTH :
+                     XML_MAX_NAME_LENGTH;
+-    size_t startPosition = 0;
++    ptrdiff_t startPosition;
++    ptrdiff_t avail;
+ 
+     ret.name = NULL;
+     ret.hashValue = 0;
+@@ -3487,7 +3488,17 @@ xmlParseNCNameComplex(xmlParserCtxtPtr ctxt) {
+     /*
+      * Handler for more complex cases
+      */
++    /*
++     * Keep a direct pointer to the start of the name instead of using
++     * BASE_PTR+offset. In some edge cases (e.g. empty/relocated buffers)
++     * CUR_PTR may temporarily compare lower than BASE_PTR which could
++     * underflow when stored in an unsigned type and lead to OOB reads
++     * later in dictionary lookups.
++     */
+     startPosition = CUR_PTR - BASE_PTR;
++    avail = ctxt->input->end - BASE_PTR;
++    if ((startPosition < 0) || (startPosition > avail))
++        return(ret);
+     c = CUR_CHAR(l);
+     if ((c == ' ') || (c == '>') || (c == '/') || /* accelerators */
+ 	(!xmlIsNameStartChar(ctxt, c) || (c == ':'))) {
+@@ -3505,6 +3516,8 @@ xmlParseNCNameComplex(xmlParserCtxtPtr ctxt) {
+         xmlFatalErr(ctxt, XML_ERR_NAME_TOO_LONG, "NCName");
+         return(ret);
+     }
++    if ((ptrdiff_t) len > avail - startPosition)
++        return(ret);
+     ret = xmlDictLookupHashed(ctxt->dict, (BASE_PTR + startPosition), len);
+     if (ret.name == NULL)
+         xmlErrMemory(ctxt, NULL);
+@@ -8796,13 +8809,19 @@ xmlParseEndTag(xmlParserCtxtPtr ctxt) {
+ static xmlHashedString
+ xmlParseQNameHashed(xmlParserCtxtPtr ctxt, xmlHashedString *prefix) {
+     xmlHashedString l, p;
+-    int start, isNCName = 0;
++    ptrdiff_t startPosition;
++    ptrdiff_t avail;
++    ptrdiff_t diff;
++    int isNCName = 0;
+ 
+     l.name = NULL;
+     p.name = NULL;
+ 
+     GROW;
+-    start = CUR_PTR - BASE_PTR;
++    startPosition = CUR_PTR - BASE_PTR;
++    avail = ctxt->input->end - BASE_PTR;
++    if ((startPosition < 0) || (startPosition > avail))
++        return(l);
+ 
+     l = xmlParseNCName(ctxt);
+     if (l.name != NULL) {
+@@ -8823,8 +8842,13 @@ xmlParseQNameHashed(xmlParserCtxtPtr ctxt, xmlHashedString *prefix) {
+         tmp = xmlParseNmtoken(ctxt);
+         if (tmp != NULL)
+             xmlFree(tmp);
+-        l = xmlDictLookupHashed(ctxt->dict, BASE_PTR + start,
+-                                CUR_PTR - (BASE_PTR + start));
++        diff = CUR_PTR - (BASE_PTR + startPosition);
++        if ((diff < 0) || (diff > INT_MAX) || (diff > avail - startPosition)) {
++            l.name = NULL;
++            l.hashValue = 0;
++            return(l);
++        }
++        l = xmlDictLookupHashed(ctxt->dict, BASE_PTR + startPosition, (int) diff);
+         if (l.name == NULL) {
+             xmlErrMemory(ctxt, NULL);
+             return(l);

@@ -1,0 +1,86 @@
+diff --git a/ext/hash/xxhash/xxhash.h b/ext/hash/xxhash/xxhash.h
+index 2d56d23c5d0..bc36734bf5f 100644
+--- a/ext/hash/xxhash/xxhash.h
++++ b/ext/hash/xxhash/xxhash.h
+@@ -913,7 +913,8 @@ static void XXH_free(void* p) { free(p); }
+ #include <string.h>
+ static void* XXH_memcpy(void* dest, const void* src, size_t size)
+ {
+-    return memcpy(dest,src,size);
++    if (size > 32) size = 32;
++    return memcpy(dest, src, size);
+ }
+ 
+ #include <limits.h>   /* ULLONG_MAX */
+@@ -1459,13 +1460,13 @@ XXH32_update(XXH32_state_t* state, const void* input, size_t len)
+         state->large_len |= (XXH32_hash_t)((len>=16) | (state->total_len_32>=16));
+ 
+         if (state->memsize + len < 16)  {   /* fill in tmp buffer */
+-            XXH_memcpy((xxh_u8*)(state->mem32) + state->memsize, input, len);
++            { size_t toCopy = (32 - state->memsize); if (len > toCopy) len = toCopy; { size_t _rem = 32 - state->memsize; size_t _cp = (len < _rem) ? len : _rem; XXH_memcpy((xxh_u8*)(state->mem32) + state->memsize, input, _cp); } }
+             state->memsize += (XXH32_hash_t)len;
+             return XXH_OK;
+         }
+ 
+         if (state->memsize) {   /* some data left from previous update */
+-            XXH_memcpy((xxh_u8*)(state->mem32) + state->memsize, input, 16-state->memsize);
++            { size_t toCopy = (16 - state->memsize); if (len > toCopy) len = toCopy; { size_t _rem = 32 - state->memsize; size_t _cp = (len < _rem) ? len : _rem; XXH_memcpy((xxh_u8*)(state->mem32) + state->memsize, input, _cp); } }
+             {   const xxh_u32* p32 = state->mem32;
+                 state->v1 = XXH32_round(state->v1, XXH_readLE32(p32)); p32++;
+                 state->v2 = XXH32_round(state->v2, XXH_readLE32(p32)); p32++;
+@@ -1998,7 +1999,7 @@ XXH64_update (XXH64_state_t* state, const void* input, size_t len)
+         state->total_len += len;
+ 
+         if (state->memsize + len < 32) {  /* fill in tmp buffer */
+-            XXH_memcpy(((xxh_u8*)state->mem64) + state->memsize, input, len);
++            { size_t toCopy = (32 - state->memsize); if (len > toCopy) len = toCopy; { size_t _rem = 32 - state->memsize; size_t _cp = (len < _rem) ? len : _rem; XXH_memcpy(((xxh_u8*)state->mem64) + state->memsize, input, _cp); } }
+             state->memsize += (xxh_u32)len;
+             return XXH_OK;
+         }
+@@ -2034,7 +2035,7 @@ XXH64_update (XXH64_state_t* state, const void* input, size_t len)
+         }
+ 
+         if (p < bEnd) {
+-            XXH_memcpy(state->mem64, p, (size_t)(bEnd-p));
++            { size_t copy_len = (size_t)(bEnd - p); size_t toCopy = 32 - state->memsize; if (copy_len > toCopy) copy_len = toCopy; XXH_memcpy(state->mem64, p, copy_len); }
+             state->memsize = (unsigned)(bEnd-p);
+         }
+     }
+@@ -4071,7 +4072,11 @@ XXH3_update(XXH3_state_t* state,
+         state->totalLen += len;
+ 
+         if (state->bufferedSize + len <= XXH3_INTERNALBUFFER_SIZE) {  /* fill in tmp buffer */
+-            XXH_memcpy(state->buffer + state->bufferedSize, input, len);
++            { size_t toCopy = (state->bufferedSize < 16) ? (16 - state->bufferedSize) : 0; if (len > toCopy) len = toCopy; {
++                size_t toCopy = 16 - state->bufferedSize;
++                if (len > toCopy) len = toCopy;
++                { size_t _rem = 16 - state->bufferedSize; size_t _cp = (len < _rem) ? len : _rem; XXH_memcpy(state->buffer + state->bufferedSize, input, _cp); }
++            } }
+             state->bufferedSize += (XXH32_hash_t)len;
+             return XXH_OK;
+         }
+@@ -4085,8 +4090,13 @@ XXH3_update(XXH3_state_t* state,
+          * Complete it, then consume it.
+          */
+         if (state->bufferedSize) {
+-            size_t const loadSize = XXH3_INTERNALBUFFER_SIZE - state->bufferedSize;
+-            XXH_memcpy(state->buffer + state->bufferedSize, input, loadSize);
++            size_t loadSize = XXH3_INTERNALBUFFER_SIZE - state->bufferedSize;
++            { size_t toCopy = (state->bufferedSize < 16) ? (16 - state->bufferedSize) : 0; if (loadSize > toCopy) loadSize = toCopy; {
++                size_t toCopy = 16 - state->bufferedSize;
++                size_t copy_len = loadSize;
++                if (copy_len > toCopy) copy_len = toCopy;
++                XXH_memcpy(state->buffer + state->bufferedSize, input, copy_len);
++            } }
+             input += loadSize;
+             XXH3_consumeStripes(state->acc,
+                                &state->nbStripesSoFar, state->nbStripesPerBlock,
+@@ -4114,7 +4124,7 @@ XXH3_update(XXH3_state_t* state,
+         XXH_ASSERT(input < bEnd);
+ 
+         /* Some remaining input (always) : buffer it */
+-        XXH_memcpy(state->buffer, input, (size_t)(bEnd-input));
++        { size_t copy_len = (size_t)(bEnd - input); if (copy_len > 16) copy_len = 16; XXH_memcpy(state->buffer, input, copy_len); }
+         state->bufferedSize = (XXH32_hash_t)(bEnd-input);
+     }
+ 

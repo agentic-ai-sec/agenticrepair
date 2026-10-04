@@ -1,0 +1,139 @@
+# SEC-bench Evaluation Configuration
+# This configuration file is used by the `secb-run` subcommand to run ToolCallingAgent
+# or CodeAgent evaluations on SEC-bench instances.
+
+# Scaffold configuration
+# Options: "single" (default) or "multiagent"
+# - "single": Uses traditional single-agent workflow
+# - "multiagent": Uses analyzer->fixer->verifier workflow (see config_patch_agenticrepair.toml)
+[scaffold]
+type = "single"
+
+# Model configuration
+[model]
+# Model type: "InferenceClientModel", "OpenAIModel", "LiteLLMModel", or "TransformersModel"
+type = "LiteLLMModel"
+# Model identifier (e.g., "meta-llama/Meta-Llama-3.1-8B-Instruct" for InferenceClientModel)
+model_id = "gpt-5-mini"
+
+#model_id = "claude-sonnet-4-5-20250929" # this one costs too much and never submit patch within $1.5
+#model_id = "claude-sonnet-4-20250514"
+#model_id = "claude-3-7-sonnet-20250219"
+
+#model_id = "xai/grok-4-1-fast-reasoning"
+
+#model_id = "dashscope/qwen-coder"
+
+# Optional: API key (can also be set via environment variable HF_API_KEY, OPENAI_API_KEY, etc.)
+
+# OpenAI
+api_key = "YOUR_API_KEY_HERE"
+
+# Anthropic
+#api_key = "YOUR_API_KEY_HERE"
+
+# XAI
+#api_key = "YOUR_API_KEY_HERE"
+
+# qwen
+#api_key = "YOUR_API_KEY_HERE"
+
+# Optional: API base URL for custom endpoints
+# api_base = "https://api.example.com/v1"
+# Optional: Provider for InferenceClientModel (e.g., "together", "huggingface")
+# provider = "together"
+# Model generation parameters
+temperature = 0.0
+# Service tier for OpenAI models via LiteLLM: "default" (default) or "flex" (for cost savings)
+service_tier = "flex"  # Default to default, uncomment and set to "flex" for cost savings
+
+# Agent configuration
+[agent]
+# Agent type: "ToolCallingAgent" or "CodeAgent"
+type = "ToolCallingAgent"
+# Maximum number of steps the agent can take
+max_steps = 75
+# Maximum cost in USD (uses LiteLLM built-in cost tracking) - set to 0 or omit to disable
+# When max_cost is reached, the agent will terminate and stop the container
+max_cost = 0.0
+# Verbosity level (0=quiet, 1=info, 2=debug)
+verbosity_level = 1
+# List of enabled tools (available: "python_interpreter", "duckduckgo_search", "visit_webpage", "git", "pydriller", "gdb", "valgrind", "ubsan", "msan", "codeql", "rr" (may not work in Docker on macOS))
+tools = [
+    "python_interpreter",
+    "cmd",
+    "gdb",
+    "valgrind",
+    "ubsan",
+    "msan"
+    "pydriller",
+]
+# Optional: Additional authorized imports for CodeAgent
+# additional_imports = ["numpy", "pandas"]
+
+# Dataset configuration
+[dataset]
+# Dataset name from HuggingFace
+name = "SEC-bench/SEC-bench"
+# Dataset split to use: "eval", "cve", or "oss"
+split = "cve"
+# Optional: Filter by specific instance IDs
+# Eval on the first 10 verified instances
+#instance_ids = ['njs.cve-2022-32414', 'gpac.cve-2023-5586', 'mruby.cve-2022-0240', 'njs.cve-2022-28049', 'njs.cve-2022-38890', 'libredwg.cve-2020-21816', 'gpac.cve-2023-46929', 'gpac.cve-2024-0321', 'libarchive.cve-2017-14503', 'gpac.cve-2023-0760']
+# Eval on the second 10 verified instances
+#instance_ids = ['njs.cve-2022-31307', 'njs.cve-2021-46462', 'njs.cve-2022-29779', 'njs.cve-2022-29369', 'mruby.cve-2022-1201', 'faad2.cve-2018-20198', 'mruby.cve-2022-1427', 'gpac.cve-2023-48013', 'gpac.cve-2023-48011', 'libredwg.cve-2021-28237']
+
+#instance_ids = ['njs.cve-2022-31307',]
+
+instance_ids = ['gpac.cve-2023-5586', 'mruby.cve-2022-0240', 'njs.cve-2022-28049', 'gpac.cve-2023-46929', 'libarchive.cve-2017-14503']
+
+# Output configuration
+[output]
+# Base output directory for evaluation results
+# A timestamp-based subdirectory will be created under this directory for each run session
+# Example: if output_dir = "./results", results will be saved to "./results/20250101_120000/instance_id/"
+# IMPORTANT: Use an absolute path. Docker volume mounts do not accept relative paths.
+output_dir = "/path/to/AgenticRepair/results"
+
+# Docker runtime configuration
+[docker]
+# Docker image prefix (instance_id and tag will be appended)
+image_prefix = "hwiwonlee/secb.eval.x86_64"
+# Optional: Git URL for smolagents installation (used when local repo is not available)
+# Defaults to "https://github.com/SEC-bench/smolagents.git"
+# smolagents_git_url = "https://github.com/SEC-bench/smolagents.git"
+# Optional: Git branch/tag/commit to checkout when installing from git
+# smolagents_git_branch = "main"
+# Docker run arguments
+[docker.run_kwargs]
+# Memory limit (default: 16g)
+mem_limit = "16g"
+# Network mode (default: "host" for host network access)
+network_mode = "host"
+# Automatically remove container after completion (default: true)
+auto_remove = true
+# Capabilities needed for rr (record and replay) debugging
+cap_add = ["SYS_PTRACE"]
+# Security options for rr to access performance counters
+security_opt = ["seccomp=unconfined"]
+
+# Optional: Additional Docker run kwargs can be added here
+# cpu_count = 4
+# shm_size = "1g"
+
+# Task configuration
+[task]
+# Task type: "patch", "poc-repo", "poc-desc", or "poc-san"
+# - "patch": Vulnerability patching task
+# - "poc-repo": PoC generation with repository only
+# - "poc-desc": PoC generation with repository and bug description
+# - "poc-san": PoC generation with repository, bug description, and sanitizer report
+type = "patch"
+# Timeout per instance in seconds (default: 3600 = 1 hour)
+timeout_seconds = 3600
+
+# CodeQL configuration
+[codeql]
+# RAM limit for CodeQL in MB (default: 8192 = 8GB), 12288 12GB, 16384 16GB
+# Increase this if you see "CodeQL is out of memory" errors
+ram = 12288

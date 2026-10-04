@@ -1,0 +1,11 @@
+{
+  "instance_id": "upx.ossfuzz-42532260",
+  "final_status": "failed",
+  "total_token_usage": {
+    "input_tokens": 209122,
+    "output_tokens": 70187
+  },
+  "timing": {
+    "total_duration": 375.87541031837463
+  }
+}

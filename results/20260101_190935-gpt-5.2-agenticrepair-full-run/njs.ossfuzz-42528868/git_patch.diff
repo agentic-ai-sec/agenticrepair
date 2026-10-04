@@ -1,0 +1,136 @@
+diff --git a/src/njs_array.c b/src/njs_array.c
+--- a/src/njs_array.c
++++ b/src/njs_array.c
+@@ -1707,11 +1707,26 @@
+     njs_chb_init(&chain, vm->mem_pool);
+ 
+     for (i = 0; i < len; i++) {
++        /*
++         * njs_value_property_i64() may return NJS_DECLINED for array holes or
++         * missing properties and leave the output value untouched.
++         *
++         * Ensure that the temporary 'entry' is always initialized so that
++         * subsequent checks/conversions cannot use an uninitialized value and
++         * pass an invalid string pointer into njs_chb_append0().
++         */
++        njs_set_undefined(value);
++
+         ret = njs_value_property_i64(vm, this, i, value);
+         if (njs_slow_path(ret == NJS_ERROR)) {
+             return ret;
+         }
+ 
++        if (ret == NJS_DECLINED) {
++            /* Sparse array element: treated as empty string by join(). */
++            njs_set_undefined(value);
++        }
++
+         if (!njs_is_null_or_undefined(value)) {
+             if (!njs_is_string(value)) {
+                 last = njs_chb_current(&chain);
+diff --git a/src/njs_regexp.c b/src/njs_regexp.c
+--- a/src/njs_regexp.c
++++ b/src/njs_regexp.c
+@@ -1825,6 +1825,27 @@
+                 return NJS_ERROR;
+             }
+ 
++            /*
++             * If the match result object is a temporary RegExp exec result
++             * (has exotic slots) it will be explicitly freed below.
++             * The captured strings inside it may be long strings allocated in
++             * the VM pool; copying them by value would keep only the pointer.
++             * Ensure long strings are duplicated before freeing the result.
++             */
++            if (njs_object_slots(&z)
++                && njs_is_string(value)
++                && value->short_string.size == NJS_STRING_LONG)
++            {
++                njs_string_prop_t  sp;
++
++                (void) njs_string_prop(&sp, value);
++
++                ret = njs_string_new(vm, value, sp.start, sp.size, sp.length);
++                if (njs_slow_path(ret != NJS_OK)) {
++                    return ret;
++                }
++            }
++
+             if (array->length == limit) {
+                 if (njs_object_slots(&z)) {
+                     njs_regexp_exec_result_free(vm, njs_array(&z));
+diff --git a/src/njs_string.c b/src/njs_string.c
+--- a/src/njs_string.c
++++ b/src/njs_string.c
+@@ -80,47 +80,34 @@
+ {
+     u_char        *dst;
+     const u_char  *src;
+-    njs_string_t  *string;
++
++    /*
++     * njs_string_set() is used to create strings from external buffers
++     * (e.g. parser file name, script source).  Such buffers may be freed by
++     * the caller, so for long strings we must allocate and copy the data into
++     * the VM's memory pool.
++     */
++
++    if (size > NJS_STRING_SHORT) {
++        /* length=0: treated as byte string until validated when needed. */
++        return njs_string_new(vm, value, start, size, 0);
++    }
+ 
+     value->type = NJS_STRING;
+     njs_string_truth(value, size);
+ 
+-    if (size <= NJS_STRING_SHORT) {
+-        value->short_string.size = size;
+-        value->short_string.length = 0;
+-
+-        dst = value->short_string.start;
+-        src = start;
+-
+-        while (size != 0) {
+-            /* The maximum size is just 14 bytes. */
+-            njs_pragma_loop_disable_vectorization;
+-
+-            *dst++ = *src++;
+-            size--;
+-        }
+-
+-    } else {
+-        /*
+-         * Setting UTF-8 length is not required here, it just allows
+-         * to store the constant in whole byte instead of bit twiddling.
+-         */
+-        value->short_string.size = NJS_STRING_LONG;
+-        value->short_string.length = 0;
+-        value->long_string.external = 0xff;
+-        value->long_string.size = size;
+-
+-        string = njs_mp_alloc(vm->mem_pool, sizeof(njs_string_t));
+-        if (njs_slow_path(string == NULL)) {
+-            njs_memory_error(vm);
+-            return NJS_ERROR;
+-        }
+-
+-        value->long_string.data = string;
+-
+-        string->start = (u_char *) start;
+-        string->length = 0;
+-        string->retain = 1;
++    value->short_string.size = size;
++    value->short_string.length = 0;
++
++    dst = value->short_string.start;
++    src = start;
++
++    while (size != 0) {
++        /* The maximum size is just 14 bytes. */
++        njs_pragma_loop_disable_vectorization;
++
++        *dst++ = *src++;
++        size--;
+     }
+ 
+     return NJS_OK;

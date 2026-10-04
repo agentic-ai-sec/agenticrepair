@@ -1,0 +1,47 @@
+diff --git a/src/lib/OpenEXRCore/validation.c b/src/lib/OpenEXRCore/validation.c
+index 65e2346b..c8eb3658 100644
+--- a/src/lib/OpenEXRCore/validation.c
++++ b/src/lib/OpenEXRCore/validation.c
+@@ -717,9 +717,20 @@ internal_exr_validate_shared_attrs (exr_context_t ctxt,
+     rv1 = exr_get_attribute_by_name (ctxt, curpartidx, "timecode", &cattr);
+     if (EXR_ERR_SUCCESS == rv && rv == rv1)
+     {
+-        if (memcmp (battr->timecode,
+-                    cattr->timecode,
+-                    sizeof(exr_attr_timecode_t)))
++        /*
++         * Malformed headers can contain an attribute with the expected name but
++         * a different type. In that case, the union member (e.g. timecode)
++         * could be uninitialized and interpreted as a pointer, leading to
++         * invalid reads during memcmp.
++         */
++        if (battr->type != EXR_ATTR_TIMECODE || cattr->type != EXR_ATTR_TIMECODE ||
++            battr->timecode == NULL || cattr->timecode == NULL)
++        {
++            rv = EXR_ERR_ATTR_TYPE_MISMATCH;
++        }
++        else if (memcmp (battr->timecode,
++                         cattr->timecode,
++                         sizeof (exr_attr_timecode_t)))
+         {
+             rv = EXR_ERR_ATTR_TYPE_MISMATCH;
+         }
+@@ -737,9 +748,15 @@ internal_exr_validate_shared_attrs (exr_context_t ctxt,
+     rv1 = exr_get_attribute_by_name (ctxt, curpartidx, "chromaticities", &cattr);
+     if (EXR_ERR_SUCCESS == rv && rv == rv1)
+     {
+-        if (memcmp (battr->chromaticities,
+-                    cattr->chromaticities,
+-                    sizeof(exr_attr_chromaticities_t)))
++        if (battr->type != EXR_ATTR_CHROMATICITIES ||
++            cattr->type != EXR_ATTR_CHROMATICITIES ||
++            battr->chromaticities == NULL || cattr->chromaticities == NULL)
++        {
++            rv = EXR_ERR_ATTR_TYPE_MISMATCH;
++        }
++        else if (memcmp (battr->chromaticities,
++                         cattr->chromaticities,
++                         sizeof (exr_attr_chromaticities_t)))
+             rv = EXR_ERR_ATTR_TYPE_MISMATCH;
+         else
+             rv = EXR_ERR_SUCCESS;

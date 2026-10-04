@@ -1,0 +1,42 @@
+diff --git a/mrbgems/mruby-pack/src/pack.c b/mrbgems/mruby-pack/src/pack.c
+index 08c22b5eb..e08716574 100644
+--- a/mrbgems/mruby-pack/src/pack.c
++++ b/mrbgems/mruby-pack/src/pack.c
+@@ -13,6 +13,7 @@
+ 
+ #include <ctype.h>
+ #include <string.h>
++#include <limits.h>
+ 
+ #define INT_OVERFLOW_P(n)  ((n) < MRB_INT_MIN || (n) > MRB_INT_MAX)
+ #define UINT_OVERFLOW_P(n) ((n) > MRB_INT_MAX)
+@@ -1309,6 +1310,9 @@ alias:
+       if (!mrb_read_int(tptr+tmpl->idx, tptr+tlen, &e, &n)) {
+         mrb_raise(mrb, E_RUNTIME_ERROR, "too big template length");
+       }
++      if (n > INT_MAX) {
++        mrb_raise(mrb, E_RUNTIME_ERROR, "too big template length");
++      }
+       count = (int)n;
+       tmpl->idx = (int)(e - tptr);
+       continue;
+diff --git a/src/string.c b/src/string.c
+index 1b5aecff2..5f55876c0 100644
+--- a/src/string.c
++++ b/src/string.c
+@@ -127,6 +127,7 @@ str_init_modifiable(mrb_state *mrb, struct RString *s, const char *p, mrb_int le
+ static struct RString*
+ str_new_static(mrb_state *mrb, const char *p, mrb_int len)
+ {
++  str_check_too_big(mrb, len);
+   if (RSTR_EMBEDDABLE_P(len)) {
+     return str_init_embed(mrb_obj_alloc_string(mrb), p, len);
+   }
+@@ -136,6 +137,7 @@ str_new_static(mrb_state *mrb, const char *p, mrb_int len)
+ static struct RString*
+ str_new(mrb_state *mrb, const char *p, mrb_int len)
+ {
++  str_check_too_big(mrb, len);
+   if (RSTR_EMBEDDABLE_P(len)) {
+     return str_init_embed(mrb_obj_alloc_string(mrb), p, len);
+   }

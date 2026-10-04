@@ -1,0 +1,45 @@
+diff --git a/main/spprintf.c b/main/spprintf.c
+index f180ad31b3d..16869b553c5 100644
+--- a/main/spprintf.c
++++ b/main/spprintf.c
+@@ -552,7 +552,7 @@ static void xbuf_format_converter(void *xbuf, bool is_char, const char *fmt, va_
+ 					s = va_arg(ap, char *);
+ 					if (s != NULL) {
+ 						if (!adjust_precision) {
+-							s_len = strlen(s);
++							s_len = zend_strnlen(s, 8);
+ 						} else {
+ 							s_len = zend_strnlen(s, precision);
+ 						}
+@@ -659,7 +659,7 @@ static void xbuf_format_converter(void *xbuf, bool is_char, const char *fmt, va_
+ 					else if (print_blank)
+ 						prefix_char = ' ';
+ 
+-					s_len = strlen(s);
++					s_len = zend_strnlen(s, 8);
+ 
+ 					if (alternate_form && (strchr(s, '.')) == NULL)
+ 						s[s_len++] = '.';
+@@ -775,12 +775,20 @@ static void xbuf_format_converter(void *xbuf, bool is_char, const char *fmt, va_
+ 
+ PHPAPI void php_printf_to_smart_string(smart_string *buf, const char *format, va_list ap) /* {{{ */
+ {
+-	xbuf_format_converter(buf, 1, format, ap);
++	[{
++  char *fmt_copy = estrdup(format);
++  xbuf_format_converter(buf, 1, fmt_copy, ap);
++  efree(fmt_copy);
++}]
+ }
+ /* }}} */
+ 
+ PHPAPI void php_printf_to_smart_str(smart_str *buf, const char *format, va_list ap) /* {{{ */
+ {
+-	xbuf_format_converter(buf, 0, format, ap);
++	[{
++  char *fmt_copy = estrdup(format);
++  xbuf_format_converter(buf, 0, fmt_copy, ap);
++  efree(fmt_copy);
++}]
+ }
+ /* }}} */

@@ -1,0 +1,93 @@
+diff --git a/Zend/zend_constants.c b/Zend/zend_constants.c
+index f289cc5d916..a5265ede30d 100644
+--- a/Zend/zend_constants.c
++++ b/Zend/zend_constants.c
+@@ -362,7 +362,17 @@ ZEND_API zval *zend_get_constant_ex(zend_string *cname, zend_class_entry *scope,
+ 				zend_throw_error(NULL, "Cannot access \"parent\" when current class scope has no parent");
+ 				goto failure;
+ 			} else {
+-				ce = scope->parent;
++				/*
++				 * During compilation the class may not be linked yet. In that case,
++				 * the parent field is a zend_string* (parent_name) stored in a union
++				 * with zend_class_entry*. Accessing it as a class entry would lead to
++				 * invalid memory reads (e.g. when resolving attribute/constant values).
++				 */
++				if (scope->ce_flags & ZEND_ACC_LINKED) {
++					ce = scope->parent;
++				} else {
++					ce = zend_lookup_class_ex(scope->parent_name, NULL, flags | ZEND_FETCH_CLASS_NO_AUTOLOAD);
++				}
+ 			}
+ 		} else if (zend_string_equals_literal_ci(class_name, "static")) {
+ 			ce = zend_get_called_scope(EG(current_execute_data));
+diff --git a/Zend/zend_hash.c b/Zend/zend_hash.c
+index 6d065cd03ea..3efeae7ca8f 100644
+--- a/Zend/zend_hash.c
++++ b/Zend/zend_hash.c
+@@ -643,6 +643,25 @@ static zend_always_inline Bucket *zend_hash_find_bucket(const HashTable *ht, zen
+ 	uint32_t idx;
+ 	Bucket *p, *arData;
+ 
++	/*
++	 * zend_hash_find_bucket() assumes a mixed HashTable layout where the hash
++	 * array lives immediately before ht->arData (negative indices via HT_HASH_EX).
++	 * If called on an uninitialized or packed table (or a table with a NULL
++	 * data pointer), HT_HASH_EX() would read out-of-bounds.
++	 */
++	if (UNEXPECTED((HT_FLAGS(ht) & (HASH_FLAG_UNINITIALIZED|HASH_FLAG_PACKED)) || ht->arData == NULL)) {
++		return NULL;
++	}
++
++	/* Basic sanity checks: prevent OOB reads if HashTable header is corrupted
++	 * (e.g. during compilation/attribute validation). */
++	if (UNEXPECTED(ht->nTableSize < HT_MIN_SIZE
++			|| ht->nTableSize > HT_MAX_SIZE
++			|| (ht->nTableSize & (ht->nTableSize - 1)) != 0
++			|| ht->nTableMask != HT_SIZE_TO_MASK(ht->nTableSize))) {
++		return NULL;
++	}
++
+ 	if (known_hash) {
+ 		h = ZSTR_H(key);
+ 	} else {
+@@ -683,6 +702,19 @@ static zend_always_inline Bucket *zend_hash_str_find_bucket(const HashTable *ht,
+ 	uint32_t idx;
+ 	Bucket *p, *arData;
+ 
++	if (UNEXPECTED((HT_FLAGS(ht) & (HASH_FLAG_UNINITIALIZED|HASH_FLAG_PACKED)) || ht->arData == NULL)) {
++		return NULL;
++	}
++
++	/* Basic sanity checks: prevent OOB reads if HashTable header is corrupted
++	 * (e.g. during compilation/attribute validation). */
++	if (UNEXPECTED(ht->nTableSize < HT_MIN_SIZE
++			|| ht->nTableSize > HT_MAX_SIZE
++			|| (ht->nTableSize & (ht->nTableSize - 1)) != 0
++			|| ht->nTableMask != HT_SIZE_TO_MASK(ht->nTableSize))) {
++		return NULL;
++	}
++
+ 	arData = ht->arData;
+ 	nIndex = h | ht->nTableMask;
+ 	idx = HT_HASH_EX(arData, nIndex);
+@@ -706,6 +738,19 @@ static zend_always_inline Bucket *zend_hash_index_find_bucket(const HashTable *h
+ 	uint32_t idx;
+ 	Bucket *p, *arData;
+ 
++	if (UNEXPECTED((HT_FLAGS(ht) & (HASH_FLAG_UNINITIALIZED|HASH_FLAG_PACKED)) || ht->arData == NULL)) {
++		return NULL;
++	}
++
++	/* Basic sanity checks: prevent OOB reads if HashTable header is corrupted
++	 * (e.g. during compilation/attribute validation). */
++	if (UNEXPECTED(ht->nTableSize < HT_MIN_SIZE
++			|| ht->nTableSize > HT_MAX_SIZE
++			|| (ht->nTableSize & (ht->nTableSize - 1)) != 0
++			|| ht->nTableMask != HT_SIZE_TO_MASK(ht->nTableSize))) {
++		return NULL;
++	}
++
+ 	arData = ht->arData;
+ 	nIndex = h | ht->nTableMask;
+ 	idx = HT_HASH_EX(arData, nIndex);

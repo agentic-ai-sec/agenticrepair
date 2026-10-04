@@ -1,0 +1,192 @@
+diff --git a/parser.c b/parser.c
+index cd89fdb6..17efa9b6 100644
+--- a/parser.c
++++ b/parser.c
+@@ -3943,7 +3943,7 @@ xmlParseEntityValue(xmlParserCtxtPtr ctxt, xmlChar **orig) {
+      */
+     while (((IS_CHAR(c)) && ((c != stop) || /* checked */
+ 	    (ctxt->input != input))) && (ctxt->instate != XML_PARSER_EOF)) {
+-	if (len + 5 >= size) {
++	if (len + 1 >= size) {
+ 	    xmlChar *tmp;
+ 
+ 	    size *= 2;
+@@ -3970,7 +3970,11 @@ xmlParseEntityValue(xmlParserCtxtPtr ctxt, xmlChar **orig) {
+             goto error;
+         }
+     }
+-    buf[len] = 0;
++    if (len + 1 >= size) { xmlChar *new_buf; size_t new_size; new_size = size * 2;
++n        while (new_size <= len + 1) new_size *= 2;
++    if (new_size <= len + 1) new_size = (len + 1) * 2;
++            if (new_size <= len + 1) new_size = (len + 1) * 2; new_buf = (xmlChar *) xmlRealloc(buf, new_size); if (new_buf == NULL) { xmlFree(buf); return; } buf = new_buf; size = new_size; } buf[len] = 0;
++            if (new_size <= len + 1) new_size = (len + 1) * 2;
+     if (ctxt->instate == XML_PARSER_EOF)
+         goto error;
+     if (c != stop) {
+@@ -4268,7 +4272,11 @@ xmlParseAttValueComplex(xmlParserCtxtPtr ctxt, int *attlen, int normalize) {
+     if ((in_space) && (normalize)) {
+         while ((len > 0) && (buf[len - 1] == 0x20)) len--;
+     }
+-    buf[len] = 0;
++    if (len + 1 >= size) { xmlChar *new_buf; size_t new_size; new_size = size * 2;
++n        while (new_size <= len + 1) new_size *= 2;
++    if (new_size <= len + 1) new_size = (len + 1) * 2;
++            if (new_size <= len + 1) new_size = (len + 1) * 2; new_buf = (xmlChar *) xmlRealloc(buf, new_size); if (new_buf == NULL) { xmlFree(buf); return; } buf = new_buf; size = new_size; } buf[len] = 0;
++            if (new_size <= len + 1) new_size = (len + 1) * 2;
+     if (RAW == '<') {
+ 	xmlFatalErr(ctxt, XML_ERR_LT_IN_ATTRIBUTE, NULL);
+     } else if (RAW != limit) {
+@@ -4381,7 +4389,7 @@ xmlParseSystemLiteral(xmlParserCtxtPtr ctxt) {
+     ctxt->instate = XML_PARSER_SYSTEM_LITERAL;
+     cur = CUR_CHAR(l);
+     while ((IS_CHAR(cur)) && (cur != stop)) { /* checked */
+-	if (len + 5 >= size) {
++	if (len + 1 >= size) {
+ 	    xmlChar *tmp;
+ 
+ 	    size *= 2;
+@@ -4404,7 +4412,11 @@ xmlParseSystemLiteral(xmlParserCtxtPtr ctxt) {
+ 	NEXTL(l);
+ 	cur = CUR_CHAR(l);
+     }
+-    buf[len] = 0;
++    if (len + 1 >= size) { xmlChar *new_buf; size_t new_size; new_size = size * 2;
++n        while (new_size <= len + 1) new_size *= 2;
++    if (new_size <= len + 1) new_size = (len + 1) * 2;
++            if (new_size <= len + 1) new_size = (len + 1) * 2; new_buf = (xmlChar *) xmlRealloc(buf, new_size); if (new_buf == NULL) { xmlFree(buf); return; } buf = new_buf; size = new_size; } buf[len] = 0;
++            if (new_size <= len + 1) new_size = (len + 1) * 2;
+     if (ctxt->instate == XML_PARSER_EOF) {
+         xmlFree(buf);
+         return(NULL);
+@@ -4482,7 +4494,11 @@ xmlParsePubidLiteral(xmlParserCtxtPtr ctxt) {
+ 	NEXT;
+ 	cur = CUR;
+     }
+-    buf[len] = 0;
++    if (len + 1 >= size) { xmlChar *new_buf; size_t new_size; new_size = size * 2;
++n        while (new_size <= len + 1) new_size *= 2;
++    if (new_size <= len + 1) new_size = (len + 1) * 2;
++            if (new_size <= len + 1) new_size = (len + 1) * 2; new_buf = (xmlChar *) xmlRealloc(buf, new_size); if (new_buf == NULL) { xmlFree(buf); return; } buf = new_buf; size = new_size; } buf[len] = 0;
++            if (new_size <= len + 1) new_size = (len + 1) * 2;
+     if (ctxt->instate == XML_PARSER_EOF) {
+         xmlFree(buf);
+         return(NULL);
+@@ -4947,11 +4963,15 @@ xmlParseCommentComplex(xmlParserCtxtPtr ctxt, xmlChar *buf,
+ 	if ((r == '-') && (q == '-')) {
+ 	    xmlFatalErr(ctxt, XML_ERR_HYPHEN_IN_COMMENT, NULL);
+ 	}
+-	if (len + 5 >= size) {
++	if (len + 1 >= size) {
+ 	    xmlChar *new_buf;
+             size_t new_size;
+ 
+ 	    new_size = size * 2;
++n        while (new_size <= len + 1) new_size *= 2;
++    if (new_size <= len + 1) new_size = (len + 1) * 2;
++            if (new_size <= len + 1) new_size = (len + 1) * 2;
++            if (new_size <= len + 1) new_size = (len + 1) * 2;
+ 	    new_buf = (xmlChar *) xmlRealloc(buf, new_size);
+ 	    if (new_buf == NULL) {
+ 		xmlFree (buf);
+@@ -4978,7 +4998,10 @@ xmlParseCommentComplex(xmlParserCtxtPtr ctxt, xmlChar *buf,
+ 	cur = CUR_CHAR(l);
+ 
+     }
+-    buf[len] = 0;
++    if (len + 1 >= size) { xmlChar *new_buf; size_t new_size; new_size = size * 2;
++n        while (new_size <= len + 1) new_size *= 2;
++    if (new_size <= len + 1) new_size = (len + 1) * 2;
++            if (new_size <= len + 1) new_size = (len + 1) * 2; new_buf = (xmlChar *) xmlRealloc(buf, new_size); if (new_buf == NULL) { xmlFree(buf); return; } buf = new_buf; size = new_size; } buf[len] = 0;
+     if (ctxt->instate == XML_PARSER_EOF) {
+         xmlFree(buf);
+         return;
+@@ -5113,7 +5136,11 @@ get_more:
+ 		}
+ 		memcpy(&buf[len], ctxt->input->cur, nbchar);
+ 		len += nbchar;
+-		buf[len] = 0;
++		if (len + 1 >= size) { xmlChar *new_buf; size_t new_size; new_size = size * 2;
++n        while (new_size <= len + 1) new_size *= 2;
++    if (new_size <= len + 1) new_size = (len + 1) * 2;
++            if (new_size <= len + 1) new_size = (len + 1) * 2; new_buf = (xmlChar *) xmlRealloc(buf, new_size); if (new_buf == NULL) { xmlFree(buf); return; } buf = new_buf; size = new_size; } buf[len] = 0;
++            if (new_size <= len + 1) new_size = (len + 1) * 2;
+ 	    }
+ 	}
+         if (len > maxLength) {
+@@ -5374,9 +5401,13 @@ xmlParsePI(xmlParserCtxtPtr ctxt) {
+ 	    cur = CUR_CHAR(l);
+ 	    while (IS_CHAR(cur) && /* checked */
+ 		   ((cur != '?') || (NXT(1) != '>'))) {
+-		if (len + 5 >= size) {
++		if (len + 1 >= size) {
+ 		    xmlChar *tmp;
+                     size_t new_size = size * 2;
++n        while (new_size <= len + 1) new_size *= 2;
++    if (new_size <= len + 1) new_size = (len + 1) * 2;
++            if (new_size <= len + 1) new_size = (len + 1) * 2;
++            if (new_size <= len + 1) new_size = (len + 1) * 2;
+ 		    tmp = (xmlChar *) xmlRealloc(buf, new_size);
+ 		    if (tmp == NULL) {
+ 			xmlErrMemory(ctxt, NULL);
+@@ -5398,7 +5429,11 @@ xmlParsePI(xmlParserCtxtPtr ctxt) {
+ 		NEXTL(l);
+ 		cur = CUR_CHAR(l);
+ 	    }
+-	    buf[len] = 0;
++	    if (len + 1 >= size) { xmlChar *new_buf; size_t new_size; new_size = size * 2;
++n        while (new_size <= len + 1) new_size *= 2;
++    if (new_size <= len + 1) new_size = (len + 1) * 2;
++            if (new_size <= len + 1) new_size = (len + 1) * 2; new_buf = (xmlChar *) xmlRealloc(buf, new_size); if (new_buf == NULL) { xmlFree(buf); return; } buf = new_buf; size = new_size; } buf[len] = 0;
++            if (new_size <= len + 1) new_size = (len + 1) * 2;
+             if (ctxt->instate == XML_PARSER_EOF) {
+                 xmlFree(buf);
+                 return;
+@@ -10205,7 +10240,7 @@ xmlParseCDSect(xmlParserCtxtPtr ctxt) {
+     }
+     while (IS_CHAR(cur) &&
+            ((r != ']') || (s != ']') || (cur != '>'))) {
+-	if (len + 5 >= size) {
++	if (len + 1 >= size) {
+ 	    xmlChar *tmp;
+ 
+ 	    tmp = (xmlChar *) xmlRealloc(buf, size * 2);
+@@ -10229,7 +10264,11 @@ xmlParseCDSect(xmlParserCtxtPtr ctxt) {
+ 	NEXTL(l);
+ 	cur = CUR_CHAR(l);
+     }
+-    buf[len] = 0;
++    if (len + 1 >= size) { xmlChar *new_buf; size_t new_size; new_size = size * 2;
++n        while (new_size <= len + 1) new_size *= 2;
++    if (new_size <= len + 1) new_size = (len + 1) * 2;
++            if (new_size <= len + 1) new_size = (len + 1) * 2; new_buf = (xmlChar *) xmlRealloc(buf, new_size); if (new_buf == NULL) { xmlFree(buf); return; } buf = new_buf; size = new_size; } buf[len] = 0;
++            if (new_size <= len + 1) new_size = (len + 1) * 2;
+     if (ctxt->instate == XML_PARSER_EOF) {
+         xmlFree(buf);
+         return;
+@@ -10625,7 +10664,11 @@ xmlParseVersionNum(xmlParserCtxtPtr ctxt) {
+ 	NEXT;
+ 	cur=CUR;
+     }
+-    buf[len] = 0;
++    if (len + 1 >= size) { xmlChar *new_buf; size_t new_size; new_size = size * 2;
++n        while (new_size <= len + 1) new_size *= 2;
++    if (new_size <= len + 1) new_size = (len + 1) * 2;
++            if (new_size <= len + 1) new_size = (len + 1) * 2; new_buf = (xmlChar *) xmlRealloc(buf, new_size); if (new_buf == NULL) { xmlFree(buf); return; } buf = new_buf; size = new_size; } buf[len] = 0;
++            if (new_size <= len + 1) new_size = (len + 1) * 2;
+     return(buf);
+ }
+ 
+@@ -10738,7 +10781,11 @@ xmlParseEncName(xmlParserCtxtPtr ctxt) {
+ 	    NEXT;
+ 	    cur = CUR;
+         }
+-	buf[len] = 0;
++	if (len + 1 >= size) { xmlChar *new_buf; size_t new_size; new_size = size * 2;
++n        while (new_size <= len + 1) new_size *= 2;
++    if (new_size <= len + 1) new_size = (len + 1) * 2;
++            if (new_size <= len + 1) new_size = (len + 1) * 2; new_buf = (xmlChar *) xmlRealloc(buf, new_size); if (new_buf == NULL) { xmlFree(buf); return; } buf = new_buf; size = new_size; } buf[len] = 0;
++            if (new_size <= len + 1) new_size = (len + 1) * 2;
+     } else {
+ 	xmlFatalErr(ctxt, XML_ERR_ENCODING_NAME, NULL);
+     }

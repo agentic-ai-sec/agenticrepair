@@ -1,0 +1,37 @@
+diff --git a/mrbgems/mruby-bigint/core/bigint.c b/mrbgems/mruby-bigint/core/bigint.c
+index 21d1008e3..0f9a15403 100644
+--- a/mrbgems/mruby-bigint/core/bigint.c
++++ b/mrbgems/mruby-bigint/core/bigint.c
+@@ -745,14 +745,29 @@ mpz_get_int(mpz_t *y, mrb_int *v)
+ 
+   if (y->sn == 0) {
+     i = 0;
++    *v = i;
++    return TRUE;
+   }
+-  else if (digits(y) > 2 || y->p[1] > 1) {
+-    return FALSE;
++
++  /* avoid out-of-bounds access of y->p[1] by ensuring there are
++     at least two allocated limbs and that digits() indicates two
++     limbs. */
++  if (y->sz == 0) return FALSE;
++  size_t d = digits(y);
++  if (d > 2) return FALSE;
++
++  if (d < 2) {
++    /* only low limb present */
++    i = y->sn * (y->p[0]);
+   }
+   else {
++    /* d == 2 --> ensure allocated size is sufficient */
++    if (y->sz < 2) return FALSE;
++    if (y->p[1] > 1) return FALSE;
+     i = (y->sn * (y->p[0] | (y->p[1] & 1) << DIGITBITS));
+-    if (MRB_INT_MAX < i || i < MRB_INT_MIN) return FALSE;
+   }
++
++  if (MRB_INT_MAX < i || i < MRB_INT_MIN) return FALSE;
+   *v = i;
+   return TRUE;
+ }

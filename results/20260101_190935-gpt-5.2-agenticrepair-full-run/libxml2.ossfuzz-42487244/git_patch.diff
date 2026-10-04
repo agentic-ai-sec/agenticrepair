@@ -1,0 +1,38 @@
+diff --git a/xmlreader.c b/xmlreader.c
+index a9b9ef93..72d3ff41 100644
+--- a/xmlreader.c
++++ b/xmlreader.c
+@@ -358,14 +358,25 @@ xmlTextReaderFreeProp(xmlTextReaderPtr reader, xmlAttrPtr cur) {
+     if ((__xmlRegisterCallbacks) && (xmlDeregisterNodeDefaultValue))
+ 	xmlDeregisterNodeDefaultValue((xmlNodePtr) cur);
+ 
+-    /* Check for ID removal -> leading to invalid references ! */
+-    if ((cur->parent != NULL) && (cur->parent->doc != NULL) &&
+-	((cur->parent->doc->intSubset != NULL) ||
+-	 (cur->parent->doc->extSubset != NULL))) {
+-        if (xmlIsID(cur->parent->doc, cur->parent, cur))
+-	    xmlTextReaderRemoveID(cur->parent->doc, cur);
+-        if (xmlIsRef(cur->parent->doc, cur->parent, cur))
+-            xmlTextReaderRemoveRef(cur->parent->doc, cur);
++    /*
++     * Check for ID/REF removal.
++     *
++     * The streaming reader can recycle attribute nodes (see freeAttrs cache)
++     * while their parent element nodes are freed. If an attribute is still
++     * registered in doc->ids, later ID lookups (e.g. XPath id()) may obtain
++     * that attribute and follow attr->parent, which can already be freed.
++     *
++     * Don't rely on DTD subset presence here: doc->ids can be populated via
++     * xml:id or other mechanisms, so always unregister known ID attributes.
++     */
++    if ((cur->parent != NULL) && (cur->parent->doc != NULL)) {
++        xmlDocPtr doc = cur->parent->doc;
++
++        if ((doc->ids != NULL) && (cur->atype == XML_ATTRIBUTE_ID))
++            xmlTextReaderRemoveID(doc, cur);
++
++        if ((doc->refs != NULL) && (xmlIsRef(doc, cur->parent, cur) == 1))
++            xmlTextReaderRemoveRef(doc, cur);
+     }
+     if (cur->children != NULL)
+         xmlTextReaderFreeNodeList(reader, cur->children);

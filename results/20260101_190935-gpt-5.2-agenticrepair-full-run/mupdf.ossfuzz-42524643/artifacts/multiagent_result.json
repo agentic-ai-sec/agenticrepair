@@ -1,0 +1,228 @@
+{
+  "instance_id": "mupdf.ossfuzz-42524643",
+  "final_status": "success",
+  "static_analyzer_output": {
+    "role": "static_analyzer",
+    "raw_output": "{\n  \"analysis_type\": \"allocation\",\n  \"findings\": [],\n  \"dataflow_summary\": \"\",\n  \"key_insight\": \"CodeQL\u2019s built-in allocation checks did not directly flag the reported heap-use-after-free. Manual review shows a high-risk ownership pattern in the resolution path: pdf_resolve_indirect() returns a non-owning pointer (entry->obj) from the xref cache, while other code paths (e.g., pdf_delete_object/pdf_update_object and xref section drops) can pdf_drop_obj() the same cached object, leaving callers with stale/dangling pointers. The comment in pdf_load_obj_stm() explicitly warns about this stale-pointer hazard when replacing objects.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Make object resolution return an owned reference: change pdf_resolve_indirect() (and chain variant) to return pdf_keep_obj(ctx, entry->obj) (or add a new *_keep API) and update callers to pdf_drop_obj() when finished.\",\n      \"reasoning\": \"Eliminates the core UAF class by ensuring resolved objects remain alive even if the xref cache later drops/replaces the cached object.\",\n      \"trade_offs\": \"API/ABI impact and potential performance/memory overhead from extra refcount operations; requires auditing call sites to avoid leaks/double-drops.\"\n    },\n    {\n      \"approach\": \"Prevent immediate frees of cached xref objects that may be externally referenced: when updating/deleting/replacing x->obj, move the old object to a document \u2018orphans\u2019 list (deferred free) or otherwise delay pdf_drop_obj until safe points.\",\n      \"reasoning\": \"Keeps existing borrow-style APIs but avoids freeing objects while external pointers may still exist.\",\n      \"trade_offs\": \"More complex lifetime management; may increase peak memory; requires clear rules for when deferred objects are finally dropped.\"\n    },\n    {\n      \"approach\": \"Tighten object-stream loading parent tagging: in pdf_load_obj_stm(), call pdf_set_obj_parent() only after deciding the object will be installed into entry->obj (i.e., after the entry->obj-exists check), and consider temporarily pdf_keep_obj() while mutating.\",\n      \"reasoning\": \"Reduces chance of writing into objects that end up being dropped/replaced during stream/object caching edge cases.\",\n      \"trade_offs\": \"May not fully address the broader stale-pointer hazard if callers still borrow pointers from the cache.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "analysis_type": "allocation",
+      "findings": [],
+      "dataflow_summary": "",
+      "key_insight": "CodeQL\u2019s built-in allocation checks did not directly flag the reported heap-use-after-free. Manual review shows a high-risk ownership pattern in the resolution path: pdf_resolve_indirect() returns a non-owning pointer (entry->obj) from the xref cache, while other code paths (e.g., pdf_delete_object/pdf_update_object and xref section drops) can pdf_drop_obj() the same cached object, leaving callers with stale/dangling pointers. The comment in pdf_load_obj_stm() explicitly warns about this stale-pointer hazard when replacing objects.",
+      "fix_suggestions": [
+        {
+          "approach": "Make object resolution return an owned reference: change pdf_resolve_indirect() (and chain variant) to return pdf_keep_obj(ctx, entry->obj) (or add a new *_keep API) and update callers to pdf_drop_obj() when finished.",
+          "reasoning": "Eliminates the core UAF class by ensuring resolved objects remain alive even if the xref cache later drops/replaces the cached object.",
+          "trade_offs": "API/ABI impact and potential performance/memory overhead from extra refcount operations; requires auditing call sites to avoid leaks/double-drops."
+        },
+        {
+          "approach": "Prevent immediate frees of cached xref objects that may be externally referenced: when updating/deleting/replacing x->obj, move the old object to a document \u2018orphans\u2019 list (deferred free) or otherwise delay pdf_drop_obj until safe points.",
+          "reasoning": "Keeps existing borrow-style APIs but avoids freeing objects while external pointers may still exist.",
+          "trade_offs": "More complex lifetime management; may increase peak memory; requires clear rules for when deferred objects are finally dropped."
+        },
+        {
+          "approach": "Tighten object-stream loading parent tagging: in pdf_load_obj_stm(), call pdf_set_obj_parent() only after deciding the object will be installed into entry->obj (i.e., after the entry->obj-exists check), and consider temporarily pdf_keep_obj() while mutating.",
+          "reasoning": "Reduces chance of writing into objects that end up being dropped/replaced during stream/object caching edge cases.",
+          "trade_offs": "May not fully address the broader stale-pointer hazard if callers still borrow pointers from the cache."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 192067,
+      "output_tokens": 8848
+    },
+    "timing": {
+      "start_time": 1768862520.234191,
+      "end_time": 1768863039.8424714,
+      "duration": 519.6082804203033
+    },
+    "trajectory": {
+      "agent_role": "static_analyzer",
+      "task": "<uploaded_files>\n/src/mupdf\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/mupdf`. Consider the following issue description:\n\n<issue_description>\nHeap-use-after-free in MuPDF's PDF object resolution path (seen in pdf_cache_object -> pdf_resolve_indirect -> pdf_resolve_indirect_chain). While resolving indirect objects the code accesses/writes memory that has already been freed, leading to heap corruption and crashes and potentially enabling further exploitation.\n---\n==22",
+      "total_steps": 13,
+      "total_duration": 519.6082804203033,
+      "total_input_tokens": 192067,
+      "total_output_tokens": 8848,
+      "total_cost": 0.20758604999999997,
+      "final_state": "success"
+    }
+  },
+  "dynamic_analyzer_output": {
+    "role": "dynamic_analyzer",
+    "raw_output": "{\n  \"tools_used\": [\"gdb\", \"ubsan\"],\n  \"crash_info\": {\n    \"address\": \"0x5070000001e0\",\n    \"type\": \"heap-use-after-free (WRITE)\",\n    \"location\": \"/out/mupdf/mutool+0x54ce0d (binary is stripped; no file:line available)\"\n  },\n  \"backtrace\": [\n    \"/out/mupdf/mutool+0x54ce0d\",\n    \"/out/mupdf/mutool+0x54e298\",\n    \"/out/mupdf/mutool+0x54e341\",\n    \"/out/mupdf/mutool+0x4d73a9\",\n    \"/out/mupdf/mutool+0x4d16a8\"\n  ],\n  \"memory_state\": \"ASan reports a WRITE of size 1 to 0x5070000001e0, which is the start (offset 0) of an 80-byte heap region [0x5070000001e0, 0x507000000230) that was already freed. The region was previously allocated via malloc (frame shows /out/mupdf/mutool+0x3a80bc) and later freed via free (frame shows /out/mupdf/mutool+0x3a8931).\",\n  \"root_cause_hint\": \"Runtime evidence shows a byte write into a freed heap object while processing the PoC with `mutool draw`. Although GDB could not produce a live stack (process exits via ASan abort and the binary is stripped), the ASan backtrace consistently points to the same instruction offsets. This matches a lifetime bug in the PDF indirect-object resolution/caching path (as described: pdf_cache_object \u2192 pdf_resolve_indirect \u2192 pdf_resolve_indirect_chain): a pointer to an object/structure is retained (e.g., in a cache or on a resolution stack) after the owning code frees it, and subsequent resolution writes (likely a flag/mark byte) into that freed structure.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Strengthen lifetime management for cached/resolved PDF objects: ensure pdf_cache_object and the indirect-resolution chain take/hold a strong reference (refcount increment) to any object they store or mutate, and only free once all references are dropped.\",\n      \"reasoning\": \"The UAF is a write-after-free of an object-sized allocation; the most direct fix is to prevent the object from being freed while still reachable from the cache/resolution path.\",\n      \"trade_offs\": \"May increase memory usage (objects live longer) and require careful auditing of all refcount paths to avoid leaks or cycles.\"\n    },\n    {\n      \"approach\": \"Avoid mutating shared objects during indirect resolution (e.g., \u2018marking\u2019 objects/chain nodes). Instead, keep resolution bookkeeping in a separate side table (visited set) keyed by object number/generation, or clone objects before writing internal state.\",\n      \"reasoning\": \"ASan reports a 1-byte write at the start of a freed chunk, which is consistent with writing a status/visited flag into a structure whose storage may be recycled. Moving the flag out of the object eliminates writes to potentially freed/shared memory.\",\n      \"trade_offs\": \"Requires additional data structures and lookups; might reduce performance slightly but improves safety and thread-safety.\"\n    },\n    {\n      \"approach\": \"Harden the cache/object replacement path: when replacing/evicting cached entries, clear pointers immediately (set to NULL) and ensure callers never keep raw pointers across cache mutations; consider returning only refcounted handles, not raw pointers.\",\n      \"reasoning\": \"The report shows the object is freed and later written; clearing and enforcing handle-based access reduces the chance that stale pointers survive cache updates.\",\n      \"trade_offs\": \"API churn and refactoring effort; may require changes across multiple call sites that currently assume raw pointer stability.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "tools_used": [
+        "gdb",
+        "ubsan"
+      ],
+      "crash_info": {
+        "address": "0x5070000001e0",
+        "type": "heap-use-after-free (WRITE)",
+        "location": "/out/mupdf/mutool+0x54ce0d (binary is stripped; no file:line available)"
+      },
+      "backtrace": [
+        "/out/mupdf/mutool+0x54ce0d",
+        "/out/mupdf/mutool+0x54e298",
+        "/out/mupdf/mutool+0x54e341",
+        "/out/mupdf/mutool+0x4d73a9",
+        "/out/mupdf/mutool+0x4d16a8"
+      ],
+      "memory_state": "ASan reports a WRITE of size 1 to 0x5070000001e0, which is the start (offset 0) of an 80-byte heap region [0x5070000001e0, 0x507000000230) that was already freed. The region was previously allocated via malloc (frame shows /out/mupdf/mutool+0x3a80bc) and later freed via free (frame shows /out/mupdf/mutool+0x3a8931).",
+      "root_cause_hint": "Runtime evidence shows a byte write into a freed heap object while processing the PoC with `mutool draw`. Although GDB could not produce a live stack (process exits via ASan abort and the binary is stripped), the ASan backtrace consistently points to the same instruction offsets. This matches a lifetime bug in the PDF indirect-object resolution/caching path (as described: pdf_cache_object \u2192 pdf_resolve_indirect \u2192 pdf_resolve_indirect_chain): a pointer to an object/structure is retained (e.g., in a cache or on a resolution stack) after the owning code frees it, and subsequent resolution writes (likely a flag/mark byte) into that freed structure.",
+      "fix_suggestions": [
+        {
+          "approach": "Strengthen lifetime management for cached/resolved PDF objects: ensure pdf_cache_object and the indirect-resolution chain take/hold a strong reference (refcount increment) to any object they store or mutate, and only free once all references are dropped.",
+          "reasoning": "The UAF is a write-after-free of an object-sized allocation; the most direct fix is to prevent the object from being freed while still reachable from the cache/resolution path.",
+          "trade_offs": "May increase memory usage (objects live longer) and require careful auditing of all refcount paths to avoid leaks or cycles."
+        },
+        {
+          "approach": "Avoid mutating shared objects during indirect resolution (e.g., \u2018marking\u2019 objects/chain nodes). Instead, keep resolution bookkeeping in a separate side table (visited set) keyed by object number/generation, or clone objects before writing internal state.",
+          "reasoning": "ASan reports a 1-byte write at the start of a freed chunk, which is consistent with writing a status/visited flag into a structure whose storage may be recycled. Moving the flag out of the object eliminates writes to potentially freed/shared memory.",
+          "trade_offs": "Requires additional data structures and lookups; might reduce performance slightly but improves safety and thread-safety."
+        },
+        {
+          "approach": "Harden the cache/object replacement path: when replacing/evicting cached entries, clear pointers immediately (set to NULL) and ensure callers never keep raw pointers across cache mutations; consider returning only refcounted handles, not raw pointers.",
+          "reasoning": "The report shows the object is freed and later written; clearing and enforcing handle-based access reduces the chance that stale pointers survive cache updates.",
+          "trade_offs": "API churn and refactoring effort; may require changes across multiple call sites that currently assume raw pointer stability."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 190312,
+      "output_tokens": 7399
+    },
+    "timing": {
+      "start_time": 1768863039.8531048,
+      "end_time": 1768863451.2161388,
+      "duration": 411.3630340099335
+    },
+    "trajectory": {
+      "agent_role": "dynamic_analyzer",
+      "task": "<uploaded_files>\n/src/mupdf\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/mupdf`. Consider the following issue description:\n\n<issue_description>\nHeap-use-after-free in MuPDF's PDF object resolution path (seen in pdf_cache_object -> pdf_resolve_indirect -> pdf_resolve_indirect_chain). While resolving indirect objects the code accesses/writes memory that has already been freed, leading to heap corruption and crashes and potentially enabling further exploitation.\n---\n==22",
+      "total_steps": 13,
+      "total_duration": 411.3630340099335,
+      "total_input_tokens": 190312,
+      "total_output_tokens": 7399,
+      "total_cost": 0.1803984,
+      "final_state": "success"
+    }
+  },
+  "history_miner_output": {
+    "role": "history_miner",
+    "raw_output": "{\n  \"file_analyzed\": \"source/pdf/pdf-xref.c\",\n  \"function_analyzed\": \"pdf_cache_object\",\n  \"relevant_commits\": [\n    {\n      \"hash\": \"43d021d5\",\n      \"message\": \"Bug 705256: Protect against excess recursion when loading objects.\",\n      \"changes\": \"Introduced recursion-guard logic for ObjStm loading by temporarily flipping an xref entry type from 'o' to 'O' using an orig_x pointer restored in an fz_always block.\",\n      \"relevance\": \"Likely origin of the UAF: restoring orig_x->type is a 1-byte write; pdf_load_obj_stm can solidify/reallocate xref tables, invalidating orig_x and making the restore write hit freed memory (matches ASan WRITE of size 1).\"\n    },\n    {\n      \"hash\": \"89408018\",\n      \"message\": \"Bug 705309: When fixing xref entry offsets, handle missing objects.\",\n      \"changes\": \"Hardened xref entry handling by allowing pdf_get_xref_entry to return NULL; added explicit NULL checks in pdf_cache_object/object loading paths.\",\n      \"relevance\": \"Shows the xref access path is sensitive to xref-table mutations/solidification and that pointers/entries can become invalid; supports the hypothesis that caching/ObjStm loading can invalidate previously held xref entry pointers.\"\n    },\n    {\n      \"hash\": \"2be38ed9\",\n      \"message\": \"Bug 706485: Fix mutool clean to cope with XRef missing from ObjStm.\",\n      \"changes\": \"Adjusted error/repair flow when ObjStm lookup fails; modifies object-stream branch behavior in pdf_cache_object.\",\n      \"relevance\": \"Touches the same ObjStm branch of pdf_cache_object; indicates ongoing churn in this area and potential for subtle lifetime/repair-related edge cases interacting with the recursion-guard code.\"\n    }\n  ],\n  \"vulnerability_origin\": \"Most plausibly introduced by commit 43d021d5 (2022-06-02) when pdf_cache_object began saving an xref-entry pointer (orig_x) across a call to pdf_load_obj_stm and then writing orig_x->type in an fz_always restore block. If pdf_load_obj_stm triggers xref solidification/reallocation, orig_x can become a dangling pointer, causing a heap-use-after-free 1-byte write.\",\n  \"fix_hints\": \"Avoid storing raw pdf_xref_entry* across calls that may solidify/reallocate the xref table (noted elsewhere in history). Prefer re-looking up the entry by object number after pdf_load_obj_stm (or storing a stable handle/index), or move recursion state out of the xref entry so no restore-write to a potentially-invalid pointer is needed.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Replace orig_x pointer restore with re-fetch: store the object number (num) and, in fz_always, call pdf_get_xref_entry(ctx, doc, num) again (or an API guaranteed not to invalidate) before restoring type.\",\n      \"reasoning\": \"Directly addresses the historical hazard: pointers to xref entries can be invalidated by operations like ObjStm loading/solidification; re-fetching avoids writing through a stale pointer.\",\n      \"trade_offs\": \"Requires care if re-fetch can throw/return NULL; slightly more overhead; must ensure restoring the correct entry if xref structure changes during the call.\"\n    },\n    {\n      \"approach\": \"Move recursion detection out of xref_entry->type: maintain a separate per-doc recursion/visited set (e.g., a small stack or bitset keyed by object number) used during pdf_cache_object/ObjStm loading.\",\n      \"reasoning\": \"Eliminates in-place mutation of xref entries (and the need for fz_always restoration), preventing UAF caused by xref-entry pointer invalidation.\",\n      \"trade_offs\": \"More code and state management; must ensure thread-safety/reentrancy; needs cleanup on exceptions.\"\n    },\n    {\n      \"approach\": \"Prevent xref solidification while recursion-guard is active (e.g., a scoped \u2018no-solidify\u2019 guard or deferred solidification), or ensure solidification preserves entry storage stability.\",\n      \"reasoning\": \"If xref entries remain stable, the existing orig_x restore pattern would not write into freed memory.\",\n      \"trade_offs\": \"Riskier architectural change; may impact performance/memory; must ensure no functional regressions in repair/linearization paths.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "file_analyzed": "source/pdf/pdf-xref.c",
+      "function_analyzed": "pdf_cache_object",
+      "relevant_commits": [
+        {
+          "hash": "43d021d5",
+          "message": "Bug 705256: Protect against excess recursion when loading objects.",
+          "changes": "Introduced recursion-guard logic for ObjStm loading by temporarily flipping an xref entry type from 'o' to 'O' using an orig_x pointer restored in an fz_always block.",
+          "relevance": "Likely origin of the UAF: restoring orig_x->type is a 1-byte write; pdf_load_obj_stm can solidify/reallocate xref tables, invalidating orig_x and making the restore write hit freed memory (matches ASan WRITE of size 1)."
+        },
+        {
+          "hash": "89408018",
+          "message": "Bug 705309: When fixing xref entry offsets, handle missing objects.",
+          "changes": "Hardened xref entry handling by allowing pdf_get_xref_entry to return NULL; added explicit NULL checks in pdf_cache_object/object loading paths.",
+          "relevance": "Shows the xref access path is sensitive to xref-table mutations/solidification and that pointers/entries can become invalid; supports the hypothesis that caching/ObjStm loading can invalidate previously held xref entry pointers."
+        },
+        {
+          "hash": "2be38ed9",
+          "message": "Bug 706485: Fix mutool clean to cope with XRef missing from ObjStm.",
+          "changes": "Adjusted error/repair flow when ObjStm lookup fails; modifies object-stream branch behavior in pdf_cache_object.",
+          "relevance": "Touches the same ObjStm branch of pdf_cache_object; indicates ongoing churn in this area and potential for subtle lifetime/repair-related edge cases interacting with the recursion-guard code."
+        }
+      ],
+      "vulnerability_origin": "Most plausibly introduced by commit 43d021d5 (2022-06-02) when pdf_cache_object began saving an xref-entry pointer (orig_x) across a call to pdf_load_obj_stm and then writing orig_x->type in an fz_always restore block. If pdf_load_obj_stm triggers xref solidification/reallocation, orig_x can become a dangling pointer, causing a heap-use-after-free 1-byte write.",
+      "fix_hints": "Avoid storing raw pdf_xref_entry* across calls that may solidify/reallocate the xref table (noted elsewhere in history). Prefer re-looking up the entry by object number after pdf_load_obj_stm (or storing a stable handle/index), or move recursion state out of the xref entry so no restore-write to a potentially-invalid pointer is needed.",
+      "fix_suggestions": [
+        {
+          "approach": "Replace orig_x pointer restore with re-fetch: store the object number (num) and, in fz_always, call pdf_get_xref_entry(ctx, doc, num) again (or an API guaranteed not to invalidate) before restoring type.",
+          "reasoning": "Directly addresses the historical hazard: pointers to xref entries can be invalidated by operations like ObjStm loading/solidification; re-fetching avoids writing through a stale pointer.",
+          "trade_offs": "Requires care if re-fetch can throw/return NULL; slightly more overhead; must ensure restoring the correct entry if xref structure changes during the call."
+        },
+        {
+          "approach": "Move recursion detection out of xref_entry->type: maintain a separate per-doc recursion/visited set (e.g., a small stack or bitset keyed by object number) used during pdf_cache_object/ObjStm loading.",
+          "reasoning": "Eliminates in-place mutation of xref entries (and the need for fz_always restoration), preventing UAF caused by xref-entry pointer invalidation.",
+          "trade_offs": "More code and state management; must ensure thread-safety/reentrancy; needs cleanup on exceptions."
+        },
+        {
+          "approach": "Prevent xref solidification while recursion-guard is active (e.g., a scoped \u2018no-solidify\u2019 guard or deferred solidification), or ensure solidification preserves entry storage stability.",
+          "reasoning": "If xref entries remain stable, the existing orig_x restore pattern would not write into freed memory.",
+          "trade_offs": "Riskier architectural change; may impact performance/memory; must ensure no functional regressions in repair/linearization paths."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 204424,
+      "output_tokens": 6032
+    },
+    "timing": {
+      "start_time": 1768863451.2245796,
+      "end_time": 1768864966.5578318,
+      "duration": 1515.3332521915436
+    },
+    "trajectory": {
+      "agent_role": "history_miner",
+      "task": "<uploaded_files>\n/src/mupdf\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/mupdf`. Consider the following issue description:\n\n<issue_description>\nHeap-use-after-free in MuPDF's PDF object resolution path (seen in pdf_cache_object -> pdf_resolve_indirect -> pdf_resolve_indirect_chain). While resolving indirect objects the code accesses/writes memory that has already been freed, leading to heap corruption and crashes and potentially enabling further exploitation.\n---\n==22",
+      "total_steps": 13,
+      "total_duration": 1515.3332521915436,
+      "total_input_tokens": 204424,
+      "total_output_tokens": 6032,
+      "total_cost": 0.21780919999999998,
+      "final_state": "success"
+    }
+  },
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "{\n  \"root_cause\": \"In pdf_cache_object() when resolving an xref entry of type 'o' (object stream), the code saved an xref-entry pointer and reused it after calling pdf_load_obj_stm(). pdf_load_obj_stm() can repair/solidify the xref table and reallocate/free the underlying xref-entry storage, so subsequent reads/writes through the stale pointer (e.g., restoring type or checking x->obj) triggered heap-use-after-free.\",\n  \"fix_approach\": \"Avoid holding/using pdf_xref_entry* across pdf_load_obj_stm(). Store only stable identifiers (object number and object-stream number), call pdf_load_obj_stm() using the stored stream number, and then re-fetch the xref entry by object number before dereferencing it. Also restore/adjust the recursion-guard type by re-fetching the entry rather than writing through a potentially-invalid saved pointer.\",\n  \"files_modified\": [\n    \"source/pdf/pdf-xref.c\"\n  ],\n  \"verification\": {\n    \"build_success\": true,\n    \"repro_success\": true,\n    \"exit_code\": 0,\n    \"asan_output\": \"No sanitizer errors detected\"\n  },\n  \"confidence\": \"high\"\n}",
+    "parsed_output": {
+      "root_cause": "In pdf_cache_object() when resolving an xref entry of type 'o' (object stream), the code saved an xref-entry pointer and reused it after calling pdf_load_obj_stm(). pdf_load_obj_stm() can repair/solidify the xref table and reallocate/free the underlying xref-entry storage, so subsequent reads/writes through the stale pointer (e.g., restoring type or checking x->obj) triggered heap-use-after-free.",
+      "fix_approach": "Avoid holding/using pdf_xref_entry* across pdf_load_obj_stm(). Store only stable identifiers (object number and object-stream number), call pdf_load_obj_stm() using the stored stream number, and then re-fetch the xref entry by object number before dereferencing it. Also restore/adjust the recursion-guard type by re-fetching the entry rather than writing through a potentially-invalid saved pointer.",
+      "files_modified": [
+        "source/pdf/pdf-xref.c"
+      ],
+      "verification": {
+        "build_success": true,
+        "repro_success": true,
+        "exit_code": 0,
+        "asan_output": "No sanitizer errors detected"
+      },
+      "confidence": "high"
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 590461,
+      "output_tokens": 13939
+    },
+    "timing": {
+      "start_time": 1768864966.568406,
+      "end_time": 1768865228.1544287,
+      "duration": 261.58602261543274
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/mupdf\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/mupdf`. Consider the following issue description:\n\n<issue_description>\nHeap-use-after-free in MuPDF's PDF object resolution path (seen in pdf_cache_object -> pdf_resolve_indirect -> pdf_resolve_indirect_chain). While resolving indirect objects the code accesses/writes memory that has already been freed, leading to heap corruption and crashes and potentially enabling further exploitation.\n---\n==22",
+      "total_steps": 25,
+      "total_duration": 261.58602261543274,
+      "total_input_tokens": 590461,
+      "total_output_tokens": 13939,
+      "total_cost": 0.4093519499999999,
+      "final_state": "success"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 1177264,
+    "output_tokens": 36218
+  },
+  "timing": {
+    "total_duration": 2707.932329416275
+  }
+}

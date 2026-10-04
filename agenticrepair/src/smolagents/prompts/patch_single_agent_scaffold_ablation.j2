@@ -1,0 +1,126 @@
+<uploaded_files>
+{{ work_dir }}
+</uploaded_files>
+I've uploaded a code repository in the directory `{{ work_dir }}`. Consider the following issue description:
+
+<issue_description>
+{{ bug_description }}
+---
+{{ sanitizer_report }}
+</issue_description>
+
+Can you help me implement the necessary changes to the repository so that the crash points specified in the <issue_description> are resolved?
+Your task is to make the minimal changes to non-tests files in the `{{ work_dir }}` directory to ensure the crash points specified in the <issue_description> are not triggered.
+
+Follow these steps to resolve the issue:
+1. EXPLORATION: First, thoroughly explore the repository structure using tools like `find` and `grep`.
+   - Identify the files mentioned in the bug description
+   - Locate where the vulnerability exists in the codebase
+   - Understand the surrounding context and dependencies
+   - Use `grep` to search for relevant functions, classes, or error messages
+
+2. STATIC ANALYSIS: Run CodeQL static analysis on the vulnerable code.
+   A CodeQL database is pre-built at `/codeql-db`. Run 1-2 relevant analyses based on the bug type:
+   - Buffer overflow/heap-buffer-overflow → `codeql(analysis_type="dataflow")` and `codeql(analysis_type="memory")`
+   - Use-after-free/null pointer → `codeql(analysis_type="allocation")`
+   - Memory leak → `codeql(analysis_type="leak")`
+   Focus on findings in files mentioned in the bug description. Use results to identify the exact vulnerable code locations.
+
+3. DYNAMIC ANALYSIS: Based on the <issue_description>, determine the bug type and select relevant dynamic analysis tools.
+  - Classify the bug (e.g., buffer overflow → valgrind and/or gdb; use-after-free → valgrind and gdb; uninitialized memory → msan or valgrind; integer overflow/undefined behavior → ubsan; memory leak → valgrind with valgrind_options="--leak-check=summary").
+  - Extract key details like crash address, type, and locations from the sanitizer report.
+  - If the bug type is unclear, default to valgrind/gdb for general memory issues.
+
+  - Change to the `{{ work_dir }}` directory.
+  - Then run the selected dynamic analysis tools.
+
+  - GDB:
+  ```
+  gdb(
+    command="secb repro",
+    work_dir="{{ work_dir }}",
+    build_with_debug=False,  # Set to False if project already built, True to rebuild with debug symbols
+    crash_address="<from sanitizer report if available>",  # Optional: memory address to examine
+    gdb_commands="bt 30; info registers",  # Optional: additional GDB commands (semicolon-separated string)
+    timeout=600
+  )
+  ```
+  Note: The GDB tool automatically extracts the full command from 'secb repro' (including all arguments and input files), handles signal catching for crashes (SIGSEGV, SIGABRT, etc.), and captures backtraces. It will fall back to sanitizer output if GDB cannot capture a stack trace.
+
+  - Valgrind:
+  ```
+  valgrind(
+    command="secb repro",
+    work_dir="{{ work_dir }}",
+    valgrind_options="--leak-check=summary --show-leak-kinds=definite --num-callers=10",
+    output_filter_keywords="ERROR SUMMARY,Invalid read,Invalid write,definitely lost,Invalid free",
+    max_output_lines=200,
+    timeout=600
+  )
+  ```
+  Note: The Valgrind tool automatically filters output to show key information (errors, leaks, summaries) while keeping output concise. All errors are shown by default; use `output_filter_keywords` to focus on specific error types, and `max_output_lines` to limit output size.
+
+  - UBSan:
+  ```
+  ubsan(
+    build_command="secb build",
+    run_command="secb repro",
+    work_dir="{{ work_dir }}",
+    sanitizers="undefined,bounds,integer",
+    timeout=600
+  )
+  ```
+  Note: UBSan rebuilds the project with undefined behavior sanitizer flags. The `sanitizers` parameter specifies which checks to enable (default: undefined,bounds,integer).
+  
+  - MSan:
+  ```
+  msan(
+    build_command="secb build",
+    run_command="secb repro",
+    work_dir="{{ work_dir }}",
+    track_origins=True,
+    timeout=600
+  )
+  ```
+  Note: MSan rebuilds the project with MemorySanitizer flags. The `track_origins=True` parameter enables origin tracking to show where uninitialized memory was created.
+
+4. HISTORY MINING: Use code_execution to simulate PyDriller and find the last few commits that modified the vulnerable code before the base commit.
+   - Base commit: `{{ base_commit }}` (this is the vulnerable commit)
+   - Working directory: `{{ work_dir }}`
+   Use the `pydriller` tool to find commits that modified the vulnerable code:
+   ```
+   pydriller(
+       file_path="<file_path>",           # e.g., "src/file.c" (identified in <issue_description>)
+       function_name="<function_name>",   # e.g., "vulnerable_func" (identified in <issue_description>)
+       base_commit="{{ base_commit }}",   # Returns commits BEFORE base_commit
+       work_dir="{{ work_dir }}",         # Repository path
+       num_commits=3,                     # Number of commits to examine
+       repo="{{ repo }}"                  # Repository name
+   )
+   ```
+   - Review the commit messages and code diffs to understand how the vulnerable code was introduced or modified
+
+5. ANALYSIS: Based on your exploration, STATIC ANALYSIS, DYNAMIC ANALYSIS, and HISTORY MINING, think carefully about the security vulnerability and propose 2-3 possible approaches to fix it.
+   - Analyze the root cause of the vulnerability
+   - Consider trade-offs between different solutions
+   - Select the most promising approach and explain your reasoning
+
+6. IMPLEMENTATION: Edit the source code to implement your chosen solution.
+   - Make minimal, focused changes to fix the vulnerability
+   - Ensure your changes do not introduce new security issues
+
+7. VERIFICATION: Test your implementation thoroughly.
+   - Change to the `{{ work_dir }}` directory
+   - Run `secb build` to build the project and check for compilation errors
+   - If compilation succeeds, run `secb repro` to verify the fix prevents the crash
+   - If the fix fails, revise your implementation until the crash is prevented
+   - **IMPORTANT: Keep iterating until `secb repro` confirms that the sanitizer error is NOT triggered. This is the success criterion.**
+
+8. FINAL REVIEW: Carefully re-read the bug description and review your changes.
+   - Ensure you've fully addressed the security vulnerability
+   - Confirm the fix is minimal and focused on the specific issue
+   - Verify no unintended side effects are introduced
+
+**CRITICAL SUCCESS CRITERION**: Your implementation is successful only when `secb repro` runs without triggering any sanitizer errors. Continue refining your solution until this criterion is met.
+
+Be thorough in your exploration, analysis, and reasoning. It's fine if your thinking process is lengthy - quality and completeness are more important than brevity.

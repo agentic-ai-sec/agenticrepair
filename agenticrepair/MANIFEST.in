@@ -1,0 +1,4 @@
+include src/smolagents/prompts/multiagent/*.j2
+recursive-include src/smolagents/prompts *.j2
+recursive-include src/smolagents/prompts *.yaml
+

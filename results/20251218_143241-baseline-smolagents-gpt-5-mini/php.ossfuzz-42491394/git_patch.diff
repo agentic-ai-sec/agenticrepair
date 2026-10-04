@@ -1,0 +1,99 @@
+diff --git a/ext/spl/spl_observer.c b/ext/spl/spl_observer.c
+index c83e8bf3a9f..f601ac4d9e1 100644
+--- a/ext/spl/spl_observer.c
++++ b/ext/spl/spl_observer.c
+@@ -682,7 +682,7 @@ PHP_METHOD(SplObjectStorage, unserialize)
+ 	size_t buf_len;
+ 	const unsigned char *p, *s;
+ 	php_unserialize_data_t var_hash;
+-	zval entry, inf;
++	zval *entry, *inf;
+ 	zval *pcount, *pmembers;
+ 	spl_SplObjectStorageElement *element;
+ 	zend_long count;
+@@ -715,13 +715,15 @@ PHP_METHOD(SplObjectStorage, unserialize)
+ 		goto outexcept;
+ 	}
+ 
+-	ZVAL_UNDEF(&entry);
+-	ZVAL_UNDEF(&inf);
++	entry = var_tmp_var(&var_hash);
++	inf = var_tmp_var(&var_hash);
++	ZVAL_UNDEF(entry);
++	ZVAL_UNDEF(inf);
+ 
+ 	while (count-- > 0) {
+ 		spl_SplObjectStorageElement *pelement;
+ 		zend_hash_key key;
+-		zval obj;
++		zval *tmp_obj;
+ 
+ 		if (*p != ';') {
+ 			goto outexcept;
+@@ -731,27 +733,27 @@ PHP_METHOD(SplObjectStorage, unserialize)
+ 			goto outexcept;
+ 		}
+ 		/* store reference to allow cross-references between different elements */
+-		if (!php_var_unserialize(&entry, &p, s + buf_len, &var_hash)) {
+-			zval_ptr_dtor(&entry);
++		if (!php_var_unserialize(entry, &p, s + buf_len, &var_hash)) {
++			ZVAL_UNDEF(entry);
+ 			goto outexcept;
+ 		}
+ 		if (*p == ',') { /* new version has inf */
+ 			++p;
+-			if (!php_var_unserialize(&inf, &p, s + buf_len, &var_hash)) {
+-				zval_ptr_dtor(&entry);
+-				zval_ptr_dtor(&inf);
++			if (!php_var_unserialize(inf, &p, s + buf_len, &var_hash)) {
++				ZVAL_UNDEF(entry);
++				ZVAL_UNDEF(inf);
+ 				goto outexcept;
+ 			}
+ 		}
+-		if (Z_TYPE(entry) != IS_OBJECT) {
+-			zval_ptr_dtor(&entry);
+-			zval_ptr_dtor(&inf);
++		if (Z_TYPE_P(entry) != IS_OBJECT) {
++			ZVAL_UNDEF(entry);
++			ZVAL_UNDEF(inf);
+ 			goto outexcept;
+ 		}
+ 
+-		if (spl_object_storage_get_hash(&key, intern, Z_OBJ(entry)) == FAILURE) {
+-			zval_ptr_dtor(&entry);
+-			zval_ptr_dtor(&inf);
++		if (spl_object_storage_get_hash(&key, intern, Z_OBJ_P(entry)) == FAILURE) {
++			ZVAL_UNDEF(entry);
++			ZVAL_UNDEF(inf);
+ 			goto outexcept;
+ 		}
+ 		pelement = spl_object_storage_get(intern, &key);
+@@ -760,17 +762,17 @@ PHP_METHOD(SplObjectStorage, unserialize)
+ 			if (!Z_ISUNDEF(pelement->inf)) {
+ 				var_push_dtor(&var_hash, &pelement->inf);
+ 			}
+-			ZVAL_OBJ(&obj, pelement->obj);
+-			var_push_dtor(&var_hash, &obj);
++			tmp_obj = var_tmp_var(&var_hash);
++			ZVAL_OBJ(tmp_obj, pelement->obj);
++			var_push_dtor(&var_hash, tmp_obj);
+ 		}
+-		element = spl_object_storage_attach(intern, Z_OBJ(entry), Z_ISUNDEF(inf)?NULL:&inf);
+-		ZVAL_OBJ(&obj, element->obj);
+-		var_replace(&var_hash, &entry, &obj);
+-		var_replace(&var_hash, &inf, &element->inf);
+-		zval_ptr_dtor(&entry);
+-		ZVAL_UNDEF(&entry);
+-		zval_ptr_dtor(&inf);
+-		ZVAL_UNDEF(&inf);
++		element = spl_object_storage_attach(intern, Z_OBJ_P(entry), Z_ISUNDEF_P(inf)?NULL:inf);
++		tmp_obj = var_tmp_var(&var_hash);
++		ZVAL_OBJ(tmp_obj, element->obj);
++		var_replace(&var_hash, entry, tmp_obj);
++		var_replace(&var_hash, inf, &element->inf);
++		ZVAL_UNDEF(entry);
++		ZVAL_UNDEF(inf);
+ 	}
+ 
+ 	if (*p != ';') {

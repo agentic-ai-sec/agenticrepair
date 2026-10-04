@@ -1,0 +1,67 @@
+diff --git a/src/string.c b/src/string.c
+index 5044c1d50..db9111430 100644
+--- a/src/string.c
++++ b/src/string.c
+@@ -604,26 +604,49 @@ mrb_memsearch_ss(const unsigned char *xs, long m, const unsigned char *ys, long
+ 
+   bitint *s0 = (bitint*)(ys);
+   bitint *s1 = (bitint*)(ys+m-1);
+-
+-  for (mrb_int i=0; i < n; i+=sizeof(bitint), s0++, s1++) {
+-    const bitint eq = (*s0 ^ first) | (*s1 ^ last);
+-    bitint zeros = ((~eq & MASK2) + MASK1) & (~eq & MASK3);
+-    size_t j = 0;
+-
+-    while (zeros) {
+-      if (zeros & MASK4) {
+-        const char* substr = (char*)s0 + j + 1;
+-        if (memcmp(substr, xs + 1, m - 2) == 0) {
+-          return i + j;
++  long step = (long)sizeof(bitint);
++  long tail = n - m + 1; /* number of possible start positions */
++
++  /* vectorized loop can safely read bitint at s0 (offset i) and s1 (offset i+m-1)
++     so we limit i such that i + step <= n and i + m -1 + step <= n
++     -> i <= n - (m -1) - step */
++  long vector_end = n - (m - 1) - step;
++  long i = 0;
++  if (vector_end >= 0) {
++    for (i = 0; i <= vector_end; i += step, s0++, s1++) {
++      const bitint eq = (*s0 ^ first) | (*s1 ^ last);
++      bitint zeros = ((~eq & MASK2) + MASK1) & (~eq & MASK3);
++      size_t j = 0;
++
++      while (zeros) {
++        if (zeros & MASK4) {
++          const char* substr = (const char*)s0 + j + 1;
++          if (memcmp(substr, xs + 1, m - 2) == 0) {
++            return i + j;
++          }
+         }
+-      }
+ 
+ #if defined(MRB_ENDIAN_BIG)
+       zeros <<= 8;
+ #else
+       zeros >>= 8;
+ #endif
+-      j += 1;
++        j += 1;
++      }
++    }
++    /* fallback scalar search for the remaining tail positions */
++    for (; i < tail; ++i) {
++      if (ys[i] == xs[0] && ys[i + m - 1] == xs[m - 1]) {
++        if (m <= 2 || memcmp(ys + i + 1, xs + 1, m - 2) == 0) return i;
++      }
++    }
++  }
++  else {
++    /* no vector loop possible, do scalar search */
++    for (i = 0; i < tail; ++i) {
++      if (ys[i] == xs[0] && ys[i + m - 1] == xs[m - 1]) {
++        if (m <= 2 || memcmp(ys + i + 1, xs + 1, m - 2) == 0) return i;
++      }
+     }
+   }
+   return -1;

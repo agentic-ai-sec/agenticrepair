@@ -1,0 +1,28 @@
+diff --git a/xmlreader.c b/xmlreader.c
+index 3fd9aa4c..b7538f64 100644
+--- a/xmlreader.c
++++ b/xmlreader.c
+@@ -32,6 +32,7 @@
+ #include <libxml/xmlIO.h>
+ #include <libxml/xmlreader.h>
+ #include <libxml/parserInternals.h>
++#include <libxml/valid.h>
+ #ifdef LIBXML_SCHEMAS_ENABLED
+ #include <libxml/relaxng.h>
+ #include <libxml/xmlschemas.h>
+@@ -304,6 +305,15 @@ xmlTextReaderFreeProp(xmlTextReaderPtr reader, xmlAttrPtr cur) {
+ 	 (cur->parent->doc->extSubset != NULL))) {
+         if (xmlIsID(cur->parent->doc, cur->parent, cur))
+ 	    xmlTextReaderRemoveID(cur->parent->doc, cur);
++
++	/*
++	 * When using the validating reader, attribute nodes can be freed while
++	 * references have already been registered in the document's ref table.
++	 * Remove any IDREF/IDREFS entries for this attribute before freeing it
++	 * to avoid stale pointers being dereferenced during final validation.
++	 */
++	if (xmlIsRef(cur->parent->doc, cur->parent, cur))
++	    xmlRemoveRef(cur->parent->doc, cur);
+     }
+     if (cur->children != NULL)
+         xmlTextReaderFreeNodeList(reader, cur->children);

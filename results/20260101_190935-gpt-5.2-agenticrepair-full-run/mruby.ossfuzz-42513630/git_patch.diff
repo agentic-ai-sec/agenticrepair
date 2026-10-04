@@ -1,0 +1,60 @@
+diff --git a/mrbgems/mruby-bigint/core/bigint.c b/mrbgems/mruby-bigint/core/bigint.c
+index 21d1008e3..515814408 100644
+--- a/mrbgems/mruby-bigint/core/bigint.c
++++ b/mrbgems/mruby-bigint/core/bigint.c
+@@ -746,11 +746,19 @@ mpz_get_int(mpz_t *y, mrb_int *v)
+   if (y->sn == 0) {
+     i = 0;
+   }
+-  else if (digits(y) > 2 || y->p[1] > 1) {
+-    return FALSE;
+-  }
+   else {
+-    i = (y->sn * (y->p[0] | (y->p[1] & 1) << DIGITBITS));
++    /*
++     * mpz values can be represented with a single allocated limb (sz==1).
++     * Access limb[1] only through the bounds-checked accessor.
++     */
++    const size_t d = digits(y);
++    const mp_limb hi = dg(y, 1);
++
++    if (d > 2 || hi > 1) {
++      return FALSE;
++    }
++
++    i = (y->sn * (dg(y, 0) | ((hi & 1) << DIGITBITS)));
+     if (MRB_INT_MAX < i || i < MRB_INT_MIN) return FALSE;
+   }
+   *v = i;
+diff --git a/mrbgems/mruby-compiler/core/y.tab.c b/mrbgems/mruby-compiler/core/y.tab.c
+index 7ab370574..d2535dfcc 100644
+--- a/mrbgems/mruby-compiler/core/y.tab.c
++++ b/mrbgems/mruby-compiler/core/y.tab.c
+@@ -12918,7 +12918,7 @@ mrb_parser_new(mrb_state *mrb)
+ 
+   p->lex_strterm = NULL;
+ 
+-  p->current_filename_index = -1;
++  p->current_filename_index = (uint16_t)-1;
+   p->filename_table = NULL;
+   p->filename_table_length = 0;
+ 
+diff --git a/src/symbol.c b/src/symbol.c
+index 429074532..3bdb72058 100644
+--- a/src/symbol.c
++++ b/src/symbol.c
+@@ -126,12 +126,12 @@ symhash(const char *key, size_t len)
+ 
+     for(hash = i = 0; i < len; ++i) {
+         hash += key[i];
+-        hash += (hash << 10);
++        hash += (uint32_t)((uint64_t)hash << 10);
+         hash ^= (hash >> 6);
+     }
+-    hash += (hash << 3);
++    hash += (uint32_t)((uint64_t)hash << 3);
+     hash ^= (hash >> 11);
+-    hash += (hash << 15);
++    hash += (uint32_t)((uint64_t)hash << 15);
+     return hash & 0xff;
+ }

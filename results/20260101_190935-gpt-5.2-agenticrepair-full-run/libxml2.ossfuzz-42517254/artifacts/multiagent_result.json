@@ -1,0 +1,229 @@
+{
+  "instance_id": "libxml2.ossfuzz-42517254",
+  "final_status": "success",
+  "static_analyzer_output": {
+    "role": "static_analyzer",
+    "raw_output": "{\n  \"analysis_type\": \"allocation\",\n  \"findings\": [],\n  \"dataflow_summary\": \"\",\n  \"key_insight\": \"CodeQL allocation queries did not flag a use-after-free in xinclude.c; manual review shows xmlXIncludeIncludeNode can defer XPointer materialization (stores xmlXPathObjectPtr in incTab[nr]->xptr) while later XInclude processing mutates/frees nodes (e.g., xmlFreeNode(cur) at xinclude.c:2277), leaving dangling pointers inside the stored XPath nodeset that are later dereferenced in xmlXIncludeCopyXPointer (xinclude.c:1162).\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Do not store an evaluated xmlXPathObjectPtr (nodeset) across document mutations; instead, immediately copy/materialize the XPointer result into a safe node list (incTab[nr]->inc) at the time the XPointer is computed, then free the XPath object.\",\n      \"reasoning\": \"Eliminates stale node pointers: the UAF occurs because nodes inside obj->nodesetval can be freed by subsequent XInclude substitutions before the deferred copy loop reads set->nodeTab[i]->type.\",\n      \"trade_offs\": \"May increase peak memory/time because XPointer results are copied earlier, even if later error paths abort processing.\"\n    },\n    {\n      \"approach\": \"Store the XPointer *expression* (string) rather than the evaluated nodeset, and re-evaluate the XPointer right before inclusion on the current document tree, then copy and free it.\",\n      \"reasoning\": \"Prevents keeping raw node pointers that become invalid when earlier includes unlink/free nodes.\",\n      \"trade_offs\": \"Re-evaluation can change semantics if the document has been altered; also increases CPU cost and requires careful context setup (base node, namespaces).\"\n    },\n    {\n      \"approach\": \"If deferral must remain, ensure referenced nodes cannot be freed while any pending xpointers exist (e.g., avoid xmlFreeNode(cur) during processing, or introduce a refcount/marking scheme for nodes referenced by stored xpointers).\",\n      \"reasoning\": \"Directly addresses the lifetime mismatch between stored xpath nodesets and node deletion in xmlXIncludeIncludeNode.\",\n      \"trade_offs\": \"More invasive: changes node lifecycle/GC assumptions and risks leaks or behavioral changes; harder to prove correct.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "analysis_type": "allocation",
+      "findings": [],
+      "dataflow_summary": "",
+      "key_insight": "CodeQL allocation queries did not flag a use-after-free in xinclude.c; manual review shows xmlXIncludeIncludeNode can defer XPointer materialization (stores xmlXPathObjectPtr in incTab[nr]->xptr) while later XInclude processing mutates/frees nodes (e.g., xmlFreeNode(cur) at xinclude.c:2277), leaving dangling pointers inside the stored XPath nodeset that are later dereferenced in xmlXIncludeCopyXPointer (xinclude.c:1162).",
+      "fix_suggestions": [
+        {
+          "approach": "Do not store an evaluated xmlXPathObjectPtr (nodeset) across document mutations; instead, immediately copy/materialize the XPointer result into a safe node list (incTab[nr]->inc) at the time the XPointer is computed, then free the XPath object.",
+          "reasoning": "Eliminates stale node pointers: the UAF occurs because nodes inside obj->nodesetval can be freed by subsequent XInclude substitutions before the deferred copy loop reads set->nodeTab[i]->type.",
+          "trade_offs": "May increase peak memory/time because XPointer results are copied earlier, even if later error paths abort processing."
+        },
+        {
+          "approach": "Store the XPointer *expression* (string) rather than the evaluated nodeset, and re-evaluate the XPointer right before inclusion on the current document tree, then copy and free it.",
+          "reasoning": "Prevents keeping raw node pointers that become invalid when earlier includes unlink/free nodes.",
+          "trade_offs": "Re-evaluation can change semantics if the document has been altered; also increases CPU cost and requires careful context setup (base node, namespaces)."
+        },
+        {
+          "approach": "If deferral must remain, ensure referenced nodes cannot be freed while any pending xpointers exist (e.g., avoid xmlFreeNode(cur) during processing, or introduce a refcount/marking scheme for nodes referenced by stored xpointers).",
+          "reasoning": "Directly addresses the lifetime mismatch between stored xpath nodesets and node deletion in xmlXIncludeIncludeNode.",
+          "trade_offs": "More invasive: changes node lifecycle/GC assumptions and risks leaks or behavioral changes; harder to prove correct."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 92744,
+      "output_tokens": 3839
+    },
+    "timing": {
+      "start_time": 1768791566.5814362,
+      "end_time": 1768791722.111188,
+      "duration": 155.52975177764893
+    },
+    "trajectory": {
+      "agent_role": "static_analyzer",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nA heap-use-after-free exists in xinclude.c: xmlXIncludeCopyXPointer reads memory that has already been freed during XInclude processing (called via xmlXIncludeIncludeNode/xmlXIncludeDoProcess). Malicious or malformed XInclude/XPointer input can trigger this read-after-free, leading to crashes or memory corruption and poten",
+      "total_steps": 8,
+      "total_duration": 155.52975177764893,
+      "total_input_tokens": 92744,
+      "total_output_tokens": 3839,
+      "total_cost": 0.10053119999999999,
+      "final_state": "success"
+    }
+  },
+  "dynamic_analyzer_output": {
+    "role": "dynamic_analyzer",
+    "raw_output": "{\n  \"tools_used\": [\"gdb\", \"ubsan\"],\n  \"crash_info\": {\n    \"address\": \"0x50c0000001c8\",\n    \"type\": \"heap-use-after-free (read)\",\n    \"location\": \"xinclude.c:1162 (xmlXIncludeCopyXPointer)\"\n  },\n  \"backtrace\": [\n    \"xmlXIncludeCopyXPointer (xinclude.c:1162)\",\n    \"xmlXIncludeIncludeNode (xinclude.c:2231)\",\n    \"xmlXIncludeDoProcess (xinclude.c:2506)\",\n    \"xmlXIncludeProcessTreeFlagsData (xinclude.c:2559)\",\n    \"parseAndPrintFile (xmllint.c:2373)\",\n    \"main (xmllint.c:3707)\"\n  ],\n  \"memory_state\": \"ASan reports a 4-byte read at 0x50c0000001c8, which is 8 bytes into a 120-byte heap region [0x50c0000001c0, 0x50c000000238) that has already been freed. The accessed memory is marked as freed (shadow bytes fd). Allocation originates from xmlNewNodeEatName/tree construction during parsing; free occurs during XInclude processing (xmlXIncludeDoProcess/xmlXIncludeIncludeNode).\",\n  \"root_cause_hint\": \"Runtime evidence shows xmlXIncludeCopyXPointer iterating obj->nodesetval (XPATH_NODESET) and dereferencing set->nodeTab[i]->type/->next. At least one set->nodeTab[i] points to a node that has been freed earlier in the XInclude workflow. This indicates the stored xmlXPathObjectPtr (ctxt->incTab[nr]->xptr) contains stale node pointers when later consumed for the 'late computation' path in xmlXIncludeIncludeNode. (Valgrind could not be used because it is not installed in the environment; GDB itself didn\u2019t catch a live crash because the extracted command exited normally, so the tool fell back to the ASan backtrace.)\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Eliminate the 'late computation' storage of xmlXPathObjectPtr results: when an XPointer is evaluated, immediately convert it to a detached copy node list (xmlXIncludeCopyXPointer) and store only ctxt->incTab[nr]->inc (or store a stable serialized representation), never a nodeset of live xmlNodePtr.\",\n      \"reasoning\": \"The UAF occurs because the XPath nodeset holds raw xmlNodePtr into the source document; later XInclude phases can unlink/free those nodes before xmlXIncludeCopyXPointer walks them. Copying to a standalone list at evaluation time removes dependence on the lifetime of the original nodes.\",\n      \"trade_offs\": \"Higher peak memory usage (copies created earlier), and potentially more work if the include is later skipped; but it is the most direct way to avoid stale pointers.\"\n    },\n    {\n      \"approach\": \"If late evaluation must remain: keep the referenced nodes alive until after xmlXIncludeIncludeNode finishes consuming xptr (e.g., postpone freeing/unlinking of affected nodes, or introduce a reference-count/ownership mechanism so nodes referenced by pending XPointer results aren\u2019t freed).\",\n      \"reasoning\": \"ASan shows a true lifetime bug: nodes are freed before they\u2019re read. Extending node lifetime (or preventing free) makes the stored nodeset pointers valid when consumed.\",\n      \"trade_offs\": \"More invasive: requires careful ownership tracking to avoid leaks and may alter current XInclude cleanup behavior.\"\n    },\n    {\n      \"approach\": \"Store the XPointer expression string and re-evaluate it at include time on a valid context/document, instead of storing an xmlXPathObjectPtr nodeset across phases.\",\n      \"reasoning\": \"Re-evaluation avoids holding onto node pointers whose lifetime is not guaranteed. The bug is specifically about using a previously computed nodeset after document mutations/frees.\",\n      \"trade_offs\": \"Re-evaluation cost; requires ensuring the evaluation context at include time is equivalent/compatible, and error handling may differ from the original evaluation.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "tools_used": [
+        "gdb",
+        "ubsan"
+      ],
+      "crash_info": {
+        "address": "0x50c0000001c8",
+        "type": "heap-use-after-free (read)",
+        "location": "xinclude.c:1162 (xmlXIncludeCopyXPointer)"
+      },
+      "backtrace": [
+        "xmlXIncludeCopyXPointer (xinclude.c:1162)",
+        "xmlXIncludeIncludeNode (xinclude.c:2231)",
+        "xmlXIncludeDoProcess (xinclude.c:2506)",
+        "xmlXIncludeProcessTreeFlagsData (xinclude.c:2559)",
+        "parseAndPrintFile (xmllint.c:2373)",
+        "main (xmllint.c:3707)"
+      ],
+      "memory_state": "ASan reports a 4-byte read at 0x50c0000001c8, which is 8 bytes into a 120-byte heap region [0x50c0000001c0, 0x50c000000238) that has already been freed. The accessed memory is marked as freed (shadow bytes fd). Allocation originates from xmlNewNodeEatName/tree construction during parsing; free occurs during XInclude processing (xmlXIncludeDoProcess/xmlXIncludeIncludeNode).",
+      "root_cause_hint": "Runtime evidence shows xmlXIncludeCopyXPointer iterating obj->nodesetval (XPATH_NODESET) and dereferencing set->nodeTab[i]->type/->next. At least one set->nodeTab[i] points to a node that has been freed earlier in the XInclude workflow. This indicates the stored xmlXPathObjectPtr (ctxt->incTab[nr]->xptr) contains stale node pointers when later consumed for the 'late computation' path in xmlXIncludeIncludeNode. (Valgrind could not be used because it is not installed in the environment; GDB itself didn\u2019t catch a live crash because the extracted command exited normally, so the tool fell back to the ASan backtrace.)",
+      "fix_suggestions": [
+        {
+          "approach": "Eliminate the 'late computation' storage of xmlXPathObjectPtr results: when an XPointer is evaluated, immediately convert it to a detached copy node list (xmlXIncludeCopyXPointer) and store only ctxt->incTab[nr]->inc (or store a stable serialized representation), never a nodeset of live xmlNodePtr.",
+          "reasoning": "The UAF occurs because the XPath nodeset holds raw xmlNodePtr into the source document; later XInclude phases can unlink/free those nodes before xmlXIncludeCopyXPointer walks them. Copying to a standalone list at evaluation time removes dependence on the lifetime of the original nodes.",
+          "trade_offs": "Higher peak memory usage (copies created earlier), and potentially more work if the include is later skipped; but it is the most direct way to avoid stale pointers."
+        },
+        {
+          "approach": "If late evaluation must remain: keep the referenced nodes alive until after xmlXIncludeIncludeNode finishes consuming xptr (e.g., postpone freeing/unlinking of affected nodes, or introduce a reference-count/ownership mechanism so nodes referenced by pending XPointer results aren\u2019t freed).",
+          "reasoning": "ASan shows a true lifetime bug: nodes are freed before they\u2019re read. Extending node lifetime (or preventing free) makes the stored nodeset pointers valid when consumed.",
+          "trade_offs": "More invasive: requires careful ownership tracking to avoid leaks and may alter current XInclude cleanup behavior."
+        },
+        {
+          "approach": "Store the XPointer expression string and re-evaluate it at include time on a valid context/document, instead of storing an xmlXPathObjectPtr nodeset across phases.",
+          "reasoning": "Re-evaluation avoids holding onto node pointers whose lifetime is not guaranteed. The bug is specifically about using a previously computed nodeset after document mutations/frees.",
+          "trade_offs": "Re-evaluation cost; requires ensuring the evaluation context at include time is equivalent/compatible, and error handling may differ from the original evaluation."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 57255,
+      "output_tokens": 2737
+    },
+    "timing": {
+      "start_time": 1768791722.1163156,
+      "end_time": 1768791810.4219282,
+      "duration": 88.30561256408691
+    },
+    "trajectory": {
+      "agent_role": "dynamic_analyzer",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nA heap-use-after-free exists in xinclude.c: xmlXIncludeCopyXPointer reads memory that has already been freed during XInclude processing (called via xmlXIncludeIncludeNode/xmlXIncludeDoProcess). Malicious or malformed XInclude/XPointer input can trigger this read-after-free, leading to crashes or memory corruption and poten",
+      "total_steps": 5,
+      "total_duration": 88.30561256408691,
+      "total_input_tokens": 57255,
+      "total_output_tokens": 2737,
+      "total_cost": 0.06452705,
+      "final_state": "success"
+    }
+  },
+  "history_miner_output": {
+    "role": "history_miner",
+    "raw_output": "{\n  \"file_analyzed\": \"xinclude.c\",\n  \"function_analyzed\": \"xmlXIncludeCopyXPointer\",\n  \"relevant_commits\": [\n    {\n      \"hash\": \"7f04e297\",\n      \"message\": \"xinclude: Fix regression with nested includes\",\n      \"changes\": \"Introduced caching of xmlXPathObjectPtr (xptr) in xmlXIncludeRef, freed in xmlXIncludeFreeRef; altered same-document load path and copy logic.\",\n      \"relevance\": \"Storing an evaluated XPath/XPointer result across later tree modifications can leave obj->nodesetval pointing at nodes that get freed during include replacement, matching the reported UAF in xmlXIncludeCopyXPointer. Likely origin of the bug.\"\n    },\n    {\n      \"hash\": \"67070107\",\n      \"message\": \"Add configuration flag for XPointer locations support\",\n      \"changes\": \"Wrapped range/location-set handling and related helpers with LIBXML_XPTR_LOCS_ENABLED, reducing when location-set/range code is compiled.\",\n      \"relevance\": \"Touches xmlXIncludeCopyXPointer and XPointer result-type handling; relevant because the vulnerable read happens while iterating node sets and switching on node types.\"\n    },\n    {\n      \"hash\": \"4a8c71eb\",\n      \"message\": \"Remove DOCBparser\",\n      \"changes\": \"Removed XML_DOCB_DOCUMENT_NODE cases from node-type switch statements in xinclude.c.\",\n      \"relevance\": \"Minor edit near the crashing switch, but unlikely to cause the UAF; useful mainly for narrowing the time window of changes around the crash site.\"\n    }\n  ],\n  \"vulnerability_origin\": \"Most plausibly introduced by 7f04e297 when libxml2 started caching an evaluated xmlXPathObjectPtr (xptr) for later use during XInclude processing. If the document tree is mutated (nodes unlinked/freed) between xptr evaluation and xmlXIncludeCopyXPointer, the nodeset inside xptr can contain dangling pointers, leading to the observed heap-use-after-free.\",\n  \"fix_hints\": \"History suggests the bug is tied to deferred/cached XPointer handling added for nested-includes. Avoid keeping evaluated XPath results that contain raw node pointers across include substitutions, or ensure they remain valid by re-evaluating after mutations.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Don\u2019t cache xmlXPathObjectPtr across processing; cache the XPointer expression/fragment string and re-evaluate immediately before copying (or re-evaluate after any tree mutation).\",\n      \"reasoning\": \"Directly addresses the lifetime problem introduced by 7f04e297: XPath results embed pointers to nodes whose lifetime isn\u2019t stable during XInclude replacement.\",\n      \"trade_offs\": \"Extra XPath evaluation cost; requires storing expression text and context needed to re-run evaluation reliably.\"\n    },\n    {\n      \"approach\": \"If caching must remain, deep-copy the nodeset content into a stable representation at cache time (e.g., copy referenced subtrees or store node IDs/XPath locations) instead of raw node pointers.\",\n      \"reasoning\": \"Prevents later UAF by eliminating dependence on original node addresses.\",\n      \"trade_offs\": \"Higher memory usage; complexity (node identity/ID mapping, namespaces) and potential semantic differences versus live-node evaluation.\"\n    },\n    {\n      \"approach\": \"Add robust validation in xmlXIncludeCopyXPointer before dereferencing nodes (e.g., ensure node belongs to an existing document and is still linked), and fail safely if invalid.\",\n      \"reasoning\": \"Mitigates crash/exploitation even if stale node pointers appear.\",\n      \"trade_offs\": \"Hard to reliably detect freed nodes; may not fully prevent UAF without removing the underlying caching/lifetime hazard.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "file_analyzed": "xinclude.c",
+      "function_analyzed": "xmlXIncludeCopyXPointer",
+      "relevant_commits": [
+        {
+          "hash": "7f04e297",
+          "message": "xinclude: Fix regression with nested includes",
+          "changes": "Introduced caching of xmlXPathObjectPtr (xptr) in xmlXIncludeRef, freed in xmlXIncludeFreeRef; altered same-document load path and copy logic.",
+          "relevance": "Storing an evaluated XPath/XPointer result across later tree modifications can leave obj->nodesetval pointing at nodes that get freed during include replacement, matching the reported UAF in xmlXIncludeCopyXPointer. Likely origin of the bug."
+        },
+        {
+          "hash": "67070107",
+          "message": "Add configuration flag for XPointer locations support",
+          "changes": "Wrapped range/location-set handling and related helpers with LIBXML_XPTR_LOCS_ENABLED, reducing when location-set/range code is compiled.",
+          "relevance": "Touches xmlXIncludeCopyXPointer and XPointer result-type handling; relevant because the vulnerable read happens while iterating node sets and switching on node types."
+        },
+        {
+          "hash": "4a8c71eb",
+          "message": "Remove DOCBparser",
+          "changes": "Removed XML_DOCB_DOCUMENT_NODE cases from node-type switch statements in xinclude.c.",
+          "relevance": "Minor edit near the crashing switch, but unlikely to cause the UAF; useful mainly for narrowing the time window of changes around the crash site."
+        }
+      ],
+      "vulnerability_origin": "Most plausibly introduced by 7f04e297 when libxml2 started caching an evaluated xmlXPathObjectPtr (xptr) for later use during XInclude processing. If the document tree is mutated (nodes unlinked/freed) between xptr evaluation and xmlXIncludeCopyXPointer, the nodeset inside xptr can contain dangling pointers, leading to the observed heap-use-after-free.",
+      "fix_hints": "History suggests the bug is tied to deferred/cached XPointer handling added for nested-includes. Avoid keeping evaluated XPath results that contain raw node pointers across include substitutions, or ensure they remain valid by re-evaluating after mutations.",
+      "fix_suggestions": [
+        {
+          "approach": "Don\u2019t cache xmlXPathObjectPtr across processing; cache the XPointer expression/fragment string and re-evaluate immediately before copying (or re-evaluate after any tree mutation).",
+          "reasoning": "Directly addresses the lifetime problem introduced by 7f04e297: XPath results embed pointers to nodes whose lifetime isn\u2019t stable during XInclude replacement.",
+          "trade_offs": "Extra XPath evaluation cost; requires storing expression text and context needed to re-run evaluation reliably."
+        },
+        {
+          "approach": "If caching must remain, deep-copy the nodeset content into a stable representation at cache time (e.g., copy referenced subtrees or store node IDs/XPath locations) instead of raw node pointers.",
+          "reasoning": "Prevents later UAF by eliminating dependence on original node addresses.",
+          "trade_offs": "Higher memory usage; complexity (node identity/ID mapping, namespaces) and potential semantic differences versus live-node evaluation."
+        },
+        {
+          "approach": "Add robust validation in xmlXIncludeCopyXPointer before dereferencing nodes (e.g., ensure node belongs to an existing document and is still linked), and fail safely if invalid.",
+          "reasoning": "Mitigates crash/exploitation even if stale node pointers appear.",
+          "trade_offs": "Hard to reliably detect freed nodes; may not fully prevent UAF without removing the underlying caching/lifetime hazard."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 28922,
+      "output_tokens": 2596
+    },
+    "timing": {
+      "start_time": 1768791810.426414,
+      "end_time": 1768791964.9619184,
+      "duration": 154.5355043411255
+    },
+    "trajectory": {
+      "agent_role": "history_miner",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nA heap-use-after-free exists in xinclude.c: xmlXIncludeCopyXPointer reads memory that has already been freed during XInclude processing (called via xmlXIncludeIncludeNode/xmlXIncludeDoProcess). Malicious or malformed XInclude/XPointer input can trigger this read-after-free, leading to crashes or memory corruption and poten",
+      "total_steps": 3,
+      "total_duration": 154.5355043411255,
+      "total_input_tokens": 28922,
+      "total_output_tokens": 2596,
+      "total_cost": 0.051274299999999995,
+      "final_state": "success"
+    }
+  },
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "{\n  \"root_cause\": \"During same-document XInclude processing, the code cached an evaluated XPointer result (xmlXPathObjectPtr) in incTab[nr]->xptr for later use. The XPath object\u2019s nodeset contains raw xmlNodePtr into the document tree. Subsequent XInclude substitutions can unlink/free those nodes, leaving dangling pointers that xmlXIncludeCopyXPointer later dereferences (set->nodeTab[i]->type), triggering a heap-use-after-free.\",\n  \"fix_approach\": \"Stop deferring/materializing cached XPointer results. In the XPointer evaluation path, always immediately materialize the result into an independent copied node list via xmlXIncludeCopyXPointer, then free the XPath object. Also remove the later 'late computation' path in xmlXIncludeIncludeNode so it no longer consumes incTab[nr]->xptr. This avoids keeping nodeset pointers alive across document mutations.\",\n  \"files_modified\": [\n    \"xinclude.c\"\n  ],\n  \"verification\": {\n    \"build_success\": true,\n    \"repro_success\": true,\n    \"exit_code\": 0,\n    \"asan_output\": \"No sanitizer errors detected\"\n  },\n  \"confidence\": \"high\"\n}",
+    "parsed_output": {
+      "root_cause": "During same-document XInclude processing, the code cached an evaluated XPointer result (xmlXPathObjectPtr) in incTab[nr]->xptr for later use. The XPath object\u2019s nodeset contains raw xmlNodePtr into the document tree. Subsequent XInclude substitutions can unlink/free those nodes, leaving dangling pointers that xmlXIncludeCopyXPointer later dereferences (set->nodeTab[i]->type), triggering a heap-use-after-free.",
+      "fix_approach": "Stop deferring/materializing cached XPointer results. In the XPointer evaluation path, always immediately materialize the result into an independent copied node list via xmlXIncludeCopyXPointer, then free the XPath object. Also remove the later 'late computation' path in xmlXIncludeIncludeNode so it no longer consumes incTab[nr]->xptr. This avoids keeping nodeset pointers alive across document mutations.",
+      "files_modified": [
+        "xinclude.c"
+      ],
+      "verification": {
+        "build_success": true,
+        "repro_success": true,
+        "exit_code": 0,
+        "asan_output": "No sanitizer errors detected"
+      },
+      "confidence": "high"
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 536525,
+      "output_tokens": 10012
+    },
+    "timing": {
+      "start_time": 1768791964.9661536,
+      "end_time": 1768792151.0971816,
+      "duration": 186.13102793693542
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nA heap-use-after-free exists in xinclude.c: xmlXIncludeCopyXPointer reads memory that has already been freed during XInclude processing (called via xmlXIncludeIncludeNode/xmlXIncludeDoProcess). Malicious or malformed XInclude/XPointer input can trigger this read-after-free, leading to crashes or memory corruption and poten",
+      "total_steps": 22,
+      "total_duration": 186.13102793693542,
+      "total_input_tokens": 536525,
+      "total_output_tokens": 10012,
+      "total_cost": 0.29083075,
+      "final_state": "success"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 715446,
+    "output_tokens": 19184
+  },
+  "timing": {
+    "total_duration": 584.5247337818146
+  }
+}

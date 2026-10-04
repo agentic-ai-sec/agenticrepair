@@ -1,0 +1,34 @@
+diff --git a/source/fitz/load-bmp.c b/source/fitz/load-bmp.c
+index 402fc0d31..19510895e 100644
+--- a/source/fitz/load-bmp.c
++++ b/source/fitz/load-bmp.c
+@@ -805,14 +805,26 @@ bmp_read_color_profile(fz_context *ctx, struct info *info, const unsigned char *
+ 	{
+ 		fz_buffer *profile;
+ 		fz_colorspace *cs;
+-
+-		if ((uint32_t)(end - begin) < info->profilesize)
++		size_t len;
++		size_t offset;
++		size_t size;
++
++		/*
++		 * The v5 header provides an offset+size pair for the embedded ICC profile.
++		 * Both are attacker-controlled, so validate the full range before doing any
++		 * pointer arithmetic or copying.
++		 */
++		len = (size_t)(end - begin);
++		offset = (size_t)info->profileoffset;
++		size = (size_t)info->profilesize;
++
++		if (offset > len || size > len - offset)
+ 		{
+ 			fz_warn(ctx, "ignoring truncated color profile in bmp image");
+ 			return NULL;
+ 		}
+ 
+-		profile = fz_new_buffer_from_copied_data(ctx, begin + info->profileoffset, info->profilesize);
++		profile = fz_new_buffer_from_copied_data(ctx, begin + offset, size);
+ 
+ 		fz_try(ctx)
+ 			cs = fz_new_icc_colorspace(ctx, FZ_COLORSPACE_RGB, 0, "BMPRGB", profile);

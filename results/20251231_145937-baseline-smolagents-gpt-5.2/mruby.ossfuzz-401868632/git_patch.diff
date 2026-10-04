@@ -1,0 +1,35 @@
+diff --git a/src/range.c b/src/range.c
+index 0d2a551fa..c7b3cbe38 100644
+--- a/src/range.c
++++ b/src/range.c
+@@ -388,20 +388,23 @@ range_num_to_a(mrb_state *mrb, mrb_value range)
+       if (a > b) {
+         return mrb_ary_new_capa(mrb, 0);
+       }
+-      ary = mrb_ary_new_capa(mrb, (mrb_int)(b - a) + 1);
+-      mrb_value *ptr = RARRAY_PTR(ary);
+-      mrb_int i = 0;
++      /*
++       * NOTE:
++       * Do not precompute array capacity from (b-a) using floating point.
++       * Rounding can make the computed capacity smaller than the number of
++       * iterations below, leading to an out-of-bounds write via RARRAY_PTR.
++       * Use mrb_ary_push() so the array grows safely.
++       */
++      ary = mrb_ary_new(mrb);
+       if (RANGE_EXCL(r)) {
+         while (a < b) {
+-          ptr[i++] = mrb_int_value(mrb, (mrb_int)a);
+-          ARY_SET_LEN(RARRAY(ary), i);
++          mrb_ary_push(mrb, ary, mrb_int_value(mrb, (mrb_int)a));
+           a += 1.0;
+         }
+       }
+       else {
+         while (a <= b) {
+-          ptr[i++] = mrb_int_value(mrb, (mrb_int)a);
+-          ARY_SET_LEN(RARRAY(ary), i);
++          mrb_ary_push(mrb, ary, mrb_int_value(mrb, (mrb_int)a));
+           a += 1.0;
+         }
+       }

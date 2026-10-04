@@ -1,0 +1,20 @@
+diff --git a/src/p_mach.cpp b/src/p_mach.cpp
+index a97d2aff..830e8843 100644
+--- a/src/p_mach.cpp
++++ b/src/p_mach.cpp
+@@ -1678,6 +1678,15 @@ tribool PackMachBase<T>::canUnpack()
+     Mach_command const *ptr = (Mach_command const *)rawmseg;
+     for (unsigned j= 0; j < ncmds;
+             ptr = (Mach_command const *)(ptr->cmdsize + (char const *)ptr), ++j) {
++        /* Ensure we have at least two words (cmd and cmdsize) available to read.
++           This prevents get_ne32/get_le32 from reading past the rawmseg buffer when
++           encountering a truncated or malformed load command. */
++        size_t const ptr_off = (const char *)ptr - (const char *)rawmseg;
++        if (ptr_off + sizeof(ptr->cmd) + sizeof(ptr->cmdsize) > (size_t)mhdri.sizeofcmds) {
++            infoWarning("Mach_command[%u] truncated: available=0x%x need=0x%x",
++                j, (unsigned)(mhdri.sizeofcmds - ptr_off), (unsigned)(sizeof(ptr->cmd) + sizeof(ptr->cmdsize)));
++            throwCantUnpack("file corrupted");
++        }
+         unsigned const cmd = ptr->cmd;
+         unsigned const cmdsize = ptr->cmdsize;
+         if (is_bad_linker_command(cmd, cmdsize, headway, lc_seg, sizeof(Addr))) {

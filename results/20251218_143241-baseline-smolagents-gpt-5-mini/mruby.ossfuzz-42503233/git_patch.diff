@@ -1,0 +1,19 @@
+diff --git a/src/vm.c b/src/vm.c
+index 1c59d4406..52cea0783 100644
+--- a/src/vm.c
++++ b/src/vm.c
+@@ -478,7 +478,14 @@ mrb_funcall_with_block(mrb_state *mrb, mrb_value self, mrb_sym mid, mrb_int argc
+     }
+     c = mrb_class(mrb, self);
+     m = mrb_method_search_vm(mrb, &c, mid);
+-    mrb_stack_extend(mrb, argc + 3);
++    /* Ensure enough stack space for current callinfo's registers (n)
++       plus arguments and receiver/block slots.  The previous code only
++       reserved argc+3 which could be insufficient when n is large and
++       writes like ci->stack[n+1] happen before pushing a new callinfo.
++       Reserve n + argc + 3 to avoid overruns in nested funcall/equal
++       chains (see issue with rational_eq causing heap-buffer-overflow).
++    */
++    mrb_stack_extend(mrb, n + argc + 3);
+     if (MRB_METHOD_UNDEF_P(m) || argc >= 15) {
+       mrb_value args = mrb_ary_new_from_values(mrb, argc, argv);

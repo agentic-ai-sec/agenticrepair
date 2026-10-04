@@ -1,0 +1,60 @@
+diff --git a/src/vm.c b/src/vm.c
+index 40a8a8971..d17da0cb8 100644
+--- a/src/vm.c
++++ b/src/vm.c
+@@ -1306,7 +1306,7 @@ prepare_tagged_break(mrb_state *mrb, uint32_t tag, const mrb_callinfo *return_ci
+ 
+ #ifdef MRB_USE_VM_SWITCH_DISPATCH
+ 
+-#define INIT_DISPATCH for (;;) { insn = BYTECODE_DECODER(*ci->pc); CODE_FETCH_HOOK(mrb, irep, ci->pc, regs); switch (insn) {
++#define INIT_DISPATCH for (;;) { ci = mrb->c->ci; insn = BYTECODE_DECODER(*ci->pc); CODE_FETCH_HOOK(mrb, irep, ci->pc, regs); switch (insn) {
+ #define CASE(insn,ops) case insn: { const mrb_code *pc = ci->pc+1; FETCH_ ## ops (); ci->pc = pc; } L_ ## insn ## _BODY:
+ #define NEXT goto L_END_DISPATCH
+ #define JUMP NEXT
+@@ -2668,13 +2668,25 @@ RETRY_TRY_BLOCK:
+     }
+ 
+     CASE(OP_ARYCAT, B) {
+-      mrb_value splat = mrb_ary_splat(mrb, regs[a+1]);
+-      if (mrb_nil_p(regs[a])) {
+-        regs[a] = splat;
++      /*
++       * mrb_ary_splat may call back into the VM and reallocate
++       * the callinfo/stack buffers. Accessing "regs" across such
++       * calls may use a stale pointer (heap-use-after-free). To
++       * avoid this, fetch the argument from the current context,
++       * call mrb_ary_splat, then refresh "ci" and operate on the
++       * possibly moved stack pointer.
++       */
++      mrb_value arg = mrb->c->ci->stack[a+1];
++      mrb_value splat = mrb_ary_splat(mrb, arg);
++      /* refresh local ci and stack pointer after potential reallocation */
++      ci = mrb->c->ci;
++      mrb_value *stack = ci->stack;
++      if (mrb_nil_p(stack[a])) {
++        stack[a] = splat;
+       }
+       else {
+-        mrb_assert(mrb_array_p(regs[a]));
+-        mrb_ary_concat(mrb, regs[a], splat);
++        mrb_assert(mrb_array_p(stack[a]));
++        mrb_ary_concat(mrb, stack[a], splat);
+       }
+       mrb_gc_arena_restore(mrb, ai);
+       NEXT;
+@@ -2689,8 +2701,13 @@ RETRY_TRY_BLOCK:
+     }
+ 
+     CASE(OP_ARYSPLAT, B) {
+-      mrb_value ary = mrb_ary_splat(mrb, regs[a]);
+-      regs[a] = ary;
++      /* See comment in OP_ARYCAT: calling mrb_ary_splat can reenter
++       * the VM and reallocate internal stacks. Use current context
++       * to read the argument and refresh ci/stack after the call. */
++      mrb_value arg = mrb->c->ci->stack[a];
++      mrb_value ary = mrb_ary_splat(mrb, arg);
++      ci = mrb->c->ci;
++      ci->stack[a] = ary;
+       mrb_gc_arena_restore(mrb, ai);
+       NEXT;
+     }

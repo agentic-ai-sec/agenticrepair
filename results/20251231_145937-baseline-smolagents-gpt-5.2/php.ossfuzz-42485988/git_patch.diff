@@ -1,0 +1,28 @@
+diff --git a/Zend/zend_ast.c b/Zend/zend_ast.c
+index b1e564b5e90..d5837ee1a87 100644
+--- a/Zend/zend_ast.c
++++ b/Zend/zend_ast.c
+@@ -1919,6 +1919,7 @@ simple_list:
+ 			smart_str_appends(str, "static $");
+ 			zend_ast_export_name(str, ast->child[0], 0, indent);
+ 			APPEND_DEFAULT_VALUE(1);
++			break;
+ 		case ZEND_AST_WHILE:
+ 			smart_str_appends(str, "while (");
+ 			zend_ast_export_ex(str, ast->child[0], 0, indent);
+@@ -2007,6 +2008,7 @@ simple_list:
+ 		case ZEND_AST_CONST_ELEM:
+ 			zend_ast_export_name(str, ast->child[0], 0, indent);
+ 			APPEND_DEFAULT_VALUE(1);
++			break;
+ 		case ZEND_AST_USE_TRAIT:
+ 			smart_str_appends(str, "use ");
+ 			zend_ast_export_ex(str, ast->child[0], 0, indent);
+@@ -2135,6 +2137,7 @@ simple_list:
+ 			smart_str_appendc(str, '$');
+ 			zend_ast_export_name(str, ast->child[1], 0, indent);
+ 			APPEND_DEFAULT_VALUE(2);
++			break;
+ 
+ 		/* 4 child nodes */
+ 		case ZEND_AST_FOR:

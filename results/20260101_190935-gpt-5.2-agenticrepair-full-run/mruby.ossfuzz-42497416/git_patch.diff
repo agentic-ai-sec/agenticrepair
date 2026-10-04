@@ -1,0 +1,12 @@
+diff --git a/src/array.c b/src/array.c
+index 739b2b3e1..2d175e297 100644
+--- a/src/array.c
++++ b/src/array.c
+@@ -589,6 +589,7 @@ mrb_ary_shift_m(mrb_state *mrb, mrb_value self)
+   if (mrb_get_args(mrb, "|i", &n) == 0) {
+     return mrb_ary_shift(mrb, self);
+   };
++  if (n <= 0) return mrb_ary_new(mrb);
+   ary_modify_check(mrb, a);
+   if (len == 0 || n == 0) return mrb_ary_new(mrb);
+   if (n > len) n = len;

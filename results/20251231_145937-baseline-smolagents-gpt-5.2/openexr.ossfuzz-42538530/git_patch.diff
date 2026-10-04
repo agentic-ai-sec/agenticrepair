@@ -1,0 +1,53 @@
+diff --git a/src/lib/OpenEXRCore/validation.c b/src/lib/OpenEXRCore/validation.c
+index 65e2346b..94d05050 100644
+--- a/src/lib/OpenEXRCore/validation.c
++++ b/src/lib/OpenEXRCore/validation.c
+@@ -717,9 +717,19 @@ internal_exr_validate_shared_attrs (exr_context_t ctxt,
+     rv1 = exr_get_attribute_by_name (ctxt, curpartidx, "timecode", &cattr);
+     if (EXR_ERR_SUCCESS == rv && rv == rv1)
+     {
+-        if (memcmp (battr->timecode,
+-                    cattr->timecode,
+-                    sizeof(exr_attr_timecode_t)))
++        /*
++         * Defensive: exr_get_attribute_by_name() matches by name only.
++         * Crafted headers can provide a different/opaque type with this name.
++         * Ensure pointers refer to real timecode payloads before memcmp.
++         */
++        if (!battr || !cattr || battr->type != EXR_ATTR_TIMECODE ||
++            cattr->type != EXR_ATTR_TIMECODE || !battr->timecode ||
++            !cattr->timecode)
++        {
++            rv = EXR_ERR_ATTR_TYPE_MISMATCH;
++        }
++        else if (memcmp (
++                     battr->timecode, cattr->timecode, sizeof (exr_attr_timecode_t)))
+         {
+             rv = EXR_ERR_ATTR_TYPE_MISMATCH;
+         }
+@@ -737,10 +747,22 @@ internal_exr_validate_shared_attrs (exr_context_t ctxt,
+     rv1 = exr_get_attribute_by_name (ctxt, curpartidx, "chromaticities", &cattr);
+     if (EXR_ERR_SUCCESS == rv && rv == rv1)
+     {
+-        if (memcmp (battr->chromaticities,
+-                    cattr->chromaticities,
+-                    sizeof(exr_attr_chromaticities_t)))
++        /*
++         * Defensive: attribute name may exist with a different/opaque type.
++         * Ensure pointers refer to real chromaticities payloads before memcmp.
++         */
++        if (!battr || !cattr || battr->type != EXR_ATTR_CHROMATICITIES ||
++            cattr->type != EXR_ATTR_CHROMATICITIES || !battr->chromaticities ||
++            !cattr->chromaticities)
++        {
+             rv = EXR_ERR_ATTR_TYPE_MISMATCH;
++        }
++        else if (memcmp (battr->chromaticities,
++                         cattr->chromaticities,
++                         sizeof (exr_attr_chromaticities_t)))
++        {
++            rv = EXR_ERR_ATTR_TYPE_MISMATCH;
++        }
+         else
+             rv = EXR_ERR_SUCCESS;
+     }

@@ -1,0 +1,21 @@
+diff --git a/Zend/zend_generators.c b/Zend/zend_generators.c
+index baca12f66b5..22dce1eb000 100644
+--- a/Zend/zend_generators.c
++++ b/Zend/zend_generators.c
+@@ -631,7 +631,16 @@ void zend_generator_yield_from(zend_generator *generator, zend_generator *from)
+ 
+ 	generator->node.parent = from;
+ 	zend_generator_get_current(generator);
+-	GC_DELREF(&from->std);
++	/*
++	 * The yield-from tree keeps track of delegated generators via internal
++	 * references added in zend_generator_add_child() when a generator becomes a
++	 * non-leaf node.
++	 *
++	 * Do not decrement the delegated generator refcount here: The VM handler
++	 * already balances its temporary Z_ADDREF_P() with FREE_OP1(), and dropping a
++	 * ref here may free a generator that is still referenced from the yield-from
++	 * tree, leading to use-after-free in tree traversal.
++	 */
+ 	generator->flags |= ZEND_GENERATOR_DO_INIT;
+ }

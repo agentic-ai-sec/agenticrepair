@@ -1,0 +1,165 @@
+{
+  "defect": "trailing blank context lines removed by .strip() during patch collection",
+  "repaired": [
+    {
+      "instance_id": "exiv2.cve-2018-17229",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "faad2.cve-2018-20196",
+      "context_lines_restored": 2
+    },
+    {
+      "instance_id": "faad2.cve-2018-20198",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "faad2.cve-2018-20357",
+      "context_lines_restored": 2
+    },
+    {
+      "instance_id": "faad2.cve-2018-20361",
+      "context_lines_restored": 2
+    },
+    {
+      "instance_id": "faad2.cve-2021-32278",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "gpac.cve-2023-0866",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "gpac.cve-2023-46929",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "imagemagick.cve-2017-11539",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "imagemagick.cve-2017-12641",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "libarchive.cve-2019-11463",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "libdwarf.cve-2022-32200",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "libheif.cve-2023-49460",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "libredwg.cve-2021-42585",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "libredwg.cve-2021-42586",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "libredwg.cve-2022-45332",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "libxml2.ossfuzz-42486565",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "libxml2.ossfuzz-42487244",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "libxml2.ossfuzz-42517254",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "libxml2.ossfuzz-42525197",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "matio.cve-2019-9035",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "mruby.cve-2022-0614",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "mruby.cve-2022-1212",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "mruby.ossfuzz-42503233",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "mruby.ossfuzz-42503239",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "mruby.ossfuzz-42503243",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "mruby.ossfuzz-42513169",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "njs.cve-2022-27007",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "njs.cve-2022-29369",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "njs.cve-2022-29780",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "njs.cve-2022-31306",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "njs.cve-2022-31307",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "njs.cve-2022-34029",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "njs.cve-2022-43284",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "openjpeg.cve-2021-3575",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "php.ossfuzz-42487317",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "php.ossfuzz-42487401",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "php.ossfuzz-42515716",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "wasm3.ossfuzz-42495805",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "yaml-cpp.cve-2018-20574",
+      "context_lines_restored": 1
+    }
+  ]
+}

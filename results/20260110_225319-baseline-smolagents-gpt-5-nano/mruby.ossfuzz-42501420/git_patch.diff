@@ -1,0 +1,31 @@
+diff --git a/src/value_array.h b/src/value_array.h
+index 6089b8aa0..7c09028b4 100644
+--- a/src/value_array.h
++++ b/src/value_array.h
+@@ -6,23 +6,18 @@
+ static inline void
+ value_move(mrb_value *s1, const mrb_value *s2, size_t n)
+ {
+-  if (n == 0) return;
+-  if (s1 > s2 && s1 < s2 + n)
+-  {
++  if (n == 0 || s1 == s2) return;
++  if (s1 > s2 && (size_t)(s1 - s2) < n) {
+     s1 += n;
+     s2 += n;
+     while (n-- > 0) {
+       *--s1 = *--s2;
+     }
+-  }
+-  else if (s1 != s2) {
++  } else {
+     while (n-- > 0) {
+       *s1++ = *s2++;
+     }
+   }
+-  else {
+-    /* nothing to do. */
+-  }
+ }
+ 
+ #endif /* MRB_VALUE_ARRAY_H__ */

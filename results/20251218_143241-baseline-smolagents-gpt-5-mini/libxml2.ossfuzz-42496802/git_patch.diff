@@ -1,0 +1,26 @@
+diff --git a/parser.c b/parser.c
+index 9bda9458..858c5642 100644
+--- a/parser.c
++++ b/parser.c
+@@ -9928,7 +9928,9 @@ xmlParseContent(xmlParserCtxtPtr ctxt) {
+ 
+     if ((ctxt->instate != XML_PARSER_EOF) && (ctxt->nameNr > nameNr)) {
+         const xmlChar *name = ctxt->nameTab[ctxt->nameNr - 1];
+-        int line = ctxt->pushTab[ctxt->nameNr - 1].line;
++        int line = 0;
++        if (ctxt->pushTab != NULL)
++            line = ctxt->pushTab[ctxt->nameNr - 1].line;
+         xmlFatalErrMsgStrIntStr(ctxt, XML_ERR_TAG_NOT_FINISHED,
+                 "Premature end of data in tag %s line %d\n",
+ 		name, line, NULL);
+@@ -9960,7 +9962,9 @@ xmlParseElement(xmlParserCtxtPtr ctxt) {
+ 
+     if (CUR == 0) {
+         const xmlChar *name = ctxt->nameTab[ctxt->nameNr - 1];
+-        int line = ctxt->pushTab[ctxt->nameNr - 1].line;
++        int line = 0;
++        if (ctxt->pushTab != NULL)
++            line = ctxt->pushTab[ctxt->nameNr - 1].line;
+         xmlFatalErrMsgStrIntStr(ctxt, XML_ERR_TAG_NOT_FINISHED,
+                 "Premature end of data in tag %s line %d\n",
+ 		name, line, NULL);

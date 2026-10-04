@@ -1,0 +1,49 @@
+diff --git a/source/m3_compile.c b/source/m3_compile.c
+index a895c49..a707507 100644
+--- a/source/m3_compile.c
++++ b/source/m3_compile.c
+@@ -2177,6 +2177,8 @@ const M3OpInfo c_operations [] =
+     M3OP( "termination", 0, c_m3Type_unknown ) // for find_operation_info
+ # endif
+ };
++const u16 c_numOperations = (u16)(sizeof(c_operations)/sizeof(c_operations[0]));
++
+ 
+ const M3OpInfo c_operationsFC [] =
+ {
+@@ -2193,6 +2195,8 @@ const M3OpInfo c_operationsFC [] =
+     M3OP_F( "termination", 0, c_m3Type_unknown ) // for find_operation_info
+ # endif
+ };
++const u16 c_numOperationsFC = (u16)(sizeof(c_operationsFC)/sizeof(c_operationsFC[0]));
++
+ 
+ M3Result  Compile_BlockStatements  (IM3Compilation o)
+ {
+diff --git a/source/m3_compile.h b/source/m3_compile.h
+index ece7ad6..5d1b126 100644
+--- a/source/m3_compile.h
++++ b/source/m3_compile.h
+@@ -140,12 +140,20 @@ typedef const M3OpInfo *    IM3OpInfo;
+ 
+ extern const M3OpInfo c_operations [];
+ extern const M3OpInfo c_operationsFC [];
++extern const u16 c_numOperations;
++extern const u16 c_numOperationsFC;
+ 
+ static inline
+ const M3OpInfo* GetOpInfo(m3opcode_t opcode) {
+     switch (opcode >> 8) {
+-    case 0x00: return &c_operations[opcode];
+-    case 0xFC: return &c_operationsFC[opcode & 0xFF];
++    case 0x00: {
++        u16 idx = (u16) opcode;
++        return (idx < c_numOperations) ? &c_operations[idx] : NULL;
++    }
++    case 0xFC: {
++        u8 idx = (u8) (opcode & 0xFF);
++        return (idx < c_numOperationsFC) ? &c_operationsFC[idx] : NULL;
++    }
+     default:   return NULL;
+     }
+ }

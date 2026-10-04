@@ -1,0 +1,71 @@
+diff --git a/parser.c b/parser.c
+index cd89fdb6..fad6fc05 100644
+--- a/parser.c
++++ b/parser.c
+@@ -4947,19 +4947,31 @@ xmlParseCommentComplex(xmlParserCtxtPtr ctxt, xmlChar *buf,
+ 	if ((r == '-') && (q == '-')) {
+ 	    xmlFatalErr(ctxt, XML_ERR_HYPHEN_IN_COMMENT, NULL);
+ 	}
+-	if (len + 5 >= size) {
++	/*
++	 * Ensure there is enough space for the next UTF-8 character
++	 * (up to 4 bytes) plus the terminating NUL.
++	 *
++	 * Doubling the buffer can be insufficient for tiny buffers
++	 * (e.g. size=2 -> 4) when adding a 4-byte character plus NUL,
++	 * which could lead to a one-byte heap overflow.
++	 */
++	if (len + (size_t) ql + 1 > size) {
+ 	    xmlChar *new_buf;
+-            size_t new_size;
++	    size_t new_size;
++	    size_t need;
+ 
++	    need = len + (size_t) ql + 1;
+ 	    new_size = size * 2;
++	    if (new_size < need)
++	        new_size = need;
+ 	    new_buf = (xmlChar *) xmlRealloc(buf, new_size);
+ 	    if (new_buf == NULL) {
+-		xmlFree (buf);
+-		xmlErrMemory(ctxt, NULL);
+-		return;
++	        xmlFree (buf);
++	        xmlErrMemory(ctxt, NULL);
++	        return;
+ 	    }
+ 	    buf = new_buf;
+-            size = new_size;
++	    size = new_size;
+ 	}
+ 	COPY_BUF(ql,buf,len,q);
+         if (len > maxLength) {
+@@ -5375,17 +5387,18 @@ xmlParsePI(xmlParserCtxtPtr ctxt) {
+ 	    while (IS_CHAR(cur) && /* checked */
+ 		   ((cur != '?') || (NXT(1) != '>'))) {
+ 		if (len + 5 >= size) {
+-		    xmlChar *tmp;
+-                    size_t new_size = size * 2;
+-		    tmp = (xmlChar *) xmlRealloc(buf, new_size);
+-		    if (tmp == NULL) {
+-			xmlErrMemory(ctxt, NULL);
+-			xmlFree(buf);
+-			ctxt->instate = state;
+-			return;
++		    xmlChar *new_buf;
++		    size_t new_size;
++
++		    new_size = size * 2;
++		    new_buf = (xmlChar *) xmlRealloc(buf, new_size);
++		    if (new_buf == NULL) {
++		        xmlFree (buf);
++		        xmlErrMemory(ctxt, NULL);
++		        return;
+ 		    }
+-		    buf = tmp;
+-                    size = new_size;
++		    buf = new_buf;
++		    size = new_size;
+ 		}
+ 		COPY_BUF(l,buf,len,cur);
+                 if (len > maxLength) {

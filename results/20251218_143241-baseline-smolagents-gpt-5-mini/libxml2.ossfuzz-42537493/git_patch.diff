@@ -1,0 +1,23 @@
+diff --git a/xmlIO.c b/xmlIO.c
+index 1b7b4606..5eab7284 100644
+--- a/xmlIO.c
++++ b/xmlIO.c
+@@ -1568,8 +1568,17 @@ __xmlOutputBufferCreateFilename(const char *URI,
+     }
+ 
+     if (ret->context == NULL) {
++        /*
++         * If no output method was found the buffer will be closed.
++         * xmlOutputBufferClose() will free the encoder stored in the
++         * buffer which may be owned by the caller. To avoid a double
++         * free or use-after-free when the caller also attempts to
++         * close the encoder, clear the pointer here so that
++         * xmlOutputBufferClose() won't free it.
++         */
++        ret->encoder = NULL;
+         xmlOutputBufferClose(ret);
+-	ret = NULL;
++        ret = NULL;
+     }
+ 
+     xmlFree(unescaped);

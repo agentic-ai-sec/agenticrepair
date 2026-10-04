@@ -1,0 +1,48 @@
+diff --git a/HTMLparser.c b/HTMLparser.c
+index 67c39385..8895e33e 100644
+--- a/HTMLparser.c
++++ b/HTMLparser.c
+@@ -403,8 +403,11 @@ htmlCurrentChar(xmlParserCtxtPtr ctxt, int *len) {
+     unsigned char c;
+     unsigned int val;
+ 
+-    if (ctxt->instate == XML_PARSER_EOF)
++    if (ctxt->instate == XML_PARSER_EOF) {
++        if (len != NULL)
++            *len = 0;
+ 	return(0);
++    }
+ 
+     if (ctxt->token != 0) {
+ 	*len = 0;
+@@ -412,8 +415,11 @@ htmlCurrentChar(xmlParserCtxtPtr ctxt, int *len) {
+     }
+ 
+     if ((ctxt->input->end - ctxt->input->cur < 4) &&
+-        (xmlParserGrow(ctxt) < 0))
++        (xmlParserGrow(ctxt) < 0)) {
++        if (len != NULL)
++            *len = 0;
+         return(0);
++    }
+ 
+     if (ctxt->charset != XML_CHAR_ENCODING_UTF8) {
+         xmlChar * guess;
+@@ -2835,7 +2841,7 @@ htmlParseHTMLAttribute(htmlParserCtxtPtr ctxt, const xmlChar stop) {
+ 	    }
+ 	} else {
+ 	    unsigned int c;
+-	    int bits, l;
++	    int bits, l = 0;
+ 
+ 	    if (out - buffer > buffer_size - 100) {
+ 		int indx = out - buffer;
+@@ -2844,6 +2850,8 @@ htmlParseHTMLAttribute(htmlParserCtxtPtr ctxt, const xmlChar stop) {
+ 		out = &buffer[indx];
+ 	    }
+ 	    c = CUR_CHAR(l);
++	    if ((c == 0) && (l == 0))
++	        break;
+ 	    if      (c <    0x80)
+ 		    { *out++  = c;                bits= -6; }
+ 	    else if (c <   0x800)

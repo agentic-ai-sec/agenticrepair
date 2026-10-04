@@ -1,0 +1,65 @@
+diff --git a/src/lib/OpenEXRCore/internal_dwa_compressor.h b/src/lib/OpenEXRCore/internal_dwa_compressor.h
+index 688bd51a..189fba21 100644
+--- a/src/lib/OpenEXRCore/internal_dwa_compressor.h
++++ b/src/lib/OpenEXRCore/internal_dwa_compressor.h
+@@ -241,6 +241,7 @@ DwaCompressor_compress (DwaCompressor* me)
+     uint64_t*    rleCompressedSize;
+     uint64_t*    rleUncompressedSize;
+     uint64_t*    rleRawSize;
++    uint64_t    compressedSize;
+ 
+     uint64_t* totalAcUncompressedCount;
+     uint64_t* totalDcUncompressedCount;
+@@ -709,12 +710,10 @@ DwaCompressor_uncompress (
+     exr_result_t rv         = EXR_ERR_SUCCESS;
+     uint64_t     counters[NUM_SIZES_SINGLE];
+     uint64_t     version;
+-    uint64_t     unknownUncompressedSize;
+     uint64_t     unknownCompressedSize;
+     uint64_t     acCompressedSize;
+     uint64_t     dcCompressedSize;
+     uint64_t     rleCompressedSize;
+-    uint64_t     rleUncompressedSize;
+     uint64_t     rleRawSize;
+ 
+     uint64_t totalAcUncompressedCount;
+@@ -723,7 +722,6 @@ DwaCompressor_uncompress (
+     uint64_t acCompression;
+ 
+     size_t         outBufferSize;
+-    uint64_t       compressedSize;
+     const uint8_t* dataPtr;
+     uint64_t       dataLeft;
+     uint8_t*       outBufferEnd;
+@@ -735,6 +733,31 @@ DwaCompressor_uncompress (
+     const uint8_t* compressedRleBuf;
+ 
+     if (iSize < headerSize) return EXR_ERR_CORRUPT_CHUNK;
++    uint64_t rem = iSize - headerSize;
++    if (unknownCompressedSize > rem) return EXR_ERR_CORRUPT_CHUNK;
++    rem -= unknownCompressedSize;
++    if (acCompressedSize > rem) return EXR_ERR_CORRUPT_CHUNK;
++    rem -= acCompressedSize;
++    if (dcCompressedSize > rem) return EXR_ERR_CORRUPT_CHUNK;
++    rem -= dcCompressedSize;
++    if (rleCompressedSize > rem) return EXR_ERR_CORRUPT_CHUNK;
++    rem -= rleCompressedSize;
++
++    if (unknownCompressedSize > UINT64_MAX - acCompressedSize) { return EXR_ERR_CORRUPT_CHUNK; }
++    compressedSize = *unknownCompressedSize + *acCompressedSize;
++    if (compressedSize > UINT64_MAX - *dcCompressedSize) { return EXR_ERR_CORRUPT_CHUNK; }
++    compressedSize += *dcCompressedSize;
++    if (compressedSize > UINT64_MAX - *rleCompressedSize) { return EXR_ERR_CORRUPT_CHUNK; }
++    compressedSize += *rleCompressedSize;
++
++    if ((iSize - headerSize) < compressedSize) { return EXR_ERR_CORRUPT_CHUNK; }
++
++    size_t totalNeeded = headerSize;
++    totalNeeded += (size_t)unknownCompressedSize;
++    totalNeeded += (size_t)acCompressedSize;
++    totalNeeded += (size_t)dcCompressedSize;
++    totalNeeded += (size_t)rleCompressedSize;
++    if ((size_t)iSize < totalNeeded) return EXR_ERR_CORRUPT_CHUNK;
+ 
+     //
+     // Flip the counters from XDR to NATIVE

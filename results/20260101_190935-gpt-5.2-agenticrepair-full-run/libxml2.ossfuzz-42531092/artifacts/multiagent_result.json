@@ -1,0 +1,255 @@
+{
+  "instance_id": "libxml2.ossfuzz-42531092",
+  "final_status": "failed",
+  "static_analyzer_output": {
+    "role": "static_analyzer",
+    "raw_output": "{\n  \"analysis_type\": \"memory\",\n  \"findings\": [\n    {\n      \"file\": \"src/libxml2/dict.c\",\n      \"line\": 471,\n      \"message\": \"CodeQL (memory) did not flag dict.c:471, but this loop dereferences data[i] up to maxLen; if caller passes an invalid pointer (as in the ASan trace), this becomes an out-of-bounds read.\",\n      \"severity\": \"note\"\n    },\n    {\n      \"file\": \"src/libxml2/parser.c\",\n      \"line\": 3490,\n      \"message\": \"CodeQL did not emit a specific alert here; manual review shows startPosition is computed as size_t (CUR_PTR - BASE_PTR). If CUR_PTR < BASE_PTR, this underflows and (BASE_PTR + startPosition) can point outside the input buffer, feeding an invalid pointer into xmlDictLookupHashed.\",\n      \"severity\": \"warning\"\n    }\n  ],\n  \"dataflow_summary\": \"No relevant CodeQL dataflow/taint path was produced for the reported crash path (xmlParseNCNameComplex -> xmlDictLookupHashed -> xmlDictHashName).\",\n  \"key_insight\": \"The crash is most consistent with an invalid name pointer reaching xmlDictHashName; the most suspicious origin is parser.c computing an unsigned startPosition from pointer subtraction and later reconstructing the start pointer, which can underflow/wrap and produce a pointer into unrelated (global) memory.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"In xmlParseNCNameComplex/xmlParseNameComplex, store the start pointer directly (e.g., const xmlChar *start = CUR_PTR) instead of startPosition = CUR_PTR - BASE_PTR; then call xmlDictLookupHashed(ctxt->dict, start, len).\",\n      \"reasoning\": \"Eliminates unsigned underflow/wraparound risk from pointer subtraction and prevents constructing an invalid pointer that later gets dereferenced in xmlDictHashName.\",\n      \"trade_offs\": \"Minimal change; relies on input buffer stability during scanning (it already must be stable for correct parsing).\"\n    },\n    {\n      \"approach\": \"If keeping an offset is required, use ptrdiff_t for (CUR_PTR - BASE_PTR) and validate bounds: if (CUR_PTR < BASE_PTR || CUR_PTR > ctxt->input->end) error; also ensure (BASE_PTR + offset) stays within [BASE_PTR, end].\",\n      \"reasoning\": \"Makes the offset computation well-defined and prevents wraparound pointers from being formed.\",\n      \"trade_offs\": \"More checks on a hot path; slightly more complex code and must carefully handle buffer refills.\" \n    },\n    {\n      \"approach\": \"Add a defensive check before hashing/lookup: when len is known, ensure the provided pointer is inside the current input buffer (or at least non-NULL and plausibly readable) before calling xmlDictLookupHashed.\",\n      \"reasoning\": \"Adds a last-resort guardrail so even if a bad pointer is produced upstream, the dictionary code won\u2019t dereference it.\",\n      \"trade_offs\": \"Harder to do generically (dictionary is used beyond parser); may require passing buffer bounds down or adding a parser-only checked lookup API.\" \n    }\n  ]\n}",
+    "parsed_output": {
+      "analysis_type": "memory",
+      "findings": [
+        {
+          "file": "src/libxml2/dict.c",
+          "line": 471,
+          "message": "CodeQL (memory) did not flag dict.c:471, but this loop dereferences data[i] up to maxLen; if caller passes an invalid pointer (as in the ASan trace), this becomes an out-of-bounds read.",
+          "severity": "note"
+        },
+        {
+          "file": "src/libxml2/parser.c",
+          "line": 3490,
+          "message": "CodeQL did not emit a specific alert here; manual review shows startPosition is computed as size_t (CUR_PTR - BASE_PTR). If CUR_PTR < BASE_PTR, this underflows and (BASE_PTR + startPosition) can point outside the input buffer, feeding an invalid pointer into xmlDictLookupHashed.",
+          "severity": "warning"
+        }
+      ],
+      "dataflow_summary": "No relevant CodeQL dataflow/taint path was produced for the reported crash path (xmlParseNCNameComplex -> xmlDictLookupHashed -> xmlDictHashName).",
+      "key_insight": "The crash is most consistent with an invalid name pointer reaching xmlDictHashName; the most suspicious origin is parser.c computing an unsigned startPosition from pointer subtraction and later reconstructing the start pointer, which can underflow/wrap and produce a pointer into unrelated (global) memory.",
+      "fix_suggestions": [
+        {
+          "approach": "In xmlParseNCNameComplex/xmlParseNameComplex, store the start pointer directly (e.g., const xmlChar *start = CUR_PTR) instead of startPosition = CUR_PTR - BASE_PTR; then call xmlDictLookupHashed(ctxt->dict, start, len).",
+          "reasoning": "Eliminates unsigned underflow/wraparound risk from pointer subtraction and prevents constructing an invalid pointer that later gets dereferenced in xmlDictHashName.",
+          "trade_offs": "Minimal change; relies on input buffer stability during scanning (it already must be stable for correct parsing)."
+        },
+        {
+          "approach": "If keeping an offset is required, use ptrdiff_t for (CUR_PTR - BASE_PTR) and validate bounds: if (CUR_PTR < BASE_PTR || CUR_PTR > ctxt->input->end) error; also ensure (BASE_PTR + offset) stays within [BASE_PTR, end].",
+          "reasoning": "Makes the offset computation well-defined and prevents wraparound pointers from being formed.",
+          "trade_offs": "More checks on a hot path; slightly more complex code and must carefully handle buffer refills."
+        },
+        {
+          "approach": "Add a defensive check before hashing/lookup: when len is known, ensure the provided pointer is inside the current input buffer (or at least non-NULL and plausibly readable) before calling xmlDictLookupHashed.",
+          "reasoning": "Adds a last-resort guardrail so even if a bad pointer is produced upstream, the dictionary code won\u2019t dereference it.",
+          "trade_offs": "Harder to do generically (dictionary is used beyond parser); may require passing buffer bounds down or adding a parser-only checked lookup API."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 86789,
+      "output_tokens": 5852
+    },
+    "timing": {
+      "start_time": 1768817795.8645582,
+      "end_time": 1768817924.688238,
+      "duration": 128.82367968559265
+    },
+    "trajectory": {
+      "agent_role": "static_analyzer",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nA global-buffer-overflow READ occurs in xmlDictHashName (dict.c), triggered during NCName/QName parsing (xmlParseNCName/xmlParseQNameHashed in parser.c). The hash/name lookup reads one byte out-of-bounds before the global table xmlIsPubidChar_tab (chvalid.c), which can lead to crashes or potential information disclosure wh",
+      "total_steps": 5,
+      "total_duration": 128.82367968559265,
+      "total_input_tokens": 86789,
+      "total_output_tokens": 5852,
+      "total_cost": 0.14651594999999998,
+      "final_state": "success"
+    }
+  },
+  "dynamic_analyzer_output": {
+    "role": "dynamic_analyzer",
+    "raw_output": "{\n  \"tools_used\": [\"gdb\", \"ubsan\"],\n  \"crash_info\": {\n    \"address\": \"0x56094dda1e57\",\n    \"type\": \"global-buffer-overflow (READ of size 1)\",\n    \"location\": \"dict.c:471 (xmlDictHashName)\"\n  },\n  \"backtrace\": [\n    \"xmlDictHashName (dict.c:471)\",\n    \"xmlDictLookupInternal (dict.c:692)\",\n    \"xmlDictLookupHashed (dict.c:849)\",\n    \"xmlParseNCNameComplex (parser.c:3508)\",\n    \"xmlParseNCName (parser.c:3573)\",\n    \"xmlParseQNameHashed (parser.c:8807)\",\n    \"xmlParseStartTag2 (parser.c:9369)\",\n    \"xmlParseElementStart (parser.c:10244)\",\n    \"xmlParseDocument (parser.c:10956)\",\n    \"xmlDoRead (parser.c:14584)\",\n    \"xmlCtxtReadFile (parser.c:14841)\",\n    \"parseAndPrintFile (xmllint.c:2364)\",\n    \"main (xmllint.c:3776)\"\n  ],\n  \"memory_state\": \"ASan reports the faulting address is 41 bytes *before* the global array xmlIsPubidChar_tab (chvalid.c, size 256) and 22 bytes *after* a 1-byte global string literal ''. This indicates xmlDictHashName is hashing a pointer that does not reference the input buffer/string at all, but instead points into the global redzone between globals; reading data[0] triggers the OOB read.\",\n  \"root_cause_hint\": \"Runtime evidence shows xmlDictHashName itself only reads sequential bytes from the passed-in 'data' pointer (dict.c:471). Therefore the overflow occurs because the caller chain (xmlParseNCNameComplex/xmlParseQNameHashed -> xmlDictLookupHashed) passes an invalid pointer for the name start. Given xmlParseNCNameComplex computes a start offset as (CUR_PTR - BASE_PTR) and later reconstructs a pointer as (BASE_PTR + startPosition), a plausible failure mode is that BASE_PTR/startPosition become inconsistent after input buffer management (grow/shrink/error paths), producing a reconstructed pointer that lands in unrelated global memory. UBSan did not report UB, and GDB breakpoints confirm the crash originates in xmlDictHashName.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Harden xmlParseNCNameComplex/xmlParseQNameHashed before calling xmlDictLookupHashed: validate that (BASE_PTR + startPosition) is within the current input buffer [ctxt->input->base, ctxt->input->end] and that startPosition did not underflow/overflow when computed. If validation fails, fall back to a safe slow path (e.g., copy the parsed bytes to a temporary NUL-terminated buffer and intern from that) or return an error.\",\n      \"reasoning\": \"Dynamic data indicates the pointer passed to xmlDictHashName can end up in global memory; bounding the reconstructed pointer to the input buffer would prevent passing bogus addresses into dictionary hashing.\",\n      \"trade_offs\": \"Adds a couple of checks on the hot parsing path; the safe fallback may allocate memory (slower) but only triggers on anomalous/error conditions.\"\n    },\n    {\n      \"approach\": \"Change name interning to avoid reliance on base+offset reconstruction across buffer changes: store a stable reference to the parsed name bytes (e.g., by ensuring the buffer cannot be shrunk/moved during name scan, or by forcing a grow up-front so no realloc occurs while scanning), then pass that stable pointer to xmlDictLookupHashed.\",\n      \"reasoning\": \"If the invalid pointer is caused by buffer relocation/shrink during scanning, preventing movement during the critical region avoids producing a stale/incorrect pointer.\",\n      \"trade_offs\": \"May increase peak memory usage (forcing grow) and can be tricky with progressive parsing/entity expansion.\"\n    },\n    {\n      \"approach\": \"Defensive programming in xmlDictHashName/xmlDictLookupInternal: when called from hashed APIs (known length), hash exactly 'len' bytes without requiring NUL-termination and optionally add a fast sanity check for obviously invalid pointers (debug builds / hardened builds).\",\n      \"reasoning\": \"Even with a bad pointer, constraining reads to a known length reduces the chance of scanning into redzones due to missing terminators; it can also make failures more deterministic.\",\n      \"trade_offs\": \"Does not fully solve the core issue (bad pointer) and pointer-validity checks are non-portable; best used as a secondary hardening measure.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "tools_used": [
+        "gdb",
+        "ubsan"
+      ],
+      "crash_info": {
+        "address": "0x56094dda1e57",
+        "type": "global-buffer-overflow (READ of size 1)",
+        "location": "dict.c:471 (xmlDictHashName)"
+      },
+      "backtrace": [
+        "xmlDictHashName (dict.c:471)",
+        "xmlDictLookupInternal (dict.c:692)",
+        "xmlDictLookupHashed (dict.c:849)",
+        "xmlParseNCNameComplex (parser.c:3508)",
+        "xmlParseNCName (parser.c:3573)",
+        "xmlParseQNameHashed (parser.c:8807)",
+        "xmlParseStartTag2 (parser.c:9369)",
+        "xmlParseElementStart (parser.c:10244)",
+        "xmlParseDocument (parser.c:10956)",
+        "xmlDoRead (parser.c:14584)",
+        "xmlCtxtReadFile (parser.c:14841)",
+        "parseAndPrintFile (xmllint.c:2364)",
+        "main (xmllint.c:3776)"
+      ],
+      "memory_state": "ASan reports the faulting address is 41 bytes *before* the global array xmlIsPubidChar_tab (chvalid.c, size 256) and 22 bytes *after* a 1-byte global string literal ''. This indicates xmlDictHashName is hashing a pointer that does not reference the input buffer/string at all, but instead points into the global redzone between globals; reading data[0] triggers the OOB read.",
+      "root_cause_hint": "Runtime evidence shows xmlDictHashName itself only reads sequential bytes from the passed-in 'data' pointer (dict.c:471). Therefore the overflow occurs because the caller chain (xmlParseNCNameComplex/xmlParseQNameHashed -> xmlDictLookupHashed) passes an invalid pointer for the name start. Given xmlParseNCNameComplex computes a start offset as (CUR_PTR - BASE_PTR) and later reconstructs a pointer as (BASE_PTR + startPosition), a plausible failure mode is that BASE_PTR/startPosition become inconsistent after input buffer management (grow/shrink/error paths), producing a reconstructed pointer that lands in unrelated global memory. UBSan did not report UB, and GDB breakpoints confirm the crash originates in xmlDictHashName.",
+      "fix_suggestions": [
+        {
+          "approach": "Harden xmlParseNCNameComplex/xmlParseQNameHashed before calling xmlDictLookupHashed: validate that (BASE_PTR + startPosition) is within the current input buffer [ctxt->input->base, ctxt->input->end] and that startPosition did not underflow/overflow when computed. If validation fails, fall back to a safe slow path (e.g., copy the parsed bytes to a temporary NUL-terminated buffer and intern from that) or return an error.",
+          "reasoning": "Dynamic data indicates the pointer passed to xmlDictHashName can end up in global memory; bounding the reconstructed pointer to the input buffer would prevent passing bogus addresses into dictionary hashing.",
+          "trade_offs": "Adds a couple of checks on the hot parsing path; the safe fallback may allocate memory (slower) but only triggers on anomalous/error conditions."
+        },
+        {
+          "approach": "Change name interning to avoid reliance on base+offset reconstruction across buffer changes: store a stable reference to the parsed name bytes (e.g., by ensuring the buffer cannot be shrunk/moved during name scan, or by forcing a grow up-front so no realloc occurs while scanning), then pass that stable pointer to xmlDictLookupHashed.",
+          "reasoning": "If the invalid pointer is caused by buffer relocation/shrink during scanning, preventing movement during the critical region avoids producing a stale/incorrect pointer.",
+          "trade_offs": "May increase peak memory usage (forcing grow) and can be tricky with progressive parsing/entity expansion."
+        },
+        {
+          "approach": "Defensive programming in xmlDictHashName/xmlDictLookupInternal: when called from hashed APIs (known length), hash exactly 'len' bytes without requiring NUL-termination and optionally add a fast sanity check for obviously invalid pointers (debug builds / hardened builds).",
+          "reasoning": "Even with a bad pointer, constraining reads to a known length reduces the chance of scanning into redzones due to missing terminators; it can also make failures more deterministic.",
+          "trade_offs": "Does not fully solve the core issue (bad pointer) and pointer-validity checks are non-portable; best used as a secondary hardening measure."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 342415,
+      "output_tokens": 30021
+    },
+    "timing": {
+      "start_time": 1768817924.6960428,
+      "end_time": 1768818374.7825549,
+      "duration": 450.08651208877563
+    },
+    "trajectory": {
+      "agent_role": "dynamic_analyzer",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nA global-buffer-overflow READ occurs in xmlDictHashName (dict.c), triggered during NCName/QName parsing (xmlParseNCName/xmlParseQNameHashed in parser.c). The hash/name lookup reads one byte out-of-bounds before the global table xmlIsPubidChar_tab (chvalid.c), which can lead to crashes or potential information disclosure wh",
+      "total_steps": 17,
+      "total_duration": 450.08651208877563,
+      "total_input_tokens": 342415,
+      "total_output_tokens": 30021,
+      "total_cost": 0.60099865,
+      "final_state": "success"
+    }
+  },
+  "history_miner_output": {
+    "role": "history_miner",
+    "raw_output": "{\n  \"file_analyzed\": \"dict.c\",\n  \"function_analyzed\": \"xmlDictHashName\",\n  \"relevant_commits\": [\n    {\n      \"hash\": \"d147f564\",\n      \"message\": \"dict: Rewrite dictionary hash table code\",\n      \"changes\": \"Large refactor: new open-addressing/Robin-Hood table and new hashing helpers (xmlDictHashName/xmlDictHashQName) operating on C strings with a maxLen guard.\",\n      \"relevance\": \"Most likely introduction point: the rewritten hash path relies on reading until NUL when callers pass maybeLen=-1 (maxLen=SIZE_MAX), making OOB reads possible if input isn\u2019t safely NUL-terminated or pointer/length is inconsistent during parsing.\"\n    },\n    {\n      \"hash\": \"19161bab\",\n      \"message\": \"dict: Internal API to look up hash values\",\n      \"changes\": \"Introduced xmlDictComputeHash wrapper and reworked lookup internals/types (xmlHashedString-based entries).\",\n      \"relevance\": \"Expanded/standardized hash computation APIs; helps explain how parser code may start depending on dict-side hashing instead of passing exact lengths, increasing exposure to unsafe maxLen usage.\"\n    },\n    {\n      \"hash\": \"7dfcea03\",\n      \"message\": \"dict: Fix integer overflow in xmlDictAddString\",\n      \"changes\": \"Reintroduced length limits (INT_MAX/2) and hardened pool growth computations.\",\n      \"relevance\": \"Shows recent attention to length-handling regressions in dict.c after the rewrite; suggests similar boundary assumptions (length vs NUL-termination) were in flux and could relate to this bug.\"\n    },\n    {\n      \"hash\": \"58598494\",\n      \"message\": \"parser: Fix combination of hash values\",\n      \"changes\": \"Ensured upper bit set in hash values; added xmlDictCombineHash for 31-bit operations.\",\n      \"relevance\": \"Touches the same hashing subsystem introduced by the rewrite; indicates hashing changes continued post-refactor, making it plausible the vulnerable behavior stems from the new hashing design/assumptions.\"\n    }\n  ],\n  \"vulnerability_origin\": \"Likely introduced during the 2023-09-29 dictionary rewrite (d147f564), where xmlDictHashName iterates over `data[i]` up to maxLen but commonly receives maxLen=SIZE_MAX (unknown length). If the passed name pointer isn\u2019t reliably NUL-terminated or is near a boundary during QName/NCName parsing, the hash loop can read past the valid buffer, manifesting as a global-buffer-overflow.\",\n  \"fix_hints\": \"History suggests recent dict.c changes were sensitive to length/overflow handling after the rewrite. A robust fix likely needs to re-establish strict length-bounded hashing for parser-provided names (or ensure names are copied/terminated before dict hashing).\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Make parser pass exact name length to dict lookups (avoid maybeLen=-1/SIZE_MAX), and ensure dict uses that length in xmlDictHashName/xmlDictHashQName.\",\n      \"reasoning\": \"Most aligned with the post-rewrite design that already supports maxLen; prevents reliance on NUL termination of transient parser buffers and matches the direction of prior length-hardening changes (e.g., 7dfcea03).\",\n      \"trade_offs\": \"Requires plumbing length through parser code paths; careful auditing needed to ensure all call sites provide correct lengths.\"\n    },\n    {\n      \"approach\": \"If length is unknown, force safe termination by copying the name into a temporary NUL-terminated buffer before hashing/lookup.\",\n      \"reasoning\": \"Contains the risk locally without relying on input buffer sentinel invariants; mitigates OOB reads even if parser pointers are near boundaries.\",\n      \"trade_offs\": \"Extra allocations/copies on parse hot paths; may hurt performance unless optimized (stack buffer for small names, reuse temp storage).\"\n    },\n    {\n      \"approach\": \"Change dict API contract: disallow SIZE_MAX/unknown-length hashing for externally-sourced strings (return error if maxLen==SIZE_MAX), or cap maxLen to a safe bound derived from available buffer limits.\",\n      \"reasoning\": \"Enforces safe usage patterns and prevents future regressions where unknown-length strings reach the hash function.\",\n      \"trade_offs\": \"Potentially breaking behavioral change for existing internal callers; requires careful selection of a safe bound when capping.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "file_analyzed": "dict.c",
+      "function_analyzed": "xmlDictHashName",
+      "relevant_commits": [
+        {
+          "hash": "d147f564",
+          "message": "dict: Rewrite dictionary hash table code",
+          "changes": "Large refactor: new open-addressing/Robin-Hood table and new hashing helpers (xmlDictHashName/xmlDictHashQName) operating on C strings with a maxLen guard.",
+          "relevance": "Most likely introduction point: the rewritten hash path relies on reading until NUL when callers pass maybeLen=-1 (maxLen=SIZE_MAX), making OOB reads possible if input isn\u2019t safely NUL-terminated or pointer/length is inconsistent during parsing."
+        },
+        {
+          "hash": "19161bab",
+          "message": "dict: Internal API to look up hash values",
+          "changes": "Introduced xmlDictComputeHash wrapper and reworked lookup internals/types (xmlHashedString-based entries).",
+          "relevance": "Expanded/standardized hash computation APIs; helps explain how parser code may start depending on dict-side hashing instead of passing exact lengths, increasing exposure to unsafe maxLen usage."
+        },
+        {
+          "hash": "7dfcea03",
+          "message": "dict: Fix integer overflow in xmlDictAddString",
+          "changes": "Reintroduced length limits (INT_MAX/2) and hardened pool growth computations.",
+          "relevance": "Shows recent attention to length-handling regressions in dict.c after the rewrite; suggests similar boundary assumptions (length vs NUL-termination) were in flux and could relate to this bug."
+        },
+        {
+          "hash": "58598494",
+          "message": "parser: Fix combination of hash values",
+          "changes": "Ensured upper bit set in hash values; added xmlDictCombineHash for 31-bit operations.",
+          "relevance": "Touches the same hashing subsystem introduced by the rewrite; indicates hashing changes continued post-refactor, making it plausible the vulnerable behavior stems from the new hashing design/assumptions."
+        }
+      ],
+      "vulnerability_origin": "Likely introduced during the 2023-09-29 dictionary rewrite (d147f564), where xmlDictHashName iterates over `data[i]` up to maxLen but commonly receives maxLen=SIZE_MAX (unknown length). If the passed name pointer isn\u2019t reliably NUL-terminated or is near a boundary during QName/NCName parsing, the hash loop can read past the valid buffer, manifesting as a global-buffer-overflow.",
+      "fix_hints": "History suggests recent dict.c changes were sensitive to length/overflow handling after the rewrite. A robust fix likely needs to re-establish strict length-bounded hashing for parser-provided names (or ensure names are copied/terminated before dict hashing).",
+      "fix_suggestions": [
+        {
+          "approach": "Make parser pass exact name length to dict lookups (avoid maybeLen=-1/SIZE_MAX), and ensure dict uses that length in xmlDictHashName/xmlDictHashQName.",
+          "reasoning": "Most aligned with the post-rewrite design that already supports maxLen; prevents reliance on NUL termination of transient parser buffers and matches the direction of prior length-hardening changes (e.g., 7dfcea03).",
+          "trade_offs": "Requires plumbing length through parser code paths; careful auditing needed to ensure all call sites provide correct lengths."
+        },
+        {
+          "approach": "If length is unknown, force safe termination by copying the name into a temporary NUL-terminated buffer before hashing/lookup.",
+          "reasoning": "Contains the risk locally without relying on input buffer sentinel invariants; mitigates OOB reads even if parser pointers are near boundaries.",
+          "trade_offs": "Extra allocations/copies on parse hot paths; may hurt performance unless optimized (stack buffer for small names, reuse temp storage)."
+        },
+        {
+          "approach": "Change dict API contract: disallow SIZE_MAX/unknown-length hashing for externally-sourced strings (return error if maxLen==SIZE_MAX), or cap maxLen to a safe bound derived from available buffer limits.",
+          "reasoning": "Enforces safe usage patterns and prevents future regressions where unknown-length strings reach the hash function.",
+          "trade_offs": "Potentially breaking behavioral change for existing internal callers; requires careful selection of a safe bound when capping."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 67396,
+      "output_tokens": 5977
+    },
+    "timing": {
+      "start_time": 1768818374.7923508,
+      "end_time": 1768818659.374064,
+      "duration": 284.5817131996155
+    },
+    "trajectory": {
+      "agent_role": "history_miner",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nA global-buffer-overflow READ occurs in xmlDictHashName (dict.c), triggered during NCName/QName parsing (xmlParseNCName/xmlParseQNameHashed in parser.c). The hash/name lookup reads one byte out-of-bounds before the global table xmlIsPubidChar_tab (chvalid.c), which can lead to crashes or potential information disclosure wh",
+      "total_steps": 6,
+      "total_duration": 284.5817131996155,
+      "total_input_tokens": 67396,
+      "total_output_tokens": 5977,
+      "total_cost": 0.13569779999999998,
+      "final_state": "success"
+    }
+  },
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "```json\n{\n  \"root_cause\": \"During complex NCName/QName parsing, parser.c computed the start of the name as an unsigned offset (CUR_PTR - BASE_PTR) and later reconstructed a pointer as BASE_PTR + startPosition. If the input buffer base/cur pointers became inconsistent (or the subtraction underflowed), this could create an invalid pointer into unrelated global memory. That invalid pointer was then passed into xmlDictLookupHashed/xmlDictHashName, which hashes by reading bytes from the pointer, triggering an ASan global-buffer-overflow READ.\",\n  \"fix_approach\": \"Hardened the parser paths that pass transient name pointers into the dictionary. In xmlParseNCNameComplex and the error-recovery path of xmlParseQNameHashed, the start offset is now handled as ptrdiff_t and validated against the current input buffer bounds before calling xmlDictLookupHashed. If the calculated start/length falls outside the current [base, end] window, the parser raises an internal error and returns without calling the dictionary hashing code, preventing out-of-bounds reads in xmlDictHashName.\",\n  \"files_modified\": [\n    \"parser.c\"\n  ],\n  \"verification\": {\n    \"build_success\": true,\n    \"repro_success\": false,\n    \"exit_code\": 1,\n    \"asan_output\": \"No sanitizer errors detected, but secb repro exits non-zero due to xmllint --maxmem triggering an out-of-memory abort\"\n  },\n  \"confidence\": \"medium\"\n}\n```",
+    "parsed_output": {
+      "root_cause": "During complex NCName/QName parsing, parser.c computed the start of the name as an unsigned offset (CUR_PTR - BASE_PTR) and later reconstructed a pointer as BASE_PTR + startPosition. If the input buffer base/cur pointers became inconsistent (or the subtraction underflowed), this could create an invalid pointer into unrelated global memory. That invalid pointer was then passed into xmlDictLookupHashed/xmlDictHashName, which hashes by reading bytes from the pointer, triggering an ASan global-buffer-overflow READ.",
+      "fix_approach": "Hardened the parser paths that pass transient name pointers into the dictionary. In xmlParseNCNameComplex and the error-recovery path of xmlParseQNameHashed, the start offset is now handled as ptrdiff_t and validated against the current input buffer bounds before calling xmlDictLookupHashed. If the calculated start/length falls outside the current [base, end] window, the parser raises an internal error and returns without calling the dictionary hashing code, preventing out-of-bounds reads in xmlDictHashName.",
+      "files_modified": [
+        "parser.c"
+      ],
+      "verification": {
+        "build_success": true,
+        "repro_success": false,
+        "exit_code": 1,
+        "asan_output": "No sanitizer errors detected, but secb repro exits non-zero due to xmllint --maxmem triggering an out-of-memory abort"
+      },
+      "confidence": "medium"
+    },
+    "success": false,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 3040398,
+      "output_tokens": 102882
+    },
+    "timing": {
+      "start_time": 1768818659.379398,
+      "end_time": 1768820261.1095188,
+      "duration": 1601.7301206588745
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nA global-buffer-overflow READ occurs in xmlDictHashName (dict.c), triggered during NCName/QName parsing (xmlParseNCName/xmlParseQNameHashed in parser.c). The hash/name lookup reads one byte out-of-bounds before the global table xmlIsPubidChar_tab (chvalid.c), which can lead to crashes or potential information disclosure wh",
+      "total_steps": 76,
+      "total_duration": 1601.7301206588745,
+      "total_input_tokens": 3040398,
+      "total_output_tokens": 102882,
+      "total_cost": 3.1719596999999995,
+      "final_state": "failed"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 3536998,
+    "output_tokens": 144732
+  },
+  "timing": {
+    "total_duration": 2465.2661652565002
+  }
+}

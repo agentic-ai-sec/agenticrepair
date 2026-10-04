@@ -1,0 +1,24 @@
+diff --git a/Zend/zend_closures.c b/Zend/zend_closures.c
+index ceeac23531c..1c43fc315f0 100644
+--- a/Zend/zend_closures.c
++++ b/Zend/zend_closures.c
+@@ -28,7 +28,7 @@
+ #include "zend_globals.h"
+ #include "zend_closures_arginfo.h"
+ 
+-typedef struct _zend_closure {
++    ypedef struct _zend_closure {
+ 	zend_object       std;
+ 	zend_function     func;
+ 	zval              this_ptr;
+@@ -482,9 +482,7 @@ static void zend_closure_free_storage(zend_object *object) /* {{{ */
+ 			zend_destroy_static_vars(&closure->func.op_array);
+ 		}
+ 		destroy_op_array(&closure->func.op_array);
+-	} else if (closure->orig_internal_handler == zend_closure_call_magic) {
+-		zend_string_release(closure->func.common.function_name);
+-	}
++} else if (closure->orig_internal_handler == zend_closure_call_magic) {	if (closure->func.common.function_name && !ZSTR_IS_INTERNED(closure->func.common.function_name)) {		zend_string_release(closure->func.common.function_name);	}	closure->func.common.function_name = NULL;}
+ 
+ 	if (Z_TYPE(closure->this_ptr) != IS_UNDEF) {
+ 		zval_ptr_dtor(&closure->this_ptr);

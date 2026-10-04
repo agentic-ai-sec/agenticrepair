@@ -1,0 +1,239 @@
+{
+  "instance_id": "php.ossfuzz-42527736",
+  "final_status": "success",
+  "static_analyzer_output": {
+    "role": "static_analyzer",
+    "raw_output": "{\n  \"analysis_type\": \"memory\",\n  \"findings\": [\n    {\n      \"file\": \"ext/standard/file.c\",\n      \"line\": 2150,\n      \"message\": \"In php_fgetcsv(), memcpy() length is computed as (bptr - hunk_begin) and passed to memcpy without validating that bptr >= hunk_begin; if bptr is decremented (e.g., unterminated enclosure path) this can become -1 and be converted to size_t, triggering ASAN negative-size-param and potential heap overflow.\",\n      \"severity\": \"error\"\n    },\n    {\n      \"file\": \"ext/standard/file.c\",\n      \"line\": 1998,\n      \"message\": \"Multiple memcpy() calls compute length using pointer subtraction with an extra \u201c- 1\u201d (e.g., bptr - hunk_begin - 1). If bptr == hunk_begin, this underflows to -1 and becomes a huge size_t for memcpy.\",\n      \"severity\": \"warning\"\n    }\n  ],\n  \"dataflow_summary\": \"User-controlled CSV bytes (via zif_str_getcsv/str_getcsv) influence parser pointers bptr/hunk_begin while scanning for enclosures/delimiters; their difference (ptrdiff_t) is used directly as memcpy length (converted to size_t), enabling negative/underflowed lengths to reach memcpy.\",\n  \"key_insight\": \"The root cause is unsafe use of pointer-difference expressions (bptr - hunk_begin and bptr - hunk_begin - 1) as memcpy sizes without checking ordering/emptiness; specific control-flow (unterminated enclosure handling for stream==NULL and bptr adjustment) can make bptr < hunk_begin, producing (size_t)-1.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Before every memcpy() using pointer subtraction, compute a ptrdiff_t len = bptr - hunk_begin (or len = bptr - hunk_begin - 1) and validate len >= 0; on failure, treat as parse error or clamp to 0 and continue safely.\",\n      \"reasoning\": \"Directly prevents negative-size-param/underflow regardless of which parsing branch produces an unexpected pointer relationship; matches the sanitizer failure mode (len == -1).\",\n      \"trade_offs\": \"May change behavior for malformed CSV (now error/empty field instead of UB); requires touching multiple memcpy call sites.\"\n    },\n    {\n      \"approach\": \"Harden the unterminated-enclosure bptr adjustment: only decrement bptr when bptr > hunk_begin (and/or when the character being skipped is actually the NUL terminator), otherwise leave bptr unchanged.\",\n      \"reasoning\": \"The shown code path for stream==NULL explicitly decrements bptr to avoid copying '\\\\0'; guarding this prevents bptr < hunk_begin, which feeds the later memcpy at quit_loop_3 (line ~2150).\",\n      \"trade_offs\": \"Fixes the primary suspected trigger but may miss other paths where pointer subtraction can go negative (e.g., other \u201c-1\u201d memcpy lengths).\"\n    },\n    {\n      \"approach\": \"Refactor field assembly to track lengths as size_t counters rather than relying on raw pointer subtraction, and use checked helpers (e.g., safe memcpy wrapper) for all copies.\",\n      \"reasoning\": \"Eliminates an entire class of pointer-ordering bugs by making sizes explicit and validated at each step.\",\n      \"trade_offs\": \"Higher code churn and regression risk; requires more extensive testing across CSV edge cases and multibyte handling.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "analysis_type": "memory",
+      "findings": [
+        {
+          "file": "ext/standard/file.c",
+          "line": 2150,
+          "message": "In php_fgetcsv(), memcpy() length is computed as (bptr - hunk_begin) and passed to memcpy without validating that bptr >= hunk_begin; if bptr is decremented (e.g., unterminated enclosure path) this can become -1 and be converted to size_t, triggering ASAN negative-size-param and potential heap overflow.",
+          "severity": "error"
+        },
+        {
+          "file": "ext/standard/file.c",
+          "line": 1998,
+          "message": "Multiple memcpy() calls compute length using pointer subtraction with an extra \u201c- 1\u201d (e.g., bptr - hunk_begin - 1). If bptr == hunk_begin, this underflows to -1 and becomes a huge size_t for memcpy.",
+          "severity": "warning"
+        }
+      ],
+      "dataflow_summary": "User-controlled CSV bytes (via zif_str_getcsv/str_getcsv) influence parser pointers bptr/hunk_begin while scanning for enclosures/delimiters; their difference (ptrdiff_t) is used directly as memcpy length (converted to size_t), enabling negative/underflowed lengths to reach memcpy.",
+      "key_insight": "The root cause is unsafe use of pointer-difference expressions (bptr - hunk_begin and bptr - hunk_begin - 1) as memcpy sizes without checking ordering/emptiness; specific control-flow (unterminated enclosure handling for stream==NULL and bptr adjustment) can make bptr < hunk_begin, producing (size_t)-1.",
+      "fix_suggestions": [
+        {
+          "approach": "Before every memcpy() using pointer subtraction, compute a ptrdiff_t len = bptr - hunk_begin (or len = bptr - hunk_begin - 1) and validate len >= 0; on failure, treat as parse error or clamp to 0 and continue safely.",
+          "reasoning": "Directly prevents negative-size-param/underflow regardless of which parsing branch produces an unexpected pointer relationship; matches the sanitizer failure mode (len == -1).",
+          "trade_offs": "May change behavior for malformed CSV (now error/empty field instead of UB); requires touching multiple memcpy call sites."
+        },
+        {
+          "approach": "Harden the unterminated-enclosure bptr adjustment: only decrement bptr when bptr > hunk_begin (and/or when the character being skipped is actually the NUL terminator), otherwise leave bptr unchanged.",
+          "reasoning": "The shown code path for stream==NULL explicitly decrements bptr to avoid copying '\\0'; guarding this prevents bptr < hunk_begin, which feeds the later memcpy at quit_loop_3 (line ~2150).",
+          "trade_offs": "Fixes the primary suspected trigger but may miss other paths where pointer subtraction can go negative (e.g., other \u201c-1\u201d memcpy lengths)."
+        },
+        {
+          "approach": "Refactor field assembly to track lengths as size_t counters rather than relying on raw pointer subtraction, and use checked helpers (e.g., safe memcpy wrapper) for all copies.",
+          "reasoning": "Eliminates an entire class of pointer-ordering bugs by making sizes explicit and validated at each step.",
+          "trade_offs": "Higher code churn and regression risk; requires more extensive testing across CSV edge cases and multibyte handling."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 65681,
+      "output_tokens": 5240
+    },
+    "timing": {
+      "start_time": 1768961746.195537,
+      "end_time": 1768961913.5315866,
+      "duration": 167.33604955673218
+    },
+    "trajectory": {
+      "agent_role": "static_analyzer",
+      "task": "<uploaded_files>\n/src/php-src\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/php-src`. Consider the following issue description:\n\n<issue_description>\nphp_fgetcsv in ext/standard/file.c (invoked via zif_str_getcsv) can compute an incorrect copy length and pass a negative size to memcpy (ASAN negative-size-param). This leads to an invalid memcpy call that can cause memory corruption/heap overflow and crashes when parsing specially crafted CSV input, potentially enabling d",
+      "total_steps": 6,
+      "total_duration": 167.33604955673218,
+      "total_input_tokens": 65681,
+      "total_output_tokens": 5240,
+      "total_cost": 0.11108894999999999,
+      "final_state": "success"
+    }
+  },
+  "dynamic_analyzer_output": {
+    "role": "dynamic_analyzer",
+    "raw_output": "{\n  \"tools_used\": [\"gdb\", \"ubsan\"],\n  \"crash_info\": {\n    \"address\": \"0x503000000b3a\",\n    \"type\": \"negative-size-param (invalid memcpy size) leading to potential heap overflow/memory corruption\",\n    \"location\": \"ext/standard/file.c:2150 (php_fgetcsv -> memcpy(tptr, hunk_begin, bptr - hunk_begin))\"\n  },\n  \"backtrace\": [\n    \"__asan_memcpy (asan_interceptors_memintrinsics.cpp:63)\",\n    \"php_fgetcsv (ext/standard/file.c:2150)\",\n    \"zif_str_getcsv (ext/standard/string.c:5145)\"\n  ],\n  \"memory_state\": \"ASan reports the invalid memcpy is called with size=-1. The reported address 0x503000000b3a lies 26 bytes into a 32-byte heap allocation [0x503000000b20,0x503000000b40). Runtime evidence indicates pointer underflow: at quit_loop_3, bptr < hunk_begin, so (bptr - hunk_begin) becomes -1 and is passed to memcpy.\",\n  \"root_cause_hint\": \"The PoC `str_getcsv(\\\"\\\\\\\"\\\", \\\",\\\", \\\"\\\\\\\"\\\", \\\"\\\\0\\\")` (input is a single enclosure quote; escape_char is NUL) drives php_fgetcsv down the enclosure-field path with stream==NULL (str_getcsv). When the parser sees the string terminator (NUL) and escape_char==0, it enters the 'escaped' state and advances bptr past limit. In the unterminated-enclosure handling for stream==NULL, the code executes `--bptr` to avoid copying the NUL terminator, but does not adjust hunk_begin (which had already been moved forward to bptr when handling the escape state). This makes bptr one byte *before* hunk_begin, so `bptr - hunk_begin` == -1 at file.c:2150 (quit_loop_3 memcpy).\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Before every memcpy that uses (bptr - hunk_begin) (notably at quit_loop_3 / quit_loop_4 and the '- 1' variants), validate pointer ordering and clamp/branch: e.g., `if (UNEXPECTED(bptr < hunk_begin)) { /* treat as 0-length or bail */ }` then use `size_t len = (size_t)(bptr - hunk_begin);`.\",\n      \"reasoning\": \"Dynamic evidence shows a concrete underflow where bptr becomes less than hunk_begin due to `--bptr`. Guarding ensures no negative length can reach memcpy regardless of how control flow reaches quit_loop_3.\",\n      \"trade_offs\": \"Adds extra branches in a hot parsing loop; needs careful auditing of all similar memcpy sites (including `bptr - hunk_begin - 1`) to avoid introducing silent truncation if the condition is hit.\"\n    },\n    {\n      \"approach\": \"Fix the specific underflow by keeping bptr/hunk_begin consistent in the stream==NULL unterminated-enclosure path: when doing `--bptr`, also ensure `hunk_begin <= bptr` (e.g., `if (bptr > limit) { --bptr; if (hunk_begin > bptr) hunk_begin = bptr; }`).\",\n      \"reasoning\": \"The crash occurs because `--bptr` happens after hunk_begin has been advanced beyond limit in the escape-handling path. Adjusting hunk_begin (or avoiding the decrement when it would cross hunk_begin) directly prevents the observed -1 length at file.c:2150.\",\n      \"trade_offs\": \"More localized but slightly more subtle; correctness depends on accurately reasoning about all places hunk_begin is updated in the enclosure parsing state machine.\"\n    },\n    {\n      \"approach\": \"Treat an escape character of NUL as 'no escape' for CSV parsing (at least for str_getcsv), or explicitly reject it: normalize `escape_char == '\\\\0'` to `PHP_CSV_NO_ESCAPE`.\",\n      \"reasoning\": \"The PoC relies on setting escape_char to NUL, which makes the parser treat the string terminator as an escape, driving state transitions that put bptr past limit and later trigger the `--bptr` adjustment and underflow.\",\n      \"trade_offs\": \"Behavior change: users who intentionally pass NUL as an escape char would get different results. Might require documenting/backward-compat consideration and aligning fgetcsv/str_getcsv behavior.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "tools_used": [
+        "gdb",
+        "ubsan"
+      ],
+      "crash_info": {
+        "address": "0x503000000b3a",
+        "type": "negative-size-param (invalid memcpy size) leading to potential heap overflow/memory corruption",
+        "location": "ext/standard/file.c:2150 (php_fgetcsv -> memcpy(tptr, hunk_begin, bptr - hunk_begin))"
+      },
+      "backtrace": [
+        "__asan_memcpy (asan_interceptors_memintrinsics.cpp:63)",
+        "php_fgetcsv (ext/standard/file.c:2150)",
+        "zif_str_getcsv (ext/standard/string.c:5145)"
+      ],
+      "memory_state": "ASan reports the invalid memcpy is called with size=-1. The reported address 0x503000000b3a lies 26 bytes into a 32-byte heap allocation [0x503000000b20,0x503000000b40). Runtime evidence indicates pointer underflow: at quit_loop_3, bptr < hunk_begin, so (bptr - hunk_begin) becomes -1 and is passed to memcpy.",
+      "root_cause_hint": "The PoC `str_getcsv(\"\\\"\", \",\", \"\\\"\", \"\\0\")` (input is a single enclosure quote; escape_char is NUL) drives php_fgetcsv down the enclosure-field path with stream==NULL (str_getcsv). When the parser sees the string terminator (NUL) and escape_char==0, it enters the 'escaped' state and advances bptr past limit. In the unterminated-enclosure handling for stream==NULL, the code executes `--bptr` to avoid copying the NUL terminator, but does not adjust hunk_begin (which had already been moved forward to bptr when handling the escape state). This makes bptr one byte *before* hunk_begin, so `bptr - hunk_begin` == -1 at file.c:2150 (quit_loop_3 memcpy).",
+      "fix_suggestions": [
+        {
+          "approach": "Before every memcpy that uses (bptr - hunk_begin) (notably at quit_loop_3 / quit_loop_4 and the '- 1' variants), validate pointer ordering and clamp/branch: e.g., `if (UNEXPECTED(bptr < hunk_begin)) { /* treat as 0-length or bail */ }` then use `size_t len = (size_t)(bptr - hunk_begin);`.",
+          "reasoning": "Dynamic evidence shows a concrete underflow where bptr becomes less than hunk_begin due to `--bptr`. Guarding ensures no negative length can reach memcpy regardless of how control flow reaches quit_loop_3.",
+          "trade_offs": "Adds extra branches in a hot parsing loop; needs careful auditing of all similar memcpy sites (including `bptr - hunk_begin - 1`) to avoid introducing silent truncation if the condition is hit."
+        },
+        {
+          "approach": "Fix the specific underflow by keeping bptr/hunk_begin consistent in the stream==NULL unterminated-enclosure path: when doing `--bptr`, also ensure `hunk_begin <= bptr` (e.g., `if (bptr > limit) { --bptr; if (hunk_begin > bptr) hunk_begin = bptr; }`).",
+          "reasoning": "The crash occurs because `--bptr` happens after hunk_begin has been advanced beyond limit in the escape-handling path. Adjusting hunk_begin (or avoiding the decrement when it would cross hunk_begin) directly prevents the observed -1 length at file.c:2150.",
+          "trade_offs": "More localized but slightly more subtle; correctness depends on accurately reasoning about all places hunk_begin is updated in the enclosure parsing state machine."
+        },
+        {
+          "approach": "Treat an escape character of NUL as 'no escape' for CSV parsing (at least for str_getcsv), or explicitly reject it: normalize `escape_char == '\\0'` to `PHP_CSV_NO_ESCAPE`.",
+          "reasoning": "The PoC relies on setting escape_char to NUL, which makes the parser treat the string terminator as an escape, driving state transitions that put bptr past limit and later trigger the `--bptr` adjustment and underflow.",
+          "trade_offs": "Behavior change: users who intentionally pass NUL as an escape char would get different results. Might require documenting/backward-compat consideration and aligning fgetcsv/str_getcsv behavior."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 177016,
+      "output_tokens": 10100
+    },
+    "timing": {
+      "start_time": 1768961913.5371845,
+      "end_time": 1768962869.8822806,
+      "duration": 956.3450961112976
+    },
+    "trajectory": {
+      "agent_role": "dynamic_analyzer",
+      "task": "<uploaded_files>\n/src/php-src\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/php-src`. Consider the following issue description:\n\n<issue_description>\nphp_fgetcsv in ext/standard/file.c (invoked via zif_str_getcsv) can compute an incorrect copy length and pass a negative size to memcpy (ASAN negative-size-param). This leads to an invalid memcpy call that can cause memory corruption/heap overflow and crashes when parsing specially crafted CSV input, potentially enabling d",
+      "total_steps": 12,
+      "total_duration": 956.3450961112976,
+      "total_input_tokens": 177016,
+      "total_output_tokens": 10100,
+      "total_cost": 0.24353,
+      "final_state": "success"
+    }
+  },
+  "history_miner_output": {
+    "role": "history_miner",
+    "raw_output": "{\n  \"file_analyzed\": \"ext/standard/file.c\",\n  \"function_analyzed\": \"php_fgetcsv\",\n  \"relevant_commits\": [\n    {\n      \"hash\": \"4ccf0b01\",\n      \"message\": \"Make php_fgetcsv() return a HashTable instead of in-out zval param (#8936)\",\n      \"changes\": \"Refactored php_fgetcsv signature/return semantics; introduced NULL return for blank line and BC shim; reworked internal parsing to build a HashTable directly.\",\n      \"relevance\": \"Large refactor of php_fgetcsv\u2019s API and control flow; likely changed pointer/length calculations and error/empty-line paths that can affect copy length computation.\"\n    },\n    {\n      \"hash\": \"57029ce9\",\n      \"message\": \"Fix buffer-overflow in php_fgetcsv() with \\\\0 delimiter and enclosure\",\n      \"changes\": \"Added bounds check `tmp < limit` before treating `*tmp == enclosure`.\",\n      \"relevance\": \"Shows prior memory-safety issues in the same parsing logic and a pattern of missing boundary checks against `limit` before accessing/copying.\"\n    },\n    {\n      \"hash\": \"aff46d75\",\n      \"message\": \"Fix GH-11982: str_getcsv returns null byte for unterminated quoted string\",\n      \"changes\": \"Special-cased `stream == NULL` (str_getcsv) and adjusted `bptr` when `bptr > limit` to avoid copying a trailing NUL; added `--bptr` in two paths.\",\n      \"relevance\": \"Directly touches the str_getcsv path and modifies pointer arithmetic around `bptr`/`limit`; this is strongly related to the negative memcpy size (likely from `limit - bptr` underflow when `bptr` can move past `limit`).\"\n    }\n  ],\n  \"vulnerability_origin\": \"Most likely introduced/triggered by pointer adjustment logic around unterminated enclosures in the str_getcsv (stream==NULL) path (notably aff46d75\u2019s `bptr > limit` handling), where subsequent copy-length calculation can underflow (size_t) and be passed to memcpy as a negative/huge value.\",\n  \"fix_hints\": \"History shows repeated fixes by adding explicit `tmp < limit` / `bptr` vs `limit` checks. The crash indicates a copy length computed from a pointer difference that can become negative (e.g., `bptr - tptr`, `limit - bptr`, or similar) and then used as a size_t. Adding robust bounds checks before memcpy and normalizing `bptr`/`limit` relationships on all exit paths is consistent with prior fixes.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Guard all memcpy length computations derived from pointer subtraction (e.g., if (bptr < start || bptr > limit) bail or clamp; compute size only after verifying ordering).\",\n      \"reasoning\": \"Matches prior commits (57029ce9, aff46d75) that fixed memory-safety issues by ensuring pointers are within bounds before use; directly prevents negative-size-param/underflow.\",\n      \"trade_offs\": \"May change behavior for malformed CSV (e.g., treat as parse failure / truncate field) and could require deciding consistent semantics for unterminated quotes.\"\n    },\n    {\n      \"approach\": \"Refactor the str_getcsv (stream==NULL) unterminated-enclosure handling so that `bptr` is never decremented/incremented past valid ranges; ensure `limit` always points to the last valid character (exclude NUL) and do not copy NUL by construction.\",\n      \"reasoning\": \"aff46d75 added ad-hoc `--bptr` fixes to avoid copying NUL; making buffer boundaries explicit reduces fragile pointer math that can underflow.\",\n      \"trade_offs\": \"Larger change; needs careful regression testing across fgetcsv/str_getcsv edge cases and multi-line enclosure behavior.\"\n    },\n    {\n      \"approach\": \"Add centralized helper for safe append/copy into `temp` that validates source pointer range and length against `limit` and destination capacity; use it for all chunk copies.\",\n      \"reasoning\": \"The function has had multiple boundary-related bugs; a single checked primitive reduces chances of future missed checks and aligns with history of incremental boundary patches.\",\n      \"trade_offs\": \"Slight performance overhead and code churn; may require adjusting existing logic to use the helper consistently.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "file_analyzed": "ext/standard/file.c",
+      "function_analyzed": "php_fgetcsv",
+      "relevant_commits": [
+        {
+          "hash": "4ccf0b01",
+          "message": "Make php_fgetcsv() return a HashTable instead of in-out zval param (#8936)",
+          "changes": "Refactored php_fgetcsv signature/return semantics; introduced NULL return for blank line and BC shim; reworked internal parsing to build a HashTable directly.",
+          "relevance": "Large refactor of php_fgetcsv\u2019s API and control flow; likely changed pointer/length calculations and error/empty-line paths that can affect copy length computation."
+        },
+        {
+          "hash": "57029ce9",
+          "message": "Fix buffer-overflow in php_fgetcsv() with \\0 delimiter and enclosure",
+          "changes": "Added bounds check `tmp < limit` before treating `*tmp == enclosure`.",
+          "relevance": "Shows prior memory-safety issues in the same parsing logic and a pattern of missing boundary checks against `limit` before accessing/copying."
+        },
+        {
+          "hash": "aff46d75",
+          "message": "Fix GH-11982: str_getcsv returns null byte for unterminated quoted string",
+          "changes": "Special-cased `stream == NULL` (str_getcsv) and adjusted `bptr` when `bptr > limit` to avoid copying a trailing NUL; added `--bptr` in two paths.",
+          "relevance": "Directly touches the str_getcsv path and modifies pointer arithmetic around `bptr`/`limit`; this is strongly related to the negative memcpy size (likely from `limit - bptr` underflow when `bptr` can move past `limit`)."
+        }
+      ],
+      "vulnerability_origin": "Most likely introduced/triggered by pointer adjustment logic around unterminated enclosures in the str_getcsv (stream==NULL) path (notably aff46d75\u2019s `bptr > limit` handling), where subsequent copy-length calculation can underflow (size_t) and be passed to memcpy as a negative/huge value.",
+      "fix_hints": "History shows repeated fixes by adding explicit `tmp < limit` / `bptr` vs `limit` checks. The crash indicates a copy length computed from a pointer difference that can become negative (e.g., `bptr - tptr`, `limit - bptr`, or similar) and then used as a size_t. Adding robust bounds checks before memcpy and normalizing `bptr`/`limit` relationships on all exit paths is consistent with prior fixes.",
+      "fix_suggestions": [
+        {
+          "approach": "Guard all memcpy length computations derived from pointer subtraction (e.g., if (bptr < start || bptr > limit) bail or clamp; compute size only after verifying ordering).",
+          "reasoning": "Matches prior commits (57029ce9, aff46d75) that fixed memory-safety issues by ensuring pointers are within bounds before use; directly prevents negative-size-param/underflow.",
+          "trade_offs": "May change behavior for malformed CSV (e.g., treat as parse failure / truncate field) and could require deciding consistent semantics for unterminated quotes."
+        },
+        {
+          "approach": "Refactor the str_getcsv (stream==NULL) unterminated-enclosure handling so that `bptr` is never decremented/incremented past valid ranges; ensure `limit` always points to the last valid character (exclude NUL) and do not copy NUL by construction.",
+          "reasoning": "aff46d75 added ad-hoc `--bptr` fixes to avoid copying NUL; making buffer boundaries explicit reduces fragile pointer math that can underflow.",
+          "trade_offs": "Larger change; needs careful regression testing across fgetcsv/str_getcsv edge cases and multi-line enclosure behavior."
+        },
+        {
+          "approach": "Add centralized helper for safe append/copy into `temp` that validates source pointer range and length against `limit` and destination capacity; use it for all chunk copies.",
+          "reasoning": "The function has had multiple boundary-related bugs; a single checked primitive reduces chances of future missed checks and aligns with history of incremental boundary patches.",
+          "trade_offs": "Slight performance overhead and code churn; may require adjusting existing logic to use the helper consistently."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 15178,
+      "output_tokens": 1201
+    },
+    "timing": {
+      "start_time": 1768962869.8892922,
+      "end_time": 1768963982.7404034,
+      "duration": 1112.8511111736298
+    },
+    "trajectory": {
+      "agent_role": "history_miner",
+      "task": "<uploaded_files>\n/src/php-src\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/php-src`. Consider the following issue description:\n\n<issue_description>\nphp_fgetcsv in ext/standard/file.c (invoked via zif_str_getcsv) can compute an incorrect copy length and pass a negative size to memcpy (ASAN negative-size-param). This leads to an invalid memcpy call that can cause memory corruption/heap overflow and crashes when parsing specially crafted CSV input, potentially enabling d",
+      "total_steps": 2,
+      "total_duration": 1112.8511111736298,
+      "total_input_tokens": 15178,
+      "total_output_tokens": 1201,
+      "total_cost": 0.0347067,
+      "final_state": "success"
+    }
+  },
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "{\n  \"root_cause\": \"php_fgetcsv() computed memcpy sizes using raw pointer subtraction expressions like (bptr - hunk_begin) and (bptr - hunk_begin - 1). With malformed CSV (notably the str_getcsv/stream==NULL unterminated-enclosure path), internal pointer adjustments can make bptr < hunk_begin, causing the length to become negative and be passed to memcpy (ASan: negative-size-param), leading to memory corruption.\",\n  \"fix_approach\": \"Hardened php_fgetcsv() by replacing the vulnerable memcpy+pointer-difference patterns with small checked macros that compute a ptrdiff_t length and only memcpy when the resulting length is > 0 (preventing negative/underflowed sizes from reaching memcpy). Also guarded the special-case '--bptr' adjustment for unterminated enclosures so it never decrements past hunk_begin, preventing bptr/hunk_begin inversion. This is a minimal, localized fix focused on the ASan crash site and related pointer-difference copies.\",\n  \"files_modified\": [\n    \"ext/standard/file.c\"\n  ],\n  \"verification\": {\n    \"build_success\": true,\n    \"repro_success\": true,\n    \"exit_code\": 0,\n    \"asan_output\": \"No sanitizer errors detected\"\n  },\n  \"confidence\": \"high\"\n}",
+    "parsed_output": {
+      "root_cause": "php_fgetcsv() computed memcpy sizes using raw pointer subtraction expressions like (bptr - hunk_begin) and (bptr - hunk_begin - 1). With malformed CSV (notably the str_getcsv/stream==NULL unterminated-enclosure path), internal pointer adjustments can make bptr < hunk_begin, causing the length to become negative and be passed to memcpy (ASan: negative-size-param), leading to memory corruption.",
+      "fix_approach": "Hardened php_fgetcsv() by replacing the vulnerable memcpy+pointer-difference patterns with small checked macros that compute a ptrdiff_t length and only memcpy when the resulting length is > 0 (preventing negative/underflowed sizes from reaching memcpy). Also guarded the special-case '--bptr' adjustment for unterminated enclosures so it never decrements past hunk_begin, preventing bptr/hunk_begin inversion. This is a minimal, localized fix focused on the ASan crash site and related pointer-difference copies.",
+      "files_modified": [
+        "ext/standard/file.c"
+      ],
+      "verification": {
+        "build_success": true,
+        "repro_success": true,
+        "exit_code": 0,
+        "asan_output": "No sanitizer errors detected"
+      },
+      "confidence": "high"
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 341087,
+      "output_tokens": 10519
+    },
+    "timing": {
+      "start_time": 1768963982.7440264,
+      "end_time": 1768964382.4384482,
+      "duration": 399.6944217681885
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/php-src\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/php-src`. Consider the following issue description:\n\n<issue_description>\nphp_fgetcsv in ext/standard/file.c (invoked via zif_str_getcsv) can compute an incorrect copy length and pass a negative size to memcpy (ASAN negative-size-param). This leads to an invalid memcpy call that can cause memory corruption/heap overflow and crashes when parsing specially crafted CSV input, potentially enabling d",
+      "total_steps": 16,
+      "total_duration": 399.6944217681885,
+      "total_input_tokens": 341087,
+      "total_output_tokens": 10519,
+      "total_cost": 0.26194104999999995,
+      "final_state": "success"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 598962,
+    "output_tokens": 27060
+  },
+  "timing": {
+    "total_duration": 2636.2520158290863
+  }
+}

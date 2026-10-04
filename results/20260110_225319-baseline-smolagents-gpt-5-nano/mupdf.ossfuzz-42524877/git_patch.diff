@@ -1,0 +1,23 @@
+diff --git a/source/fitz/load-bmp.c b/source/fitz/load-bmp.c
+index 3d27d749e..5e09260a1 100644
+--- a/source/fitz/load-bmp.c
++++ b/source/fitz/load-bmp.c
+@@ -931,7 +931,7 @@ bmp_load_default_palette(fz_context *ctx, struct info *info, int readcolors)
+ static const unsigned char *
+ bmp_read_palette(fz_context *ctx, struct info *info, const unsigned char *begin, const unsigned char *end, const unsigned char *p)
+ {
+-	int i, expected, present, entry_size;
++	int i, expected, present, entry_size, available_entries;
+ 	const unsigned char *bitmap;
+ 
+ 	entry_size = palette_entry_size(info);
+@@ -941,6 +941,9 @@ bmp_read_palette(fz_context *ctx, struct info *info, const unsigned char *begin,
+ 	if (expected == 0)
+ 		expected = 1 << info->bitcount;
+ 	present = fz_mini(expected, (bitmap - p) / entry_size);
++	available_entries = (int)((end - p) / entry_size);
++	if (present > available_entries) present = available_entries;
++	if (present > 256) present = 256;
+ 
+ 	for (i = 0; i < present; i++)
+ 	{

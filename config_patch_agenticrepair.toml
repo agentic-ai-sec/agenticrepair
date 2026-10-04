@@ -1,0 +1,117 @@
+# SEC-bench Evaluation Configuration - Multi-Agent Scaffold
+# Parallel analyzers -> Combined fixer+verifier
+
+# ============================================================================
+# SCAFFOLD CONFIGURATION
+# ============================================================================
+[scaffold]
+type = "multiagent"
+
+# ============================================================================
+# MODEL CONFIGURATION
+# ============================================================================
+
+# All analyzers share this model
+[model_analyzer]
+type = "LiteLLMModel"
+model_id = "gpt-5-mini-2025-08-07" # replace with your analyzer model ID
+api_key = "YOUR_API_KEY_HERE"
+temperature = 1.0
+service_tier = "flex"
+# Reasoning effort for GPT-5 models: "low", "medium", "high", "none", or "minimal"
+reasoning_effort = "medium"
+
+# Fixer+Verifier agent model
+[model_fixer_verifier]
+type = "LiteLLMModel"
+model_id = "gpt-5.2-2025-12-11" # replace with your fixer+verifier model ID
+api_key = "YOUR_API_KEY_HERE"
+temperature = 1.0
+service_tier = "flex"
+# Reasoning effort for GPT-5 models: "low", "medium", "high", "none", or "minimal"
+reasoning_effort = "medium"
+
+# ============================================================================
+# AGENT CONFIGURATION
+# ============================================================================
+[agent]
+type = "ToolCallingAgent"
+max_steps = 75
+max_cost = 0.0
+verbosity_level = 1
+tools = [
+    "python_interpreter",
+    "cmd",
+    "gdb",
+    "valgrind",
+    "ubsan",
+    "msan",
+    "codeql",
+    "pydriller",
+]
+
+# Per-agent step limits
+[agent_steps]
+static_analyzer_max_steps = 20
+dynamic_analyzer_max_steps = 20
+history_miner_max_steps = 20
+fixer_verifier_max_steps = 75
+
+# Enable/disable analyzers (default: all enabled)
+[analyzer_enabled]
+enable_static_analyzer = true
+enable_dynamic_analyzer = true
+enable_history_miner = true
+
+# ============================================================================
+# PROMPT TEMPLATE CONFIGURATION
+# ============================================================================
+# Optional: Override default prompt templates
+# If not specified, defaults to:
+#   static_analyzer = "multiagent/static_analyzer.j2"
+#   dynamic_analyzer = "multiagent/dynamic_analyzer.j2"
+#   history_miner = "multiagent/history_miner.j2"
+#   fixer_verifier = "multiagent/fixer_verifier.j2"
+
+# ============================================================================
+# DATASET CONFIGURATION
+# ============================================================================
+[dataset]
+name = "SEC-bench/SEC-bench"
+split = "eval"
+
+# Example: run on a single instance (remove this line to run on all instances in the split)
+instance_ids = ["gpac.cve-2023-4754"]
+
+# ============================================================================
+# OUTPUT CONFIGURATION
+# ============================================================================
+[output]
+# IMPORTANT: Use an absolute path. Docker volume mounts do not accept relative paths.
+output_dir = "/path/to/AgenticRepair/results"
+
+# ============================================================================
+# DOCKER RUNTIME CONFIGURATION
+# ============================================================================
+[docker]
+image_prefix = "hwiwonlee/secb.eval.x86_64"
+
+[docker.run_kwargs]
+mem_limit = "16g"
+network_mode = "host"
+auto_remove = true
+cap_add = ["SYS_PTRACE"]
+security_opt = ["seccomp=unconfined"]
+
+# ============================================================================
+# TASK CONFIGURATION
+# ============================================================================
+[task]
+type = "patch"
+timeout_seconds = 3600
+
+# ============================================================================
+# CODEQL CONFIGURATION
+# ============================================================================
+[codeql]
+ram = 12288

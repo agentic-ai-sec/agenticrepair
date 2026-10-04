@@ -1,0 +1,26 @@
+diff --git a/src/array.c b/src/array.c
+index fc3b0a087..93b0c5ca0 100644
+--- a/src/array.c
++++ b/src/array.c
+@@ -751,6 +751,8 @@ mrb_ary_splice(mrb_state *mrb, mrb_value ary, mrb_int head, mrb_int len, mrb_val
+   tail = head + len;
+   if (alen < len || alen < tail) {
+     len = alen - head;
++    /* keep tail consistent with adjusted len */
++    tail = head + len;
+   }
+ 
+   /* size check */
+@@ -801,7 +803,11 @@ mrb_ary_splice(mrb_state *mrb, mrb_value ary, mrb_int head, mrb_int len, mrb_val
+ 
+     if (len != argc) {
+       mrb_value *ptr = ARY_PTR(a);
+-      value_move(ptr + head + argc, ptr + tail, alen - tail);
++      /* tail may point to the end; never allow negative count to wrap to size_t */
++      mrb_int nmove = alen - tail;
++      if (nmove > 0) {
++        value_move(ptr + head + argc, ptr + tail, (size_t)nmove);
++      }
+       ARY_SET_LEN(a, newlen);
+     }
+     if (argc > 0) {

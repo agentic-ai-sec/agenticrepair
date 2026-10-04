@@ -1,0 +1,97 @@
+{
+  "defect": "trailing blank context lines removed by .strip() during patch collection",
+  "repaired": [
+    {
+      "instance_id": "faad2.cve-2018-20194",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "faad2.cve-2018-20361",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "faad2.cve-2018-20362",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "gpac.cve-2023-0760",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "gpac.cve-2023-4681",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "gpac.cve-2023-46928",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "gpac.cve-2023-4758",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "gpac.cve-2023-48011",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "gpac.cve-2024-0322",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "matio.cve-2019-9035",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "mruby.cve-2018-10199",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "mruby.cve-2022-0614",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "mruby.cve-2022-0717",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "mruby.cve-2022-1934",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "njs.cve-2022-29369",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "njs.cve-2022-29780",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "njs.cve-2022-32414",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "njs.cve-2022-43284",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "openjpeg.cve-2016-10507",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "openjpeg.cve-2016-7445",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "readstat.cve-2018-5698",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "yara.cve-2016-10211",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "yara.cve-2017-5924",
+      "context_lines_restored": 1
+    }
+  ]
+}

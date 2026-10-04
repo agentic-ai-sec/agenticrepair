@@ -1,0 +1,21 @@
+diff --git a/src/array.c b/src/array.c
+index fc3b0a087..9911dc343 100644
+--- a/src/array.c
++++ b/src/array.c
+@@ -750,7 +750,16 @@ mrb_ary_splice(mrb_state *mrb, mrb_value ary, mrb_int head, mrb_int len, mrb_val
+   }
+   tail = head + len;
+   if (alen < len || alen < tail) {
++    /*
++     * Clamp the delete length to the available elements.
++     *
++     * NOTE: tail must stay consistent with the (possibly) adjusted len.
++     * If we keep an out-of-date tail value (> alen), later value_move()
++     * would receive a negative (alen - tail) which is converted to a huge
++     * size_t, leading to out-of-bounds reads/writes.
++     */
+     len = alen - head;
++    tail = head + len;
+   }
+ 
+   /* size check */

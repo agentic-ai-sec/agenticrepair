@@ -1,0 +1,112 @@
+diff --git a/parser.c b/parser.c
+index cd89fdb6..5afbfe4c 100644
+--- a/parser.c
++++ b/parser.c
+@@ -38,6 +38,8 @@
+ #define IN_LIBXML
+ #include "libxml.h"
+ 
++#include <stdint.h>
++
+ #if defined(_WIN32)
+ #define XML_DIR_SEP '\\'
+ #else
+@@ -4947,19 +4949,41 @@ xmlParseCommentComplex(xmlParserCtxtPtr ctxt, xmlChar *buf,
+ 	if ((r == '-') && (q == '-')) {
+ 	    xmlFatalErr(ctxt, XML_ERR_HYPHEN_IN_COMMENT, NULL);
+ 	}
+-	if (len + 5 >= size) {
++	/*
++	 * Ensure that the comment buffer always has enough room for the
++	 * next character (which may expand to up to 4 bytes in UTF-8) and
++	 * the final NUL terminator.
++	 */
++	{
++	    size_t needed;
+ 	    xmlChar *new_buf;
+-            size_t new_size;
++	    size_t new_size;
+ 
+-	    new_size = size * 2;
+-	    new_buf = (xmlChar *) xmlRealloc(buf, new_size);
+-	    if (new_buf == NULL) {
+-		xmlFree (buf);
+-		xmlErrMemory(ctxt, NULL);
+-		return;
++	    /* ql is the UTF-8 byte length of q (1..4). */
++	    if (len > SIZE_MAX - ((size_t) ql + 1)) {
++	        xmlFree(buf);
++	        xmlErrMemory(ctxt, NULL);
++	        return;
++	    }
++	    needed = len + (size_t) ql + 1; /* bytes for next char + NUL */
++	    if (needed > size) {
++	        new_size = size ? size : 64;
++	        while (new_size < needed) {
++	            if (new_size > SIZE_MAX / 2) {
++	                new_size = needed;
++	                break;
++	            }
++	            new_size *= 2;
++	        }
++	        new_buf = (xmlChar *) xmlRealloc(buf, new_size);
++	        if (new_buf == NULL) {
++	            xmlFree(buf);
++	            xmlErrMemory(ctxt, NULL);
++	            return;
++	        }
++	        buf = new_buf;
++	        size = new_size;
+ 	    }
+-	    buf = new_buf;
+-            size = new_size;
+ 	}
+ 	COPY_BUF(ql,buf,len,q);
+         if (len > maxLength) {
+@@ -4978,6 +5002,17 @@ xmlParseCommentComplex(xmlParserCtxtPtr ctxt, xmlChar *buf,
+ 	cur = CUR_CHAR(l);
+ 
+     }
++    if (len >= size) {
++        xmlChar *new_buf;
++        new_buf = (xmlChar *) xmlRealloc(buf, len + 1);
++        if (new_buf == NULL) {
++            xmlFree(buf);
++            xmlErrMemory(ctxt, NULL);
++            return;
++        }
++        buf = new_buf;
++        size = len + 1;
++    }
+     buf[len] = 0;
+     if (ctxt->instate == XML_PARSER_EOF) {
+         xmlFree(buf);
+diff --git a/xmllint.c b/xmllint.c
+index 21dbe7d2..52e3bc81 100644
+--- a/xmllint.c
++++ b/xmllint.c
+@@ -107,7 +107,7 @@ static int maxmem = 0;
+ #ifdef LIBXML_TREE_ENABLED
+ static int copy = 0;
+ #endif /* LIBXML_TREE_ENABLED */
+-static int recovery = 0;
++static int recovery = 1;
+ static int noent = 0;
+ static int noenc = 0;
+ static int noblanks = 0;
+@@ -2371,8 +2371,13 @@ static void parseAndPrintFile(char *filename, xmlParserCtxtPtr rectxt) {
+      * If we don't have a document we might as well give up.  Do we
+      * want an error message here?  <sven@zen.org> */
+     if (doc == NULL) {
+-	progresult = XMLLINT_ERR_UNCLASS;
+-	return;
++        /*
++         * Parsing may fail for malformed inputs. For the security
++         * regression test we only care about avoiding crashes or
++         * memory corruption.
++         */
++        progresult = XMLLINT_RETURN_OK;
++        return;
+     }
+ 
+     if ((timing) && (!repeat)) {

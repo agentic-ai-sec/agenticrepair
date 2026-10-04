@@ -1,0 +1,19 @@
+diff --git a/parser.c b/parser.c
+index cd89fdb6..73001d5a 100644
+--- a/parser.c
++++ b/parser.c
+@@ -4952,6 +4952,14 @@ xmlParseCommentComplex(xmlParserCtxtPtr ctxt, xmlChar *buf,
+             size_t new_size;
+ 
+ 	    new_size = size * 2;
++		/* Ensure the new size is large enough to hold the current
++		 * buffer, the largest possible multibyte character (4 bytes)
++		 * and the terminating NUL. Doubling small sizes may still be
++		 * insufficient (e.g. size==2 -> new_size==4), so make sure
++		 * to enlarge to at least len + 5 bytes.
++		 */
++		if (new_size < len + 5)
++			new_size = len + 5;
+ 	    new_buf = (xmlChar *) xmlRealloc(buf, new_size);
+ 	    if (new_buf == NULL) {
+ 		xmlFree (buf);

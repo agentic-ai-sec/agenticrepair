@@ -1,0 +1,195 @@
+diff --git a/parser.c b/parser.c
+index 9ca09455..89418f56 100644
+--- a/parser.c
++++ b/parser.c
+@@ -4357,7 +4357,7 @@ xmlParseSystemLiteral(xmlParserCtxt *ctxt) {
+ 	return(NULL);
+     }
+ 
+-    buf = xmlMalloc(size);
++    buf = xmlMalloc(size + 1);
+     if (buf == NULL) {
+         xmlErrMemory(ctxt);
+ 	return(NULL);
+@@ -4374,14 +4374,15 @@ xmlParseSystemLiteral(xmlParserCtxt *ctxt) {
+                 xmlFree(buf);
+                 return(NULL);
+             }
+-	    tmp = xmlRealloc(buf, newSize);
++            if (newSize <= size) newSize = size + 1;
++	    tmp = xmlRealloc(buf, newSize + 1);
+ 	    if (tmp == NULL) {
+ 	        xmlFree(buf);
+ 		xmlErrMemory(ctxt);
+ 		return(NULL);
+ 	    }
+ 	    buf = tmp;
+-            size = newSize;
++            size = newSize + 1;
+ 	}
+ 	COPY_BUF(buf, len, cur);
+ 	NEXTL(l);
+@@ -4428,7 +4429,7 @@ xmlParsePubidLiteral(xmlParserCtxt *ctxt) {
+ 	xmlFatalErr(ctxt, XML_ERR_LITERAL_NOT_STARTED, NULL);
+ 	return(NULL);
+     }
+-    buf = xmlMalloc(size);
++    buf = xmlMalloc(size + 1);
+     if (buf == NULL) {
+ 	xmlErrMemory(ctxt);
+ 	return(NULL);
+@@ -4446,14 +4447,14 @@ xmlParsePubidLiteral(xmlParserCtxt *ctxt) {
+                 xmlFree(buf);
+                 return(NULL);
+             }
+-	    tmp = xmlRealloc(buf, size);
++	    tmp = xmlRealloc(buf, newSize + 1);
+ 	    if (tmp == NULL) {
+ 		xmlErrMemory(ctxt);
+ 		xmlFree(buf);
+ 		return(NULL);
+ 	    }
+ 	    buf = tmp;
+-            size = newSize;
++            size = newSize + 1;
+ 	}
+ 	buf[len++] = cur;
+ 	NEXT;
+@@ -4834,7 +4835,7 @@ xmlParseCommentComplex(xmlParserCtxtPtr ctxt, xmlChar *buf,
+     if (buf == NULL) {
+         len = 0;
+ 	size = XML_PARSER_BUFFER_SIZE;
+-	buf = xmlMalloc(size);
++	buf = xmlMalloc(size + 1);
+ 	if (buf == NULL) {
+ 	    xmlErrMemory(ctxt);
+ 	    return;
+@@ -4882,14 +4883,14 @@ xmlParseCommentComplex(xmlParserCtxtPtr ctxt, xmlChar *buf,
+                 xmlFree (buf);
+                 return;
+             }
+-	    tmp = xmlRealloc(buf, newSize);
++	    tmp = xmlRealloc(buf, newSize + 1);
+ 	    if (tmp == NULL) {
+ 		xmlErrMemory(ctxt);
+ 		xmlFree(buf);
+ 		return;
+ 	    }
+ 	    buf = tmp;
+-            size = newSize;
++            size = newSize + 1;
+ 	}
+ 	COPY_BUF(buf, len, q);
+ 
+@@ -5002,7 +5003,7 @@ get_more:
+                     size = nbchar + 1;
+                 else
+                     size = XML_PARSER_BUFFER_SIZE + nbchar;
+-                buf = xmlMalloc(size);
++                buf = xmlMalloc(size + 1);
+                 if (buf == NULL) {
+                     xmlErrMemory(ctxt);
+                     return;
+@@ -5236,7 +5237,7 @@ xmlParsePI(xmlParserCtxt *ctxt) {
+ 		                                     target, NULL);
+ 		return;
+ 	    }
+-	    buf = xmlMalloc(size);
++	    buf = xmlMalloc(size + 1);
+ 	    if (buf == NULL) {
+ 		xmlErrMemory(ctxt);
+ 		return;
+@@ -5259,14 +5260,14 @@ xmlParsePI(xmlParserCtxt *ctxt) {
+                         xmlFree(buf);
+                         return;
+                     }
+-		    tmp = xmlRealloc(buf, newSize);
++		    tmp = xmlRealloc(buf, newSize + 1);
+ 		    if (tmp == NULL) {
+ 			xmlErrMemory(ctxt);
+ 			xmlFree(buf);
+ 			return;
+ 		    }
+ 		    buf = tmp;
+-                    size = newSize;
++                    size = newSize + 1;
+ 		}
+ 		COPY_BUF(buf, len, cur);
+ 		NEXTL(l);
+@@ -9479,7 +9480,7 @@ xmlParseCDSect(xmlParserCtxt *ctxt) {
+     }
+     NEXTL(sl);
+     cur = xmlCurrentCharRecover(ctxt, &l);
+-    buf = xmlMalloc(size);
++    buf = xmlMalloc(size + 1);
+     if (buf == NULL) {
+ 	xmlErrMemory(ctxt);
+         goto out;
+@@ -9496,13 +9497,13 @@ xmlParseCDSect(xmlParserCtxt *ctxt) {
+                                "CData section too big found\n");
+                 goto out;
+             }
+-	    tmp = xmlRealloc(buf, newSize);
++	    tmp = xmlRealloc(buf, newSize + 1);
+ 	    if (tmp == NULL) {
+ 		xmlErrMemory(ctxt);
+                 goto out;
+ 	    }
+ 	    buf = tmp;
+-	    size = newSize;
++	    size = newSize + 1;
+ 	}
+ 	COPY_BUF(buf, len, r);
+ 	r = s;
+@@ -9882,7 +9883,7 @@ xmlParseVersionNum(xmlParserCtxt *ctxt) {
+                     XML_MAX_NAME_LENGTH;
+     xmlChar cur;
+ 
+-    buf = xmlMalloc(size);
++    buf = xmlMalloc(size + 1);
+     if (buf == NULL) {
+ 	xmlErrMemory(ctxt);
+ 	return(NULL);
+@@ -9913,14 +9914,14 @@ xmlParseVersionNum(xmlParserCtxt *ctxt) {
+                 xmlFree(buf);
+                 return(NULL);
+             }
+-	    tmp = xmlRealloc(buf, newSize);
++	    tmp = xmlRealloc(buf, newSize + 1);
+ 	    if (tmp == NULL) {
+ 		xmlErrMemory(ctxt);
+ 	        xmlFree(buf);
+ 		return(NULL);
+ 	    }
+ 	    buf = tmp;
+-            size = newSize;
++            size = newSize + 1;
+ 	}
+ 	buf[len++] = cur;
+ 	NEXT;
+@@ -10000,7 +10001,7 @@ xmlParseEncName(xmlParserCtxt *ctxt) {
+     cur = CUR;
+     if (((cur >= 'a') && (cur <= 'z')) ||
+         ((cur >= 'A') && (cur <= 'Z'))) {
+-	buf = xmlMalloc(size);
++	buf = xmlMalloc(size + 1);
+ 	if (buf == NULL) {
+ 	    xmlErrMemory(ctxt);
+ 	    return(NULL);
+@@ -10024,14 +10025,14 @@ xmlParseEncName(xmlParserCtxt *ctxt) {
+                     xmlFree(buf);
+                     return(NULL);
+                 }
+-		tmp = xmlRealloc(buf, newSize);
++		tmp = xmlRealloc(buf, newSize + 1);
+ 		if (tmp == NULL) {
+ 		    xmlErrMemory(ctxt);
+ 		    xmlFree(buf);
+ 		    return(NULL);
+ 		}
+ 		buf = tmp;
+-                size = newSize;
++                size = newSize + 1;
+ 	    }
+ 	    buf[len++] = cur;
+ 	    NEXT;

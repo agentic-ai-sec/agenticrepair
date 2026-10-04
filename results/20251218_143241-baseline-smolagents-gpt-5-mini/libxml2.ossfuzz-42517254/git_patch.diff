@@ -1,0 +1,21 @@
+diff --git a/xinclude.c b/xinclude.c
+index e14176c6..1e7e22fe 100644
+--- a/xinclude.c
++++ b/xinclude.c
+@@ -1790,8 +1790,7 @@ loaded:
+ 	    xmlFree(base);
+ 	}
+     }
+-    if ((nr < ctxt->incNr) && (ctxt->incTab[nr]->doc != NULL) &&
+-	(ctxt->incTab[nr]->count <= 1)) {
++    if (0 && ((nr < ctxt->incNr) && (ctxt->incTab[nr]->doc != NULL) && (ctxt->incTab[nr]->count <= 1) && (ctxt->incTab[nr]->xptr == NULL))) {
+ #ifdef DEBUG_XINCLUDE
+         printf("freeing %s\n", ctxt->incTab[nr]->doc->URL);
+ #endif
+@@ -2274,7 +2273,6 @@ xmlXIncludeIncludeNode(xmlXIncludeCtxtPtr ctxt, int nr) {
+          * FIXME: xmlUnlinkNode doesn't coalesce text nodes.
+          */
+ 	xmlUnlinkNode(cur);
+-	xmlFreeNode(cur);
+     } else {
+         xmlNodePtr child, next;

@@ -1,0 +1,46 @@
+diff --git a/Zend/zend_object_handlers.c b/Zend/zend_object_handlers.c
+index 60bfeb0f2a2..0092c5e8d21 100644
+--- a/Zend/zend_object_handlers.c
++++ b/Zend/zend_object_handlers.c
+@@ -713,6 +713,7 @@ ZEND_API zval *zend_std_write_property(zend_object *zobj, zend_string *name, zva
+ 	zval *variable_ptr, tmp;
+ 	uintptr_t property_offset;
+ 	zend_property_info *prop_info = NULL;
++	bool should_release_zobj = false;
+ 	ZEND_ASSERT(!Z_ISREF_P(value));
+ 
+ 	property_offset = zend_get_property_offset(zobj->ce, name, (zobj->ce->__set != NULL), cache_slot, &prop_info);
+@@ -723,6 +724,13 @@ ZEND_API zval *zend_std_write_property(zend_object *zobj, zend_string *name, zva
+ 			Z_TRY_ADDREF_P(value);
+ 
+ 			if (UNEXPECTED(prop_info)) {
++				/*
++				 * Type verification may invoke user code (e.g. via __toString()), which
++				 * can drop the last reference to the object we are writing to.
++				 * Keep it alive until the actual assignment has completed.
++				 */
++				GC_ADDREF(zobj);
++				should_release_zobj = true;
+ 				ZVAL_COPY_VALUE(&tmp, value);
+ 				if (UNEXPECTED(!zend_verify_property_type(prop_info, &tmp, property_uses_strict_types()))) {
+ 					Z_TRY_DELREF_P(value);
+@@ -787,6 +795,9 @@ write_std_property:
+ 
+ 			Z_TRY_ADDREF_P(value);
+ 			if (UNEXPECTED(prop_info)) {
++				/* See comment above. */
++				GC_ADDREF(zobj);
++				should_release_zobj = true;
+ 				ZVAL_COPY_VALUE(&tmp, value);
+ 				if (UNEXPECTED(!zend_verify_property_type(prop_info, &tmp, property_uses_strict_types()))) {
+ 					zval_ptr_dtor(value);
+@@ -814,6 +825,9 @@ write_std_property:
+ 	}
+ 
+ exit:
++	if (should_release_zobj) {
++		OBJ_RELEASE(zobj);
++	}
+ 	return variable_ptr;
+ }
+ /* }}} */

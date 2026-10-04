@@ -1,0 +1,45 @@
+diff --git a/src/value_array.h b/src/value_array.h
+index 6089b8aa0..f45fce850 100644
+--- a/src/value_array.h
++++ b/src/value_array.h
+@@ -2,27 +2,22 @@
+ #define MRB_VALUE_ARRAY_H__
+ 
+ #include <mruby.h>
++#include <string.h>
+ 
++/*
++ * Safe move for mrb_value arrays. Use memmove to handle overlapping ranges and
++ * avoid doing pointer arithmetic that may lead to out-of-bounds accesses
++ * reported by sanitizers. A byte-wise memmove is safe for mrb_value because
++ * mrb_value is a plain POD-sized type and other write-barrier operations are
++ * handled at higher layers when required.
++ */
+ static inline void
+-value_move(mrb_value *s1, const mrb_value *s2, size_t n)
++value_move(mrb_value *s1, const mrb_value *s2, mrb_int n)
+ {
+-  if (n == 0) return;
+-  if (s1 > s2 && s1 < s2 + n)
+-  {
+-    s1 += n;
+-    s2 += n;
+-    while (n-- > 0) {
+-      *--s1 = *--s2;
+-    }
+-  }
+-  else if (s1 != s2) {
+-    while (n-- > 0) {
+-      *s1++ = *s2++;
+-    }
+-  }
+-  else {
+-    /* nothing to do. */
+-  }
++  /* reject non-positive sizes to avoid accidental large unsigned sizes when
++     signed negative values are passed from callers */
++  if (n <= 0) return;
++  memmove(s1, s2, (size_t)n * sizeof(mrb_value));
+ }
+ 
+ #endif /* MRB_VALUE_ARRAY_H__ */

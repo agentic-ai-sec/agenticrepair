@@ -1,0 +1,34 @@
+diff --git a/src/p_unix.cpp b/src/p_unix.cpp
+index 40321268..521d33cc 100644
+--- a/src/p_unix.cpp
++++ b/src/p_unix.cpp
+@@ -581,9 +581,14 @@ int PackUnix::find_overlay_offset(MemBuffer const &buf)
+         return false;
+ 
+     int l = ph.buf_offset + ph.getPackHeaderSize();
+-    if (l < 0 || l + 4 > bufsize)
++    // The 32-bit read happens at (buf + i + l). Ensure we have 4 bytes available
++    // at that position within this MemBuffer slice.
++    //
++    // Previous code incorrectly checked only (l + 4 <= bufsize), ignoring i,
++    // which can lead to a 4-byte read past end of buffer.
++    if (l < 0 || i < 0 || i > bufsize || i + l < 0 || i + l > bufsize - 4)
+         throwCantUnpack("file corrupted");
+-    overlay_offset = get_te32(buf + i + l);
++    overlay_offset = get_te32(buf + (i + l));
+     if ((off_t)overlay_offset >= file_size)
+         throwCantUnpack("file corrupted");
+ 
+diff --git a/src/util/util.cpp b/src/util/util.cpp
+index d6208c80..0b939385 100644
+--- a/src/util/util.cpp
++++ b/src/util/util.cpp
+@@ -278,7 +278,7 @@ void upx_memswap(void *a, void *b, size_t n) {
+ 
+ // much better memswap(), optimized for our use case in sort functions below
+ static void memswap_no_overlap(byte *a, byte *b, size_t n) {
+-#if defined(__clang__) && __clang_major__ < 15
++#if defined(__clang__)
+     // work around a clang < 15 ICE (Internal Compiler Error)
+     // @COMPILER_BUG @CLANG_BUG
+     upx_memswap(a, b, n);

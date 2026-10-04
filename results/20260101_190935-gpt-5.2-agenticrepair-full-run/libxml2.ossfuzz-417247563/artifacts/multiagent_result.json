@@ -1,0 +1,237 @@
+{
+  "instance_id": "libxml2.ossfuzz-417247563",
+  "final_status": "success",
+  "static_analyzer_output": {
+    "role": "static_analyzer",
+    "raw_output": "{\n  \"analysis_type\": \"memory\",\n  \"findings\": [\n    {\n      \"file\": \"src/libxml2/xmlIO.c\",\n      \"line\": 362,\n      \"message\": \"In xmlEscapeText, pointer 'repl' can reference the stack array 'tempBuf' (set in the non-ASCII branch) and is later used as the source of memcpy(out, repl, replSize). This pattern is consistent with a stack-use-after-scope report when the branch-local tempBuf lifetime ends before the memcpy.\",\n      \"severity\": \"error\"\n    }\n  ],\n  \"dataflow_summary\": \"Observed control/data path (from issue + local review): xmlValidateElement -> xmlNodeListGetStringInternal -> xmlEscapeText; inside xmlEscapeText: tempBuf (branch-local) -> repl -> memcpy(out, repl, replSize).\",\n  \"key_insight\": \"xmlEscapeText stores the address of a block-scoped stack buffer (tempBuf) into a longer-lived pointer (repl) and then uses that pointer after leaving the scope where tempBuf is defined; ASan flags the resulting memcpy as stack-use-after-scope.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Move tempBuf out of the inner block (make it a function-scope local), and ensure repl never points to a narrower-scope object.\",\n      \"reasoning\": \"Matches the root cause: lifetime mismatch between tempBuf and repl use; keeping tempBuf alive for the full loop iteration/function prevents use-after-scope.\",\n      \"trade_offs\": \"Minimal code change; slightly increases stack usage for the duration of the function, but tempBuf is small (12 bytes).\"\n    },\n    {\n      \"approach\": \"Avoid taking a pointer to tempBuf at all: directly write the serialized hex char ref into the output buffer (ensure capacity, then call xmlSerializeHexCharRef(out, val) or equivalent).\",\n      \"reasoning\": \"Eliminates the intermediate temporary buffer and therefore removes any lifetime hazards; also reduces one memcpy.\",\n      \"trade_offs\": \"Requires adjusting logic to compute replSize/ensure capacity before writing; may require a helper to compute required size (or a small fixed upper bound) to keep the current growth logic correct.\"\n    },\n    {\n      \"approach\": \"Heap-allocate the replacement string when using the numeric char ref path (e.g., xmlStrndup(tempBuf, replSize)) and free after memcpy.\",\n      \"reasoning\": \"Guarantees lifetime correctness regardless of scope and is easy to reason about.\",\n      \"trade_offs\": \"Adds allocation/free in the hot path (performance hit) and introduces potential allocation-failure handling complexity.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "analysis_type": "memory",
+      "findings": [
+        {
+          "file": "src/libxml2/xmlIO.c",
+          "line": 362,
+          "message": "In xmlEscapeText, pointer 'repl' can reference the stack array 'tempBuf' (set in the non-ASCII branch) and is later used as the source of memcpy(out, repl, replSize). This pattern is consistent with a stack-use-after-scope report when the branch-local tempBuf lifetime ends before the memcpy.",
+          "severity": "error"
+        }
+      ],
+      "dataflow_summary": "Observed control/data path (from issue + local review): xmlValidateElement -> xmlNodeListGetStringInternal -> xmlEscapeText; inside xmlEscapeText: tempBuf (branch-local) -> repl -> memcpy(out, repl, replSize).",
+      "key_insight": "xmlEscapeText stores the address of a block-scoped stack buffer (tempBuf) into a longer-lived pointer (repl) and then uses that pointer after leaving the scope where tempBuf is defined; ASan flags the resulting memcpy as stack-use-after-scope.",
+      "fix_suggestions": [
+        {
+          "approach": "Move tempBuf out of the inner block (make it a function-scope local), and ensure repl never points to a narrower-scope object.",
+          "reasoning": "Matches the root cause: lifetime mismatch between tempBuf and repl use; keeping tempBuf alive for the full loop iteration/function prevents use-after-scope.",
+          "trade_offs": "Minimal code change; slightly increases stack usage for the duration of the function, but tempBuf is small (12 bytes)."
+        },
+        {
+          "approach": "Avoid taking a pointer to tempBuf at all: directly write the serialized hex char ref into the output buffer (ensure capacity, then call xmlSerializeHexCharRef(out, val) or equivalent).",
+          "reasoning": "Eliminates the intermediate temporary buffer and therefore removes any lifetime hazards; also reduces one memcpy.",
+          "trade_offs": "Requires adjusting logic to compute replSize/ensure capacity before writing; may require a helper to compute required size (or a small fixed upper bound) to keep the current growth logic correct."
+        },
+        {
+          "approach": "Heap-allocate the replacement string when using the numeric char ref path (e.g., xmlStrndup(tempBuf, replSize)) and free after memcpy.",
+          "reasoning": "Guarantees lifetime correctness regardless of scope and is easy to reason about.",
+          "trade_offs": "Adds allocation/free in the hot path (performance hit) and introduces potential allocation-failure handling complexity."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 117546,
+      "output_tokens": 4934
+    },
+    "timing": {
+      "start_time": 1768770132.4498658,
+      "end_time": 1768770288.2602694,
+      "duration": 155.81040358543396
+    },
+    "trajectory": {
+      "agent_role": "static_analyzer",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nStack-use-after-scope in xmlEscapeText (xmlIO.c): xmlEscapeText uses data from a stack-allocated temporary buffer after that buffer's lifetime ends, causing a read of stale stack memory (observed via a memcpy). This is reachable via node string handling / element validation (xmlNodeListGetStringInternal -> xmlValidateEleme",
+      "total_steps": 10,
+      "total_duration": 155.81040358543396,
+      "total_input_tokens": 117546,
+      "total_output_tokens": 4934,
+      "total_cost": 0.22921990000000003,
+      "final_state": "success"
+    }
+  },
+  "dynamic_analyzer_output": {
+    "role": "dynamic_analyzer",
+    "raw_output": "{\n  \"tools_used\": [\"gdb\", \"ubsan\"],\n  \"crash_info\": {\n    \"address\": \"0x7fb0f5000720\",\n    \"type\": \"stack-use-after-scope (read)\",\n    \"location\": \"xmlIO.c:362:9 (xmlEscapeText -> memcpy)\"\n  },\n  \"backtrace\": [\n    \"__asan_memcpy (asan_interceptors_memintrinsics.cpp:63)\",\n    \"xmlEscapeText (xmlIO.c:362)\",\n    \"xmlNodeListGetStringInternal (tree.c:1478)\",\n    \"xmlValidateElement (valid.c:6094)\",\n    \"xmlValidateDocumentInternal (valid.c:6636)\",\n    \"parseAndPrintFile (xmllint.c:2092)\",\n    \"xmllintMain (xmllint.c:3084)\"\n  ],\n  \"memory_state\": \"ASan reports a READ of size 7 from stack address 0x7fb0f5000720, which lies at offset 32 inside stack object 'tempBuf' ([32,44)) in xmlEscapeText's frame. 'tempBuf' is a block-scoped local (char tempBuf[12]) whose address is stored in 'repl' and later used by memcpy(out, repl, replSize) after the block ends.\",\n  \"root_cause_hint\": \"Runtime evidence (ASan stack-use-after-scope) indicates xmlEscapeText stores a pointer (repl) to a temporary stack buffer 'tempBuf' created in the non-ASCII escape path, then uses that pointer outside the buffer\u2019s lifetime at the later memcpy. The UAF is triggered during validation-driven string generation (xmlNodeListGetStringInternal -> xmlValidateElement). GDB did not capture the crash because the extracted repro command/binary exited normally in that run, but the ASan trace consistently points to xmlEscapeText\u2019s use of 'repl=tempBuf' followed by memcpy.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Eliminate the block-scoped temporary: move 'char tempBuf[12];' (or an xmlChar[12]) outside the inner else-block so it remains in scope for the later memcpy.\",\n      \"reasoning\": \"Directly addresses the concrete ASan finding: the pointer 'repl' must not refer to an object whose scope has ended before memcpy(out, repl, replSize). Keeping the buffer alive for the whole loop iteration/function removes the use-after-scope.\",\n      \"trade_offs\": \"Minimal code change and no extra allocations; slightly increases stack lifetime/usage for each loop iteration (still tiny). Must ensure no other pointer lifetime issues remain if future refactoring introduces new scopes.\"\n    },\n    {\n      \"approach\": \"Avoid storing a pointer to temporary storage: compute the hex charref directly into the destination buffer after ensuring capacity (e.g., call xmlSerializeHexCharRef(out, val) or a variant that writes into 'out') rather than writing into tempBuf then memcpy.\",\n      \"reasoning\": \"Removes the entire 'repl points somewhere' lifetime hazard and reduces copies (no temp buffer + memcpy). The sanitizer report shows the problematic access occurs at memcpy from repl.\",\n      \"trade_offs\": \"Requires changing helper API or adding a new helper that writes into a caller-provided buffer; needs careful handling of buffer growth prior to writing.\"\n    },\n    {\n      \"approach\": \"Heap-allocate the replacement string for the non-ASCII path (e.g., xmlStrndup(tempBuf, replSize)) and free it after copying.\",\n      \"reasoning\": \"Guarantees the replacement data outlives the scope where it was created, regardless of control flow; avoids any dependence on stack lifetime.\",\n      \"trade_offs\": \"Adds allocation/free per escaped non-ASCII character (performance and memory churn). Must ensure free happens on all paths (including realloc failure paths).\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "tools_used": [
+        "gdb",
+        "ubsan"
+      ],
+      "crash_info": {
+        "address": "0x7fb0f5000720",
+        "type": "stack-use-after-scope (read)",
+        "location": "xmlIO.c:362:9 (xmlEscapeText -> memcpy)"
+      },
+      "backtrace": [
+        "__asan_memcpy (asan_interceptors_memintrinsics.cpp:63)",
+        "xmlEscapeText (xmlIO.c:362)",
+        "xmlNodeListGetStringInternal (tree.c:1478)",
+        "xmlValidateElement (valid.c:6094)",
+        "xmlValidateDocumentInternal (valid.c:6636)",
+        "parseAndPrintFile (xmllint.c:2092)",
+        "xmllintMain (xmllint.c:3084)"
+      ],
+      "memory_state": "ASan reports a READ of size 7 from stack address 0x7fb0f5000720, which lies at offset 32 inside stack object 'tempBuf' ([32,44)) in xmlEscapeText's frame. 'tempBuf' is a block-scoped local (char tempBuf[12]) whose address is stored in 'repl' and later used by memcpy(out, repl, replSize) after the block ends.",
+      "root_cause_hint": "Runtime evidence (ASan stack-use-after-scope) indicates xmlEscapeText stores a pointer (repl) to a temporary stack buffer 'tempBuf' created in the non-ASCII escape path, then uses that pointer outside the buffer\u2019s lifetime at the later memcpy. The UAF is triggered during validation-driven string generation (xmlNodeListGetStringInternal -> xmlValidateElement). GDB did not capture the crash because the extracted repro command/binary exited normally in that run, but the ASan trace consistently points to xmlEscapeText\u2019s use of 'repl=tempBuf' followed by memcpy.",
+      "fix_suggestions": [
+        {
+          "approach": "Eliminate the block-scoped temporary: move 'char tempBuf[12];' (or an xmlChar[12]) outside the inner else-block so it remains in scope for the later memcpy.",
+          "reasoning": "Directly addresses the concrete ASan finding: the pointer 'repl' must not refer to an object whose scope has ended before memcpy(out, repl, replSize). Keeping the buffer alive for the whole loop iteration/function removes the use-after-scope.",
+          "trade_offs": "Minimal code change and no extra allocations; slightly increases stack lifetime/usage for each loop iteration (still tiny). Must ensure no other pointer lifetime issues remain if future refactoring introduces new scopes."
+        },
+        {
+          "approach": "Avoid storing a pointer to temporary storage: compute the hex charref directly into the destination buffer after ensuring capacity (e.g., call xmlSerializeHexCharRef(out, val) or a variant that writes into 'out') rather than writing into tempBuf then memcpy.",
+          "reasoning": "Removes the entire 'repl points somewhere' lifetime hazard and reduces copies (no temp buffer + memcpy). The sanitizer report shows the problematic access occurs at memcpy from repl.",
+          "trade_offs": "Requires changing helper API or adding a new helper that writes into a caller-provided buffer; needs careful handling of buffer growth prior to writing."
+        },
+        {
+          "approach": "Heap-allocate the replacement string for the non-ASCII path (e.g., xmlStrndup(tempBuf, replSize)) and free it after copying.",
+          "reasoning": "Guarantees the replacement data outlives the scope where it was created, regardless of control flow; avoids any dependence on stack lifetime.",
+          "trade_offs": "Adds allocation/free per escaped non-ASCII character (performance and memory churn). Must ensure free happens on all paths (including realloc failure paths)."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 97526,
+      "output_tokens": 3866
+    },
+    "timing": {
+      "start_time": 1768770288.2668123,
+      "end_time": 1768770367.219443,
+      "duration": 78.95263075828552
+    },
+    "trajectory": {
+      "agent_role": "dynamic_analyzer",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nStack-use-after-scope in xmlEscapeText (xmlIO.c): xmlEscapeText uses data from a stack-allocated temporary buffer after that buffer's lifetime ends, causing a read of stale stack memory (observed via a memcpy). This is reachable via node string handling / element validation (xmlNodeListGetStringInternal -> xmlValidateEleme",
+      "total_steps": 7,
+      "total_duration": 78.95263075828552,
+      "total_input_tokens": 97526,
+      "total_output_tokens": 3866,
+      "total_cost": 0.16370969999999999,
+      "final_state": "success"
+    }
+  },
+  "history_miner_output": {
+    "role": "history_miner",
+    "raw_output": "{\n  \"file_analyzed\": \"xmlIO.c\",\n  \"function_analyzed\": \"xmlEscapeText\",\n  \"relevant_commits\": [\n    {\n      \"hash\": \"777e2adf\",\n      \"message\": \"io: Consolidate escaping code\",\n      \"changes\": \"Major refactor: moved/rewrote escaping implementation in xmlIO.c using generated escape tables and a helper (xmlSerializeHexCharRef).\",\n      \"relevance\": \"Likely introduction point: xmlEscapeText now builds a replacement string via a stack temp buffer (tempBuf) and stores its address in a pointer used later for memcpy, creating a stack-use-after-scope risk after the refactor.\"\n    },\n    {\n      \"hash\": \"dad11630\",\n      \"message\": \"entities: Always replace invalid chars when escaping\",\n      \"changes\": \"Adjusted call sites to change/standardize escaping flags (e.g., xmlOutputBufferWriteEscape now calls xmlEscapeText(str, 0) instead of XML_ESCAPE_ALLOW_INVALID).\",\n      \"relevance\": \"May change which inputs reach xmlEscapeText and how invalid UTF-8/characters are handled, affecting exploitability/reproducibility (more cases go through the hex-char-ref replacement path).\"\n    },\n    {\n      \"hash\": \"8d160626\",\n      \"message\": \"entities: Rework text escaping\",\n      \"changes\": \"Earlier restructuring of text escaping code in xmlIO.c (removed older xmlEscapeContent implementation; introduced new escaping pathways/infrastructure).\",\n      \"relevance\": \"Set the stage for later escaping refactors; helps bracket when escaping logic was redesigned and where the unsafe \u2018build replacement then copy later\u2019 pattern may have originated.\"\n    }\n  ],\n  \"vulnerability_origin\": \"Most likely introduced during the escaping refactor/consolidation (commit 777e2adf) where xmlEscapeText started forming replacement text in a block-local stack buffer (tempBuf) and then using a saved pointer (repl) in memcpy after leaving that scope.\",\n  \"fix_hints\": \"The current structure assigns repl=tempBuf inside a nested block and performs memcpy(out, repl, replSize) after that block ends. History shows this came from a refactor aiming to share serialization/escaping logic; the safest fix is to keep the temp storage alive until the memcpy (or avoid storing a pointer to stack storage at all).\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Move tempBuf (and related vars) to a scope that encloses the later memcpy (e.g., declare char tempBuf[12] at the top of the while-loop body), ensuring repl always points to live storage.\",\n      \"reasoning\": \"Minimal change consistent with refactor intent (still uses table approach + xmlSerializeHexCharRef) and directly eliminates stack-use-after-scope.\",\n      \"trade_offs\": \"Slightly larger stack frame for the loop; otherwise negligible risk/impact.\"\n    },\n    {\n      \"approach\": \"Special-case the non-ASCII/hex-char-ref path: serialize directly into the output buffer (grow buffer, then write tempBuf immediately) without keeping repl as a pointer beyond the tempBuf scope.\",\n      \"reasoning\": \"Avoids the whole \u2018store pointer to temporary\u2019 pattern and is robust even if further refactors change block structure.\",\n      \"trade_offs\": \"More branching/duplicate size accounting; must be careful to keep size growth logic correct.\"\n    },\n    {\n      \"approach\": \"Allocate the replacement string dynamically for the hex-char-ref case (or use a small fixed static buffer per-iteration) and free/copy immediately.\",\n      \"reasoning\": \"Guarantees lifetime beyond local scopes.\",\n      \"trade_offs\": \"Dynamic allocation in a tight loop can hurt performance and complicate error handling; static shared buffer is not thread-safe unless per-thread/per-call.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "file_analyzed": "xmlIO.c",
+      "function_analyzed": "xmlEscapeText",
+      "relevant_commits": [
+        {
+          "hash": "777e2adf",
+          "message": "io: Consolidate escaping code",
+          "changes": "Major refactor: moved/rewrote escaping implementation in xmlIO.c using generated escape tables and a helper (xmlSerializeHexCharRef).",
+          "relevance": "Likely introduction point: xmlEscapeText now builds a replacement string via a stack temp buffer (tempBuf) and stores its address in a pointer used later for memcpy, creating a stack-use-after-scope risk after the refactor."
+        },
+        {
+          "hash": "dad11630",
+          "message": "entities: Always replace invalid chars when escaping",
+          "changes": "Adjusted call sites to change/standardize escaping flags (e.g., xmlOutputBufferWriteEscape now calls xmlEscapeText(str, 0) instead of XML_ESCAPE_ALLOW_INVALID).",
+          "relevance": "May change which inputs reach xmlEscapeText and how invalid UTF-8/characters are handled, affecting exploitability/reproducibility (more cases go through the hex-char-ref replacement path)."
+        },
+        {
+          "hash": "8d160626",
+          "message": "entities: Rework text escaping",
+          "changes": "Earlier restructuring of text escaping code in xmlIO.c (removed older xmlEscapeContent implementation; introduced new escaping pathways/infrastructure).",
+          "relevance": "Set the stage for later escaping refactors; helps bracket when escaping logic was redesigned and where the unsafe \u2018build replacement then copy later\u2019 pattern may have originated."
+        }
+      ],
+      "vulnerability_origin": "Most likely introduced during the escaping refactor/consolidation (commit 777e2adf) where xmlEscapeText started forming replacement text in a block-local stack buffer (tempBuf) and then using a saved pointer (repl) in memcpy after leaving that scope.",
+      "fix_hints": "The current structure assigns repl=tempBuf inside a nested block and performs memcpy(out, repl, replSize) after that block ends. History shows this came from a refactor aiming to share serialization/escaping logic; the safest fix is to keep the temp storage alive until the memcpy (or avoid storing a pointer to stack storage at all).",
+      "fix_suggestions": [
+        {
+          "approach": "Move tempBuf (and related vars) to a scope that encloses the later memcpy (e.g., declare char tempBuf[12] at the top of the while-loop body), ensuring repl always points to live storage.",
+          "reasoning": "Minimal change consistent with refactor intent (still uses table approach + xmlSerializeHexCharRef) and directly eliminates stack-use-after-scope.",
+          "trade_offs": "Slightly larger stack frame for the loop; otherwise negligible risk/impact."
+        },
+        {
+          "approach": "Special-case the non-ASCII/hex-char-ref path: serialize directly into the output buffer (grow buffer, then write tempBuf immediately) without keeping repl as a pointer beyond the tempBuf scope.",
+          "reasoning": "Avoids the whole \u2018store pointer to temporary\u2019 pattern and is robust even if further refactors change block structure.",
+          "trade_offs": "More branching/duplicate size accounting; must be careful to keep size growth logic correct."
+        },
+        {
+          "approach": "Allocate the replacement string dynamically for the hex-char-ref case (or use a small fixed static buffer per-iteration) and free/copy immediately.",
+          "reasoning": "Guarantees lifetime beyond local scopes.",
+          "trade_offs": "Dynamic allocation in a tight loop can hurt performance and complicate error handling; static shared buffer is not thread-safe unless per-thread/per-call."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 74783,
+      "output_tokens": 2301
+    },
+    "timing": {
+      "start_time": 1768770367.2247603,
+      "end_time": 1768770687.6578538,
+      "duration": 320.43309354782104
+    },
+    "trajectory": {
+      "agent_role": "history_miner",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nStack-use-after-scope in xmlEscapeText (xmlIO.c): xmlEscapeText uses data from a stack-allocated temporary buffer after that buffer's lifetime ends, causing a read of stale stack memory (observed via a memcpy). This is reachable via node string handling / element validation (xmlNodeListGetStringInternal -> xmlValidateEleme",
+      "total_steps": 7,
+      "total_duration": 320.43309354782104,
+      "total_input_tokens": 74783,
+      "total_output_tokens": 2301,
+      "total_cost": 0.07659785,
+      "final_state": "success"
+    }
+  },
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "{\n  \"root_cause\": \"xmlEscapeText stored a pointer (repl) to a block-scoped stack buffer (tempBuf) used for numeric character references; after leaving that inner scope, it memcpy\\u2019d from repl, triggering ASan stack-use-after-scope.\",\n  \"fix_approach\": \"Ensure the temporary buffer outlives the later memcpy by moving tempBuf declaration to the enclosing while-loop scope (so repl never points to an out-of-scope object). This is a minimal lifetime fix with no behavioral change.\",\n  \"files_modified\": [\n    \"xmlIO.c\"\n  ],\n  \"verification\": {\n    \"build_success\": true,\n    \"repro_success\": true,\n    \"exit_code\": 0,\n    \"asan_output\": \"No sanitizer errors detected\"\n  },\n  \"confidence\": \"high\"\n}",
+    "parsed_output": {
+      "root_cause": "xmlEscapeText stored a pointer (repl) to a block-scoped stack buffer (tempBuf) used for numeric character references; after leaving that inner scope, it memcpy\u2019d from repl, triggering ASan stack-use-after-scope.",
+      "fix_approach": "Ensure the temporary buffer outlives the later memcpy by moving tempBuf declaration to the enclosing while-loop scope (so repl never points to an out-of-scope object). This is a minimal lifetime fix with no behavioral change.",
+      "files_modified": [
+        "xmlIO.c"
+      ],
+      "verification": {
+        "build_success": true,
+        "repro_success": true,
+        "exit_code": 0,
+        "asan_output": "No sanitizer errors detected"
+      },
+      "confidence": "high"
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 110044,
+      "output_tokens": 1614
+    },
+    "timing": {
+      "start_time": 1768770687.663073,
+      "end_time": 1768770729.2816627,
+      "duration": 41.618589639663696
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nStack-use-after-scope in xmlEscapeText (xmlIO.c): xmlEscapeText uses data from a stack-allocated temporary buffer after that buffer's lifetime ends, causing a read of stale stack memory (observed via a memcpy). This is reachable via node string handling / element validation (xmlNodeListGetStringInternal -> xmlValidateEleme",
+      "total_steps": 9,
+      "total_duration": 41.618589639663696,
+      "total_input_tokens": 110044,
+      "total_output_tokens": 1614,
+      "total_cost": 0.0923986,
+      "final_state": "success"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 399899,
+    "output_tokens": 12715
+  },
+  "timing": {
+    "total_duration": 596.8368787765503
+  }
+}

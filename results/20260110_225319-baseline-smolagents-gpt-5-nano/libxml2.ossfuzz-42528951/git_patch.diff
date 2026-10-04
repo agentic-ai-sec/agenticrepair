@@ -1,0 +1,65 @@
+diff --git a/parser.c b/parser.c
+index cd89fdb6..3315ce91 100644
+--- a/parser.c
++++ b/parser.c
+@@ -2289,13 +2289,8 @@ static int spacePop(xmlParserCtxtPtr ctxt) {
+ #define CUR_CHAR(l) xmlCurrentChar(ctxt, &l)
+ #define CUR_SCHAR(s, l) xmlStringCurrentChar(ctxt, s, &l)
+ 
+-#define COPY_BUF(l,b,i,v)						\
+-    if (l == 1) b[i++] = v;						\
+-    else i += xmlCopyCharMultiByte(&b[i],v)
+-
+-/**
+- * xmlSkipBlankChars:
+- * @ctxt:  the XML parser context
++#define COPY_BUF(l,b,i,v) \n    do { \n        if ((l) == 1) { if ((i) < size) b[i++] = (v); } \n        else { int _w = xmlCopyCharMultiByte(&b[i], (v)); if ((i) + _w <= size) i += _w; else i = size; } \n    } while(0)
++/*
+  *
+  * DEPRECATED: Internal function, do not use.
+  *
+@@ -3943,7 +3938,7 @@ xmlParseEntityValue(xmlParserCtxtPtr ctxt, xmlChar **orig) {
+      */
+     while (((IS_CHAR(c)) && ((c != stop) || /* checked */
+ 	    (ctxt->input != input))) && (ctxt->instate != XML_PARSER_EOF)) {
+-	if (len + 5 >= size) {
++	if (i + 5 >= size) {
+ 	    xmlChar *tmp;
+ 
+ 	    size *= 2;
+@@ -4381,7 +4376,7 @@ xmlParseSystemLiteral(xmlParserCtxtPtr ctxt) {
+     ctxt->instate = XML_PARSER_SYSTEM_LITERAL;
+     cur = CUR_CHAR(l);
+     while ((IS_CHAR(cur)) && (cur != stop)) { /* checked */
+-	if (len + 5 >= size) {
++	if (i + 5 >= size) {
+ 	    xmlChar *tmp;
+ 
+ 	    size *= 2;
+@@ -4947,7 +4942,7 @@ xmlParseCommentComplex(xmlParserCtxtPtr ctxt, xmlChar *buf,
+ 	if ((r == '-') && (q == '-')) {
+ 	    xmlFatalErr(ctxt, XML_ERR_HYPHEN_IN_COMMENT, NULL);
+ 	}
+-	if (len + 5 >= size) {
++	if (i + 5 >= size) {
+ 	    xmlChar *new_buf;
+             size_t new_size;
+ 
+@@ -5374,7 +5369,7 @@ xmlParsePI(xmlParserCtxtPtr ctxt) {
+ 	    cur = CUR_CHAR(l);
+ 	    while (IS_CHAR(cur) && /* checked */
+ 		   ((cur != '?') || (NXT(1) != '>'))) {
+-		if (len + 5 >= size) {
++		if (i + 5 >= size) {
+ 		    xmlChar *tmp;
+                     size_t new_size = size * 2;
+ 		    tmp = (xmlChar *) xmlRealloc(buf, new_size);
+@@ -10205,7 +10200,7 @@ xmlParseCDSect(xmlParserCtxtPtr ctxt) {
+     }
+     while (IS_CHAR(cur) &&
+            ((r != ']') || (s != ']') || (cur != '>'))) {
+-	if (len + 5 >= size) {
++	if (i + 5 >= size) {
+ 	    xmlChar *tmp;
+ 
+ 	    tmp = (xmlChar *) xmlRealloc(buf, size * 2);

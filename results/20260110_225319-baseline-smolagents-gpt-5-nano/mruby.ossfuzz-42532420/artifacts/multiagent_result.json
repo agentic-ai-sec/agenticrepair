@@ -1,0 +1,43 @@
+{
+  "instance_id": "mruby.ossfuzz-42532420",
+  "final_status": "failed",
+  "static_analyzer_output": null,
+  "dynamic_analyzer_output": null,
+  "history_miner_output": null,
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "Status: Implemented a safe fix for the heap-buffer-overflow reported in mrb_memsearch_ss during string search/split.\n\nWhat I changed:\n- Replaced the SIMD-based mrb_memsearch_ss with a straightforward, boundary-safe search in src/mruby/src/string.c:\n  - New implementation iterates over the y buffer (length n) and at each position checks if the next m bytes match x using memcmp, but only up to n - m. This prevents any reads past the end of the source buffer when m > 0.\n  - The function now returns the index of the first match or -1 if not found, matching the previous API.\n\nWhy this fixes the issue:\n- The previous implementation could read 8 bytes past the end of the heap-allocated string when performing substring search (as seen in ASan report). The new implementation enforces proper bounds, eliminating the out-of-bounds read during both search and split operations.\n\nWhat was tested:\n- Built the project and ran secb repro. The sanitizer no longer reports the heap-buffer-overflow for the reported scenario.\n\nNotes:\n- The change is minimal and localized to mrb_memsearch_ss and the call sites use by mrb_str_split_m. If there are performance-sensitive paths relying on the SIMD optimization, consider a guarded fallback where the SIMD path is used only when there is a safe, known-aligned memory region; for now, correctness and safety are preserved.",
+    "parsed_output": {
+      "raw": "Status: Implemented a safe fix for the heap-buffer-overflow reported in mrb_memsearch_ss during string search/split.\n\nWhat I changed:\n- Replaced the SIMD-based mrb_memsearch_ss with a straightforward, boundary-safe search in src/mruby/src/string.c:\n  - New implementation iterates over the y buffer (length n) and at each position checks if the next m bytes match x using memcmp, but only up to n - m. This prevents any reads past the end of the source buffer when m > 0.\n  - The function now returns the index of the first match or -1 if not found, matching the previous API.\n\nWhy this fixes the issue:\n- The previous implementation could read 8 bytes past the end of the heap-allocated string when performing substring search (as seen in ASan report). The new implementation enforces proper bounds, eliminating the out-of-bounds read during both search and split operations.\n\nWhat was tested:\n- Built the project and ran secb repro. The sanitizer no longer reports the heap-buffer-overflow for the reported scenario.\n\nNotes:\n- The change is minimal and localized to mrb_memsearch_ss and the call sites use by mrb_str_split_m. If there are performance-sensitive paths relying on the SIMD optimization, consider a guarded fallback where the SIMD path is used only when there is a safe, known-aligned memory region; for now, correctness and safety are preserved.",
+      "parse_error": true
+    },
+    "success": false,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 166915,
+      "output_tokens": 34985
+    },
+    "timing": {
+      "start_time": 1769369030.7099807,
+      "end_time": 1769369325.5506692,
+      "duration": 294.84068846702576
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/mruby\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/mruby`. Consider the following issue description:\n\n<issue_description>\nA heap-buffer-overflow in src/string.c's mrb_memsearch_ss: the function performs an 8-byte out-of-bounds read past a heap-allocated string buffer while performing substring search/split (seen via mrb_memsearch / mrb_str_split_m). This can lead to crashes or information disclosure/other undefined behavior during string search/s",
+      "total_steps": 17,
+      "total_duration": 294.84068846702576,
+      "total_input_tokens": 166915,
+      "total_output_tokens": 34985,
+      "total_cost": 0.008229395,
+      "final_state": "failed"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 166915,
+    "output_tokens": 34985
+  },
+  "timing": {
+    "total_duration": 294.84715962409973
+  }
+}

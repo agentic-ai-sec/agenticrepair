@@ -1,0 +1,47 @@
+diff --git a/parser.c b/parser.c
+index 0f225fb0..0c87aeb0 100644
+--- a/parser.c
++++ b/parser.c
+@@ -3207,6 +3207,21 @@ xmlParseNCNameComplex(xmlParserCtxtPtr ctxt) {
+         xmlFatalErr(ctxt, XML_ERR_NAME_TOO_LONG, "NCName");
+         return(NULL);
+     }
++
++    /*
++     * BASE_PTR may refer to a 1-byte global string literal (""), for example
++     * if the input buffer was reset due to an earlier error. Ensure that the
++     * computed range is still within the current input buffer before passing
++     * it to the dictionary hashing functions.
++     */
++    if ((ctxt->input == NULL) || (BASE_PTR == NULL) || (ctxt->input->end == NULL))
++        return(NULL);
++    {
++        size_t avail = (size_t) (ctxt->input->end - BASE_PTR);
++        if ((startPosition > avail) || ((size_t) len > avail - startPosition))
++            return(NULL);
++    }
++
+     return(xmlDictLookup(ctxt->dict, (BASE_PTR + startPosition), len));
+ }
+ 
+@@ -3243,15 +3258,15 @@ xmlParseNCName(xmlParserCtxtPtr ctxt) {
+      */
+     in = ctxt->input->cur;
+     e = ctxt->input->end;
+-    if ((((*in >= 0x61) && (*in <= 0x7A)) ||
+-	 ((*in >= 0x41) && (*in <= 0x5A)) ||
+-	 (*in == '_')) && (in < e)) {
++    if ((in < e) && (((*in >= 0x61) && (*in <= 0x7A)) ||
++         ((*in >= 0x41) && (*in <= 0x5A)) ||
++         (*in == '_'))) {
+ 	in++;
+-	while ((((*in >= 0x61) && (*in <= 0x7A)) ||
++	while ((in < e) && (((*in >= 0x61) && (*in <= 0x7A)) ||
+ 	        ((*in >= 0x41) && (*in <= 0x5A)) ||
+ 	        ((*in >= 0x30) && (*in <= 0x39)) ||
+ 	        (*in == '_') || (*in == '-') ||
+-	        (*in == '.')) && (in < e))
++	        (*in == '.')))
+ 	    in++;
+ 	if (in >= e)
+ 	    goto complex;

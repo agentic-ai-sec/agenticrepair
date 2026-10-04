@@ -1,0 +1,23 @@
+diff --git a/ext/hash/xxhash/xxhash.h b/ext/hash/xxhash/xxhash.h
+index 2d56d23c5d0..6758fb0a7a7 100644
+--- a/ext/hash/xxhash/xxhash.h
++++ b/ext/hash/xxhash/xxhash.h
+@@ -911,9 +911,17 @@ static void XXH_free(void* p) { free(p); }
+ 
+ /*! and for memcpy() */
+ #include <string.h>
++/*
++ * Use memmove instead of memcpy to safely handle overlapping source and
++ * destination ranges. Some update paths in PHP's use of xxHash may call
++ * XXH_memcpy with overlapping regions which results in undefined behavior
++ * when memcpy is used. Switching to memmove prevents memcpy-parameter-overlap
++ * issues and avoids potential heap-buffer-overflow reads reported by
++ * sanitizers.
++ */
+ static void* XXH_memcpy(void* dest, const void* src, size_t size)
+ {
+-    return memcpy(dest,src,size);
++    return memmove(dest, src, size);
+ }
+ 
+ #include <limits.h>   /* ULLONG_MAX */

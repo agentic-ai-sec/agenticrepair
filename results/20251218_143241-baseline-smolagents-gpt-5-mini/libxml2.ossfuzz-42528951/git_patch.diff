@@ -1,0 +1,31 @@
+diff --git a/parser.c b/parser.c
+index cd89fdb6..b7642c3d 100644
+--- a/parser.c
++++ b/parser.c
+@@ -4916,6 +4916,26 @@ xmlParseCommentComplex(xmlParserCtxtPtr ctxt, xmlChar *buf,
+ 	    return;
+ 	}
+     }
++    else {
++        /* Ensure the provided buffer has room for multi-byte characters.
++         * If the buffer was small (e.g. allocated as nbchar+1), writing
++         * multi-byte UTF-8 sequences may overflow it. Grow it here.
++         */
++        if (size <= len + 5) {
++            xmlChar *tmp_buf;
++            size_t tmp_size;
++            tmp_size = len + XML_PARSER_BUFFER_SIZE;
++            tmp_buf = (xmlChar *) xmlRealloc(buf, tmp_size);
++            if (tmp_buf == NULL) {
++                xmlFree(buf);
++                xmlErrMemory(ctxt, NULL);
++                return;
++            }
++            buf = tmp_buf;
++            size = tmp_size;
++        }
++    }
++
+     q = CUR_CHAR(ql);
+     if (q == 0)
+         goto not_terminated;

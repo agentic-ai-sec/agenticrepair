@@ -1,0 +1,34 @@
+diff --git a/xmlIO.c b/xmlIO.c
+index 1b7b4606..400ca5dc 100644
+--- a/xmlIO.c
++++ b/xmlIO.c
+@@ -1525,7 +1525,6 @@ __xmlOutputBufferCreateFilename(const char *URI,
+             unescaped = xmlURIUnescapeString(URI, 0, NULL);
+             if (unescaped == NULL) {
+                 xmlFreeURI(puri);
+-                xmlCharEncCloseFunc(encoder);
+                 return(NULL);
+             }
+             URI = unescaped;
+@@ -1539,7 +1538,6 @@ __xmlOutputBufferCreateFilename(const char *URI,
+     ret = xmlAllocOutputBufferInternal(encoder);
+     if (ret == NULL) {
+         xmlFree(unescaped);
+-        xmlCharEncCloseFunc(encoder);
+         return(NULL);
+     }
+ 
+@@ -1568,6 +1566,13 @@ __xmlOutputBufferCreateFilename(const char *URI,
+     }
+ 
+     if (ret->context == NULL) {
++        /*
++         * The encoder is owned by the caller unless the output buffer is
++         * successfully created. Detach it before freeing the temporary
++         * buffer object to avoid double-free/use-after-free in callers
++         * which close the encoder on error.
++         */
++        ret->encoder = NULL;
+         xmlOutputBufferClose(ret);
+ 	ret = NULL;
+     }

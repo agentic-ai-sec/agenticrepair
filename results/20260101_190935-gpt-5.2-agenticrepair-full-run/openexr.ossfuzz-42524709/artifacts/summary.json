@@ -1,0 +1,11 @@
+{
+  "instance_id": "openexr.ossfuzz-42524709",
+  "final_status": "success",
+  "total_token_usage": {
+    "input_tokens": 589505,
+    "output_tokens": 21146
+  },
+  "timing": {
+    "total_duration": 609.2015497684479
+  }
+}

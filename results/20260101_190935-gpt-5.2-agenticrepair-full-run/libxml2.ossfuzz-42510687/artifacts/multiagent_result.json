@@ -1,0 +1,241 @@
+{
+  "instance_id": "libxml2.ossfuzz-42510687",
+  "final_status": "failed",
+  "static_analyzer_output": {
+    "role": "static_analyzer",
+    "raw_output": "{\n  \"analysis_type\": \"memory\",\n  \"findings\": [\n    {\n      \"file\": \"src/libxml2/tree.c\",\n      \"line\": 3702,\n      \"message\": \"xmlFreeNodeList caches `dict = cur->doc->dict` once, then frees many nodes; for nodes belonging to a different doc/dict, DICT_FREE() may misclassify dict-owned strings as heap and call xmlFree() on dict-internal pointers (invalid free).\",\n      \"severity\": \"error\"\n    },\n    {\n      \"file\": \"src/libxml2/tree.c\",\n      \"line\": 3750,\n      \"message\": \"DICT_FREE(cur->name) may call xmlFree() on `cur->name` even when it points into an xmlDict allocation block (interior pointer), matching the ASan bad-free report.\",\n      \"severity\": \"error\"\n    },\n    {\n      \"file\": \"src/libxml2/tree.c\",\n      \"line\": 1053,\n      \"message\": \"DICT_FREE macro relies on the in-scope `dict` variable; if `dict` doesn\u2019t match the node\u2019s owning document dictionary, ownership checks become unsound and can trigger invalid frees.\",\n      \"severity\": \"note\"\n    }\n  ],\n  \"dataflow_summary\": \"N/A (CodeQL dataflow queries didn\u2019t directly model xmlDict-owned string lifetimes; manual review shows a dict-ownership check using the wrong dictionary instance).\",\n  \"key_insight\": \"The bad-free is likely caused by xmlFreeNodeList using a single cached `dict` for the entire traversal; when the list contains nodes from a different document/dictionary (common in XInclude copy/merge paths), DICT_FREE() frees xmlDict-managed strings (interior pointers) with xmlFree().\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"In xmlFreeNodeList (and similar walkers), refresh `dict` per-node before calling DICT_FREE, e.g., `xmlDictPtr dict = (cur->doc ? cur->doc->dict : NULL);` inside the loop or pass `cur->doc->dict` explicitly to a `DICT_FREE2(dict,str)` macro.\",\n      \"reasoning\": \"Eliminates the cross-document mismatch that makes xmlDictOwns() return false and prevents freeing dict-internal pointers; directly addresses the ASan stack trace at tree.c:3750.\",\n      \"trade_offs\": \"Minor per-node overhead (extra pointer load and ownership check); requires touching multiple call sites/macros for consistency.\"\n    },\n    {\n      \"approach\": \"Harden DICT_FREE by refusing to free if the node has an owning doc with a dict and the string is not known to be separately allocated (e.g., introduce explicit ownership flags for `name/content`, or allocate duplicates when moving nodes across docs).\",\n      \"reasoning\": \"Prevents any accidental free of dict-managed memory even if callers pass the wrong dict; reduces risk of future misuse.\",\n      \"trade_offs\": \"More invasive API/struct changes or extra allocations; may increase memory usage and requires careful auditing of all string fields.\"\n    },\n    {\n      \"approach\": \"In XInclude fallback/copy paths, ensure copied nodes consistently belong to the target document and its dictionary (e.g., enforce xmlDocCopyNodeList for all inserted subtrees and avoid mixing nodes from different docs in a single free list).\",\n      \"reasoning\": \"Reduces creation of mixed-document node lists that make ownership ambiguous during freeing; aligns node lifetimes with a single dictionary.\",\n      \"trade_offs\": \"May require refactoring XInclude merge logic; potential behavior changes if callers relied on sharing nodes/strings across documents.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "analysis_type": "memory",
+      "findings": [
+        {
+          "file": "src/libxml2/tree.c",
+          "line": 3702,
+          "message": "xmlFreeNodeList caches `dict = cur->doc->dict` once, then frees many nodes; for nodes belonging to a different doc/dict, DICT_FREE() may misclassify dict-owned strings as heap and call xmlFree() on dict-internal pointers (invalid free).",
+          "severity": "error"
+        },
+        {
+          "file": "src/libxml2/tree.c",
+          "line": 3750,
+          "message": "DICT_FREE(cur->name) may call xmlFree() on `cur->name` even when it points into an xmlDict allocation block (interior pointer), matching the ASan bad-free report.",
+          "severity": "error"
+        },
+        {
+          "file": "src/libxml2/tree.c",
+          "line": 1053,
+          "message": "DICT_FREE macro relies on the in-scope `dict` variable; if `dict` doesn\u2019t match the node\u2019s owning document dictionary, ownership checks become unsound and can trigger invalid frees.",
+          "severity": "note"
+        }
+      ],
+      "dataflow_summary": "N/A (CodeQL dataflow queries didn\u2019t directly model xmlDict-owned string lifetimes; manual review shows a dict-ownership check using the wrong dictionary instance).",
+      "key_insight": "The bad-free is likely caused by xmlFreeNodeList using a single cached `dict` for the entire traversal; when the list contains nodes from a different document/dictionary (common in XInclude copy/merge paths), DICT_FREE() frees xmlDict-managed strings (interior pointers) with xmlFree().",
+      "fix_suggestions": [
+        {
+          "approach": "In xmlFreeNodeList (and similar walkers), refresh `dict` per-node before calling DICT_FREE, e.g., `xmlDictPtr dict = (cur->doc ? cur->doc->dict : NULL);` inside the loop or pass `cur->doc->dict` explicitly to a `DICT_FREE2(dict,str)` macro.",
+          "reasoning": "Eliminates the cross-document mismatch that makes xmlDictOwns() return false and prevents freeing dict-internal pointers; directly addresses the ASan stack trace at tree.c:3750.",
+          "trade_offs": "Minor per-node overhead (extra pointer load and ownership check); requires touching multiple call sites/macros for consistency."
+        },
+        {
+          "approach": "Harden DICT_FREE by refusing to free if the node has an owning doc with a dict and the string is not known to be separately allocated (e.g., introduce explicit ownership flags for `name/content`, or allocate duplicates when moving nodes across docs).",
+          "reasoning": "Prevents any accidental free of dict-managed memory even if callers pass the wrong dict; reduces risk of future misuse.",
+          "trade_offs": "More invasive API/struct changes or extra allocations; may increase memory usage and requires careful auditing of all string fields."
+        },
+        {
+          "approach": "In XInclude fallback/copy paths, ensure copied nodes consistently belong to the target document and its dictionary (e.g., enforce xmlDocCopyNodeList for all inserted subtrees and avoid mixing nodes from different docs in a single free list).",
+          "reasoning": "Reduces creation of mixed-document node lists that make ownership ambiguous during freeing; aligns node lifetimes with a single dictionary.",
+          "trade_offs": "May require refactoring XInclude merge logic; potential behavior changes if callers relied on sharing nodes/strings across documents."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 268191,
+      "output_tokens": 11410
+    },
+    "timing": {
+      "start_time": 1768790040.3361695,
+      "end_time": 1768790253.1473165,
+      "duration": 212.8111469745636
+    },
+    "trajectory": {
+      "agent_role": "static_analyzer",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nInvalid free and uninitialized-value in XInclude processing: while processing XInclude nodes (xmlXIncludeDoProcess in xinclude.c), libxml2's node-copy/free path (xmlStaticCopyNode/xmlFreeNode/xmlFreeNodeList/xmlFreeDoc in tree.c) attempts to free a pointer that was not returned by malloc (free on an interior address of an ",
+      "total_steps": 17,
+      "total_duration": 212.8111469745636,
+      "total_input_tokens": 268191,
+      "total_output_tokens": 11410,
+      "total_cost": 0.27264545,
+      "final_state": "success"
+    }
+  },
+  "dynamic_analyzer_output": {
+    "role": "dynamic_analyzer",
+    "raw_output": "{\n  \"tools_used\": [\"gdb\", \"ubsan\"],\n  \"crash_info\": {\n    \"address\": \"0x5190000000d7\",\n    \"type\": \"bad-free (not reproduced in this environment); UBSan: undefined-behavior (shift overflow)\",\n    \"location\": \"hash.c:92:30 (UBSan); expected bad-free at tree.c:3750 (from issue report)\"\n  },\n  \"backtrace\": [\n    \"GDB: /src/libxml2/xmlcatalog /testcase/poc exited normally; no stack\",\n    \"UBSan: hash.c:92:30: left shift overflow in unsigned long\",\n    \"Issue report (ASan, not reproduced here): xmlFreeNodeList(tree.c:3750) <- xmlFreeDoc(tree.c:1250) <- xmlFreeNodeList(tree.c:3717) <- xmlFreeNode(tree.c:3805) <- xmlStaticCopyNode(tree.c:4360) <- xmlStaticCopyNodeList(tree.c:4430) <- xmlXIncludeLoadFallback(xinclude.c:1987) <- xmlXIncludeLoadNode(xinclude.c:2150) <- xmlXIncludeDoProcess(xinclude.c:2449)\"\n  ],\n  \"memory_state\": \"In the provided ASan report, the freed pointer 0x5190000000d7 is 87 bytes into a 1048-byte heap block [0x519000000080,0x519000000498) allocated by xmlDictAddString (dict.c:273). In this run, the shipped secb repro executes xmlcatalog on /testcase/poc and exits normally; running xmllint --xinclude on /testcase/poc produces only parse errors (invalid UTF-8 etc.) and no observable crash.\",\n  \"root_cause_hint\": \"Dynamic analysis in this environment did not reproduce the invalid free because `secb repro` resolves to `xmlcatalog /testcase/poc` (not `xmllint --xinclude`), and the input triggers early parser errors. However, UBSan does reliably flag undefined behavior (shift overflow) in hash.c:92 when processing the malformed input, indicating attacker-controlled data can reach arithmetic with undefined results. The original ASan trace strongly suggests an ownership/allocator-mismatch: a pointer derived from an xmlDict-allocated string (interior address) is later treated as heap-owned and freed during node/doc cleanup in the XInclude fallback copy/free path.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Make the XInclude node-copy path produce nodes whose name/content/namespace strings are always owned consistently by the destination document (i.e., use dict lookups/copies into the target doc dict and never propagate pointers that refer into another dict block). Add explicit ownership rules for dict strings so they are never passed to free().\",\n      \"reasoning\": \"The ASan evidence is an interior-pointer free of a dict allocation; preventing cross-doc sharing of dict-backed pointers (or tagging them as dict-owned) directly prevents freeing non-malloc()-ed addresses during xmlFreeNodeList/xmlFreeDoc.\",\n      \"trade_offs\": \"May increase allocations or dict lookups during XInclude processing; requires careful auditing of all fields copied by xmlStaticCopyNode/xmlStaticCopyNodeList.\"\n    },\n    {\n      \"approach\": \"Harden frees in tree cleanup: before freeing node fields that can be dict-owned, avoid calling xmlFree on dictionary-owned strings (e.g., via a helper that checks whether the pointer belongs to a dict pool or by storing an ownership flag alongside the pointer).\",\n      \"reasoning\": \"The crash is specifically caused by free() on a non-malloc pointer; a defensive ownership check can make cleanup safe even if a bad pointer escapes from copy logic.\",\n      \"trade_offs\": \"Pointer-ownership detection can be non-trivial and may add runtime overhead; must not create false negatives that leak memory.\"\n    },\n    {\n      \"approach\": \"Fix UBSan-reported UB in hash.c by rewriting the hash mixing step to avoid undefined shifts/overflows (e.g., use well-defined 64-bit operations, rotate with masking, or builtins that are defined for all inputs).\",\n      \"reasoning\": \"UBSan shows attacker-controlled input can reach undefined arithmetic; while not the same as the bad-free, removing UB reduces risk of miscompilations and secondary memory corruption that could amplify other bugs.\",\n      \"trade_offs\": \"May change hash distribution/performance; needs compatibility consideration for persistent hash usage (if any).\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "tools_used": [
+        "gdb",
+        "ubsan"
+      ],
+      "crash_info": {
+        "address": "0x5190000000d7",
+        "type": "bad-free (not reproduced in this environment); UBSan: undefined-behavior (shift overflow)",
+        "location": "hash.c:92:30 (UBSan); expected bad-free at tree.c:3750 (from issue report)"
+      },
+      "backtrace": [
+        "GDB: /src/libxml2/xmlcatalog /testcase/poc exited normally; no stack",
+        "UBSan: hash.c:92:30: left shift overflow in unsigned long",
+        "Issue report (ASan, not reproduced here): xmlFreeNodeList(tree.c:3750) <- xmlFreeDoc(tree.c:1250) <- xmlFreeNodeList(tree.c:3717) <- xmlFreeNode(tree.c:3805) <- xmlStaticCopyNode(tree.c:4360) <- xmlStaticCopyNodeList(tree.c:4430) <- xmlXIncludeLoadFallback(xinclude.c:1987) <- xmlXIncludeLoadNode(xinclude.c:2150) <- xmlXIncludeDoProcess(xinclude.c:2449)"
+      ],
+      "memory_state": "In the provided ASan report, the freed pointer 0x5190000000d7 is 87 bytes into a 1048-byte heap block [0x519000000080,0x519000000498) allocated by xmlDictAddString (dict.c:273). In this run, the shipped secb repro executes xmlcatalog on /testcase/poc and exits normally; running xmllint --xinclude on /testcase/poc produces only parse errors (invalid UTF-8 etc.) and no observable crash.",
+      "root_cause_hint": "Dynamic analysis in this environment did not reproduce the invalid free because `secb repro` resolves to `xmlcatalog /testcase/poc` (not `xmllint --xinclude`), and the input triggers early parser errors. However, UBSan does reliably flag undefined behavior (shift overflow) in hash.c:92 when processing the malformed input, indicating attacker-controlled data can reach arithmetic with undefined results. The original ASan trace strongly suggests an ownership/allocator-mismatch: a pointer derived from an xmlDict-allocated string (interior address) is later treated as heap-owned and freed during node/doc cleanup in the XInclude fallback copy/free path.",
+      "fix_suggestions": [
+        {
+          "approach": "Make the XInclude node-copy path produce nodes whose name/content/namespace strings are always owned consistently by the destination document (i.e., use dict lookups/copies into the target doc dict and never propagate pointers that refer into another dict block). Add explicit ownership rules for dict strings so they are never passed to free().",
+          "reasoning": "The ASan evidence is an interior-pointer free of a dict allocation; preventing cross-doc sharing of dict-backed pointers (or tagging them as dict-owned) directly prevents freeing non-malloc()-ed addresses during xmlFreeNodeList/xmlFreeDoc.",
+          "trade_offs": "May increase allocations or dict lookups during XInclude processing; requires careful auditing of all fields copied by xmlStaticCopyNode/xmlStaticCopyNodeList."
+        },
+        {
+          "approach": "Harden frees in tree cleanup: before freeing node fields that can be dict-owned, avoid calling xmlFree on dictionary-owned strings (e.g., via a helper that checks whether the pointer belongs to a dict pool or by storing an ownership flag alongside the pointer).",
+          "reasoning": "The crash is specifically caused by free() on a non-malloc pointer; a defensive ownership check can make cleanup safe even if a bad pointer escapes from copy logic.",
+          "trade_offs": "Pointer-ownership detection can be non-trivial and may add runtime overhead; must not create false negatives that leak memory."
+        },
+        {
+          "approach": "Fix UBSan-reported UB in hash.c by rewriting the hash mixing step to avoid undefined shifts/overflows (e.g., use well-defined 64-bit operations, rotate with masking, or builtins that are defined for all inputs).",
+          "reasoning": "UBSan shows attacker-controlled input can reach undefined arithmetic; while not the same as the bad-free, removing UB reduces risk of miscompilations and secondary memory corruption that could amplify other bugs.",
+          "trade_offs": "May change hash distribution/performance; needs compatibility consideration for persistent hash usage (if any)."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 118175,
+      "output_tokens": 3608
+    },
+    "timing": {
+      "start_time": 1768790253.1557984,
+      "end_time": 1768790327.2519,
+      "duration": 74.09610152244568
+    },
+    "trajectory": {
+      "agent_role": "dynamic_analyzer",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nInvalid free and uninitialized-value in XInclude processing: while processing XInclude nodes (xmlXIncludeDoProcess in xinclude.c), libxml2's node-copy/free path (xmlStaticCopyNode/xmlFreeNode/xmlFreeNodeList/xmlFreeDoc in tree.c) attempts to free a pointer that was not returned by malloc (free on an interior address of an ",
+      "total_steps": 7,
+      "total_duration": 74.09610152244568,
+      "total_input_tokens": 118175,
+      "total_output_tokens": 3608,
+      "total_cost": 0.15107505,
+      "final_state": "success"
+    }
+  },
+  "history_miner_output": {
+    "role": "history_miner",
+    "raw_output": "{\n  \"file_analyzed\": \"tree.c\",\n  \"function_analyzed\": \"xmlFreeNodeList\",\n  \"relevant_commits\": [\n    {\n      \"hash\": \"ea53fc18\",\n      \"message\": \"Properly handle nested documents in xmlFreeNode\",\n      \"changes\": \"Stops descending into document-node children and ensures nested XML/HTML document nodes are freed via xmlFreeDoc during the node-list walk.\",\n      \"relevance\": \"Directly touches xmlFreeNodeList/doc-node handling; nested-doc structures can lead to wrong doc/dict context during free, matching the bad-free scenario.\"\n    },\n    {\n      \"hash\": \"0815302d\",\n      \"message\": \"Fix freeing of nested documents\",\n      \"changes\": \"Adds guards so xmlFreeNodeList doesn\u2019t treat document nodes like normal nodes (avoids touching/freeing their nonexistent content member).\",\n      \"relevance\": \"Shows prior real-world crashes from nested-doc trees; suggests the current bug may again stem from freeing fields on nodes whose layout/ownership differs (doc vs element/text).\"\n    },\n    {\n      \"hash\": \"7618a3b1\",\n      \"message\": \"Make xmlStaticCopyNode non-recursive\",\n      \"changes\": \"Rewrites subtree copy to an iterative walk; on failure calls xmlFreeNode(ret) on partially-built trees.\",\n      \"relevance\": \"The reported crash happens in xmlStaticCopyNode \u2192 xmlFreeNode/xmlFreeNodeList; iterative copy + cleanup increases exposure to partially-initialized doc/dict pointers and incorrect freeing of interned strings.\"\n    },\n    {\n      \"hash\": \"41afa89f\",\n      \"message\": \"Fix short-lived regression in xmlStaticCopyNode\",\n      \"changes\": \"Adds handling for coalesced text nodes; documents that xmlAddChild may early-return and (confusingly) call xmlSetTreeDoc.\",\n      \"relevance\": \"Highlights subtle invariants in copy/insert (coalescing and doc propagation). Bugs here can leave nodes with wrong/NULL doc pointers, making DICT_FREE fall back to xmlFree on dict-owned strings (bad free).\"\n    },\n    {\n      \"hash\": \"1098c30a\",\n      \"message\": \"Fix use-after-free with xmllint --xinclude --dropdtd\",\n      \"changes\": \"Changes XInclude traversal to an allow-list (only DOCUMENT/ELEMENT nodes) to avoid descending into unsafe node types.\",\n      \"relevance\": \"Shows XInclude processing recently required traversal correctness fixes; incorrect traversal/copy of unusual node types can create malformed trees (e.g., nested docs) that later break free/copy invariants.\"\n    }\n  ],\n  \"vulnerability_origin\": \"Likely a regression introduced by changes around xmlStaticCopyNode\u2019s subtree-copy/cleanup behavior (non-recursive rewrite and related coalescing/doc-propagation subtleties) combined with XInclude producing or copying atypical trees (e.g., nested document nodes or nodes whose content is dict-owned) such that, during cleanup, cur->doc/dict is NULL/incorrect and DICT_FREE ends up calling free() on an interior pointer returned by xmlDictLookup/xmlDictAddString.\",\n  \"fix_hints\": \"History shows multiple fixes for malformed trees containing nested document nodes and for subtle copy/insert invariants (text coalescing and xmlSetTreeDoc). The bad-free strongly suggests a mismatch between string ownership (dict-interned) and the dict context used at free-time (cur->doc->dict), so ensure doc/dict is correct on copied nodes (especially during partial-copy cleanup) and avoid treating document nodes like regular nodes during list frees.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Strengthen doc/dict propagation invariants in xmlStaticCopyNode/xmlStaticCopyNodeList: ensure every created/copied node has ret->doc set (and consistent across the whole copied subtree) before any possible cleanup path (xmlFreeNode on partial trees).\",\n      \"reasoning\": \"Commit 41afa89f notes confusing xmlAddChild/xmlSetTreeDoc behavior; if doc propagation is skipped/short-circuited, DICT_FREE can fall back to xmlFree. Fixing doc propagation addresses the precise failure mode (freeing dict-owned interior pointers).\",\n      \"trade_offs\": \"May add extra xmlSetTreeDoc calls (performance) and requires careful handling of coalesced text nodes to avoid altering semantics.\"\n    },\n    {\n      \"approach\": \"Harden xmlFreeNodeList\u2019s string-freeing decision: before DICT_FREE(cur->content), verify that a valid dict context exists (cur->doc && cur->doc->dict) when content may be dictionary-owned; otherwise skip freeing or use a safer ownership marker for node content.\",\n      \"reasoning\": \"The crash shows free() on a dict pool interior pointer; preventing \u2018no-dict-context\u2019 frees avoids heap corruption even if malformed/partially-initialized nodes exist.\",\n      \"trade_offs\": \"Risk of memory leaks if applied too broadly; best paired with improved doc/dict propagation so this becomes a safety net, not the primary mechanism.\"\n    },\n    {\n      \"approach\": \"XInclude-side mitigation: avoid creating/copying nested document nodes in fallbacks/replacements; sanitize replacement lists so only allowed node types (elements/text/etc.) are copied/inserted, and ensure any temporary docs are freed with correct ownership semantics.\",\n      \"reasoning\": \"Commits 0815302d/ea53fc18 show nested documents are a recurring source of tree/free bugs; preventing such structures upstream reduces exposure.\",\n      \"trade_offs\": \"May reject/alter edge-case documents that previously \u2018worked by accident\u2019; needs clear spec/compat decision.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "file_analyzed": "tree.c",
+      "function_analyzed": "xmlFreeNodeList",
+      "relevant_commits": [
+        {
+          "hash": "ea53fc18",
+          "message": "Properly handle nested documents in xmlFreeNode",
+          "changes": "Stops descending into document-node children and ensures nested XML/HTML document nodes are freed via xmlFreeDoc during the node-list walk.",
+          "relevance": "Directly touches xmlFreeNodeList/doc-node handling; nested-doc structures can lead to wrong doc/dict context during free, matching the bad-free scenario."
+        },
+        {
+          "hash": "0815302d",
+          "message": "Fix freeing of nested documents",
+          "changes": "Adds guards so xmlFreeNodeList doesn\u2019t treat document nodes like normal nodes (avoids touching/freeing their nonexistent content member).",
+          "relevance": "Shows prior real-world crashes from nested-doc trees; suggests the current bug may again stem from freeing fields on nodes whose layout/ownership differs (doc vs element/text)."
+        },
+        {
+          "hash": "7618a3b1",
+          "message": "Make xmlStaticCopyNode non-recursive",
+          "changes": "Rewrites subtree copy to an iterative walk; on failure calls xmlFreeNode(ret) on partially-built trees.",
+          "relevance": "The reported crash happens in xmlStaticCopyNode \u2192 xmlFreeNode/xmlFreeNodeList; iterative copy + cleanup increases exposure to partially-initialized doc/dict pointers and incorrect freeing of interned strings."
+        },
+        {
+          "hash": "41afa89f",
+          "message": "Fix short-lived regression in xmlStaticCopyNode",
+          "changes": "Adds handling for coalesced text nodes; documents that xmlAddChild may early-return and (confusingly) call xmlSetTreeDoc.",
+          "relevance": "Highlights subtle invariants in copy/insert (coalescing and doc propagation). Bugs here can leave nodes with wrong/NULL doc pointers, making DICT_FREE fall back to xmlFree on dict-owned strings (bad free)."
+        },
+        {
+          "hash": "1098c30a",
+          "message": "Fix use-after-free with xmllint --xinclude --dropdtd",
+          "changes": "Changes XInclude traversal to an allow-list (only DOCUMENT/ELEMENT nodes) to avoid descending into unsafe node types.",
+          "relevance": "Shows XInclude processing recently required traversal correctness fixes; incorrect traversal/copy of unusual node types can create malformed trees (e.g., nested docs) that later break free/copy invariants."
+        }
+      ],
+      "vulnerability_origin": "Likely a regression introduced by changes around xmlStaticCopyNode\u2019s subtree-copy/cleanup behavior (non-recursive rewrite and related coalescing/doc-propagation subtleties) combined with XInclude producing or copying atypical trees (e.g., nested document nodes or nodes whose content is dict-owned) such that, during cleanup, cur->doc/dict is NULL/incorrect and DICT_FREE ends up calling free() on an interior pointer returned by xmlDictLookup/xmlDictAddString.",
+      "fix_hints": "History shows multiple fixes for malformed trees containing nested document nodes and for subtle copy/insert invariants (text coalescing and xmlSetTreeDoc). The bad-free strongly suggests a mismatch between string ownership (dict-interned) and the dict context used at free-time (cur->doc->dict), so ensure doc/dict is correct on copied nodes (especially during partial-copy cleanup) and avoid treating document nodes like regular nodes during list frees.",
+      "fix_suggestions": [
+        {
+          "approach": "Strengthen doc/dict propagation invariants in xmlStaticCopyNode/xmlStaticCopyNodeList: ensure every created/copied node has ret->doc set (and consistent across the whole copied subtree) before any possible cleanup path (xmlFreeNode on partial trees).",
+          "reasoning": "Commit 41afa89f notes confusing xmlAddChild/xmlSetTreeDoc behavior; if doc propagation is skipped/short-circuited, DICT_FREE can fall back to xmlFree. Fixing doc propagation addresses the precise failure mode (freeing dict-owned interior pointers).",
+          "trade_offs": "May add extra xmlSetTreeDoc calls (performance) and requires careful handling of coalesced text nodes to avoid altering semantics."
+        },
+        {
+          "approach": "Harden xmlFreeNodeList\u2019s string-freeing decision: before DICT_FREE(cur->content), verify that a valid dict context exists (cur->doc && cur->doc->dict) when content may be dictionary-owned; otherwise skip freeing or use a safer ownership marker for node content.",
+          "reasoning": "The crash shows free() on a dict pool interior pointer; preventing \u2018no-dict-context\u2019 frees avoids heap corruption even if malformed/partially-initialized nodes exist.",
+          "trade_offs": "Risk of memory leaks if applied too broadly; best paired with improved doc/dict propagation so this becomes a safety net, not the primary mechanism."
+        },
+        {
+          "approach": "XInclude-side mitigation: avoid creating/copying nested document nodes in fallbacks/replacements; sanitize replacement lists so only allowed node types (elements/text/etc.) are copied/inserted, and ensure any temporary docs are freed with correct ownership semantics.",
+          "reasoning": "Commits 0815302d/ea53fc18 show nested documents are a recurring source of tree/free bugs; preventing such structures upstream reduces exposure.",
+          "trade_offs": "May reject/alter edge-case documents that previously \u2018worked by accident\u2019; needs clear spec/compat decision."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 78560,
+      "output_tokens": 3891
+    },
+    "timing": {
+      "start_time": 1768790327.26369,
+      "end_time": 1768791033.097224,
+      "duration": 705.8335340023041
+    },
+    "trajectory": {
+      "agent_role": "history_miner",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nInvalid free and uninitialized-value in XInclude processing: while processing XInclude nodes (xmlXIncludeDoProcess in xinclude.c), libxml2's node-copy/free path (xmlStaticCopyNode/xmlFreeNode/xmlFreeNodeList/xmlFreeDoc in tree.c) attempts to free a pointer that was not returned by malloc (free on an interior address of an ",
+      "total_steps": 7,
+      "total_duration": 705.8335340023041,
+      "total_input_tokens": 78560,
+      "total_output_tokens": 3891,
+      "total_cost": 0.08933959999999999,
+      "final_state": "success"
+    }
+  },
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "",
+    "parsed_output": {},
+    "success": false,
+    "error": "Error while generating output:\nlitellm.ContextWindowExceededError: litellm.BadRequestError: ContextWindowExceededError: OpenAIException - Input tokens exceed the configured limit of 272000 tokens. Your messages resulted in 2995318 tokens. Please reduce the length of the messages.",
+    "token_usage": null,
+    "timing": {
+      "start_time": 1768791033.1028028,
+      "end_time": 1768791412.5611546,
+      "duration": 379.45835185050964
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nInvalid free and uninitialized-value in XInclude processing: while processing XInclude nodes (xmlXIncludeDoProcess in xinclude.c), libxml2's node-copy/free path (xmlStaticCopyNode/xmlFreeNode/xmlFreeNodeList/xmlFreeDoc in tree.c) attempts to free a pointer that was not returned by malloc (free on an interior address of an ",
+      "total_steps": 0,
+      "total_duration": 379.45835185050964,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost": 0.0,
+      "final_state": "error"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 464926,
+    "output_tokens": 18909
+  },
+  "timing": {
+    "total_duration": 1372.229242324829
+  }
+}

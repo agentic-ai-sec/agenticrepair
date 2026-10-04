@@ -1,0 +1,157 @@
+{
+  "instance_id": "php.ossfuzz-42491908",
+  "final_status": "success",
+  "static_analyzer_output": {
+    "role": "static_analyzer",
+    "raw_output": "{\n  \"analysis_type\": \"memory\",\n  \"findings\": [],\n  \"dataflow_summary\": \"\",\n  \"key_insight\": \"CodeQL built-in memory/dataflow packs did not directly flag the memcpy-overlap site. Manual review of the reported stack frames shows a violated invariant: ext/hash/hash_xxhash.c allows XXH32 state unserialize when ctx->s.memsize < 32 (line ~87), but XXH32_update in ext/hash/xxhash/xxhash.h assumes memsize < 16 and computes copy length as (16 - state->memsize) (line ~1468). If memsize is attacker-controlled via crafted serialized hash context and set to >=16, (16-memsize) underflows to a huge size_t, causing an out-of-bounds/overlapping memcpy and ASan\u2019s memcpy-param-overlap + heap-buffer-overflow read.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Tighten XXH32 unserialize validation: require ctx->s.memsize <= 16 (preferably <16) instead of <32; also validate other state fields to expected ranges.\",\n      \"reasoning\": \"Directly prevents attacker-controlled state->memsize from violating XXH32_update\u2019s 16-byte scratch-buffer assumptions.\",\n      \"trade_offs\": \"May reject previously-accepted (but invalid/unsafe) serialized contexts; requires versioning/backward-compat consideration for serialized hash contexts.\"\n    },\n    {\n      \"approach\": \"Add a defensive guard in XXH32_update (xxhash.h): if state->memsize >= 16 return XXH_ERROR (or reset state->memsize to 0 / reinitialize state) before doing (16 - memsize) and memcpy.\",\n      \"reasoning\": \"Defense-in-depth: even if an invalid state is created (via unserialize or memory corruption), the update path won\u2019t underflow and call memcpy with a huge length.\",\n      \"trade_offs\": \"Behavior change for corrupted states; must decide whether to error out, reset, or assert (assert not sufficient for production).\"\n    },\n    {\n      \"approach\": \"Use bounded/safe copy primitives for the tmp-buffer fill (e.g., compute remaining = 16 - memsize only after checking memsize <= 16; optionally use memmove only when overlap is possible).\",\n      \"reasoning\": \"Eliminates UB from overlap and prevents size underflow turning into massive copies.\",\n      \"trade_offs\": \"Slight overhead and more code complexity; memmove alone does NOT fix the underflow/OOB risk unless combined with strict bounds checks.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "analysis_type": "memory",
+      "findings": [],
+      "dataflow_summary": "",
+      "key_insight": "CodeQL built-in memory/dataflow packs did not directly flag the memcpy-overlap site. Manual review of the reported stack frames shows a violated invariant: ext/hash/hash_xxhash.c allows XXH32 state unserialize when ctx->s.memsize < 32 (line ~87), but XXH32_update in ext/hash/xxhash/xxhash.h assumes memsize < 16 and computes copy length as (16 - state->memsize) (line ~1468). If memsize is attacker-controlled via crafted serialized hash context and set to >=16, (16-memsize) underflows to a huge size_t, causing an out-of-bounds/overlapping memcpy and ASan\u2019s memcpy-param-overlap + heap-buffer-overflow read.",
+      "fix_suggestions": [
+        {
+          "approach": "Tighten XXH32 unserialize validation: require ctx->s.memsize <= 16 (preferably <16) instead of <32; also validate other state fields to expected ranges.",
+          "reasoning": "Directly prevents attacker-controlled state->memsize from violating XXH32_update\u2019s 16-byte scratch-buffer assumptions.",
+          "trade_offs": "May reject previously-accepted (but invalid/unsafe) serialized contexts; requires versioning/backward-compat consideration for serialized hash contexts."
+        },
+        {
+          "approach": "Add a defensive guard in XXH32_update (xxhash.h): if state->memsize >= 16 return XXH_ERROR (or reset state->memsize to 0 / reinitialize state) before doing (16 - memsize) and memcpy.",
+          "reasoning": "Defense-in-depth: even if an invalid state is created (via unserialize or memory corruption), the update path won\u2019t underflow and call memcpy with a huge length.",
+          "trade_offs": "Behavior change for corrupted states; must decide whether to error out, reset, or assert (assert not sufficient for production)."
+        },
+        {
+          "approach": "Use bounded/safe copy primitives for the tmp-buffer fill (e.g., compute remaining = 16 - memsize only after checking memsize <= 16; optionally use memmove only when overlap is possible).",
+          "reasoning": "Eliminates UB from overlap and prevents size underflow turning into massive copies.",
+          "trade_offs": "Slight overhead and more code complexity; memmove alone does NOT fix the underflow/OOB risk unless combined with strict bounds checks."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 132621,
+      "output_tokens": 6610
+    },
+    "timing": {
+      "start_time": 1768941061.4482481,
+      "end_time": 1768941244.2566106,
+      "duration": 182.80836248397827
+    },
+    "trajectory": {
+      "agent_role": "static_analyzer",
+      "task": "<uploaded_files>\n/src/php-src\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/php-src`. Consider the following issue description:\n\n<issue_description>\nA memcpy-parameter-overlap occurs in the XXH32 update path (XXH_memcpy / XXH_INLINE_XXH32_update called from PHP_XXH32Update in ext/hash/hash_xxhash.c / xxhash.h), causing memcpy to be invoked on overlapping source and destination ranges. This leads to undefined behavior and a heap-buffer-overflow read, resulting in memory",
+      "total_steps": 8,
+      "total_duration": 182.80836248397827,
+      "total_input_tokens": 132621,
+      "total_output_tokens": 6610,
+      "total_cost": 0.21959315000000001,
+      "final_state": "success"
+    }
+  },
+  "dynamic_analyzer_output": {
+    "role": "dynamic_analyzer",
+    "raw_output": "{\n  \"tools_used\": [\"gdb\", \"ubsan\"],\n  \"crash_info\": {\n    \"address\": \"0x7f0664c82044\",\n    \"type\": \"memcpy-param-overlap (undefined behavior) -> subsequent stack-use-after-return and SEGV\",\n    \"location\": \"ext/hash/xxhash/xxhash.h:916 (XXH_memcpy)\"\n  },\n  \"backtrace\": [\n    \"__asan_memcpy (asan_interceptors_memintrinsics.cpp:63)\",\n    \"XXH_memcpy (ext/hash/xxhash/xxhash.h:916)\",\n    \"XXH_INLINE_XXH32_update (ext/hash/xxhash/xxhash.h:1468)\",\n    \"PHP_XXH32Update (ext/hash/hash_xxhash.c:61)\",\n    \"zif_hash_update (ext/hash/hash.c:698)\",\n    \"execute_ex / zend_execute_scripts / php_execute_script / do_cli / main\"\n  ],\n  \"memory_state\": \"ASan reported overlapping memcpy ranges: [0x7f0564c6347c, 0x7f0664c63478) and [0x7f0564c82058, 0x7f0664c82054) overlap, with an apparent copy size near 0xfffffffc (wrap/very large). After the overlap, ASan also reported stack-use-after-return in XXH_memcpy and then a SEGV in glibc memmove (memmove-vec-unaligned-erms.S:384) at 0x7f0664c82044, consistent with memory corruption from the prior undefined behavior.\",\n  \"root_cause_hint\": \"Runtime evidence shows XXH32 update ultimately calls XXH_memcpy(), which is implemented using memcpy() (requires non-overlapping regions). In the failing execution path, source and destination pointers overlap (or appear to overlap due to a huge computed length / wrap), so memcpy exhibits undefined behavior and corrupts memory; this cascades into stack-use-after-return reports and a final SEGV inside optimized memmove/memcpy code.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Make XXH_memcpy safe for overlap: replace the memcpy call at xxhash.h:916 with memmove (or a conditional: if ranges overlap use memmove else memcpy).\",\n      \"reasoning\": \"Directly addresses the observed runtime failure mode (memcpy-param-overlap at XXH_memcpy). Prevents UB regardless of how the overlapping pointers arise (caller bug, unusual aliasing during unserialize, or size wrap).\",\n      \"trade_offs\": \"memmove can be slightly slower than memcpy; conditional overlap checks add a branch. However this path is not typically the dominant cost compared to avoiding crashes/UB. Also, upstream xxHash may intentionally assume non-overlap; deviating may complicate vendor-syncing.\")\n    },\n    {\n      \"approach\": \"Harden XXH_INLINE_XXH32_update() (and/or PHP_XXH32Update wrapper) to prevent overlap by copying the input to a temporary buffer when it aliases the internal state buffer, before calling the update logic.\",\n      \"reasoning\": \"Keeps xxhash\u2019s internal memcpy assumptions intact in most cases while explicitly breaking aliasing when it can occur in PHP\u2019s usage patterns. This targets the overlap shown by ASan without changing all memcpy sites.\",\n      \"trade_offs\": \"Extra allocation/copy for the (rare) aliasing case; requires correctly detecting aliasing between input pointer range and state->mem32 buffer range.\")\n    },\n    {\n      \"approach\": \"Add size/length sanity checks around the buffering math in the update path to prevent extremely large copy lengths (e.g., reject/guard if computed copy size > remaining input length or exceeds the internal buffer capacity), and ensure no signed/unsigned wrap.\",\n      \"reasoning\": \"ASan\u2019s overlap report indicates a near-4GiB size (0xfffffffc), suggesting a potential wrap/underflow in the computed length used by XXH_memcpy. Preventing impossible lengths avoids both overlap and out-of-bounds reads.\",\n      \"trade_offs\": \"Requires careful auditing of integer types and invariants; adds checks on hot paths. Might not fix all overlap cases if aliasing is still possible with valid sizes.\")\n    }\n  ]\n}",
+    "parsed_output": {
+      "raw": "{\n  \"tools_used\": [\"gdb\", \"ubsan\"],\n  \"crash_info\": {\n    \"address\": \"0x7f0664c82044\",\n    \"type\": \"memcpy-param-overlap (undefined behavior) -> subsequent stack-use-after-return and SEGV\",\n    \"location\": \"ext/hash/xxhash/xxhash.h:916 (XXH_memcpy)\"\n  },\n  \"backtrace\": [\n    \"__asan_memcpy (asan_interceptors_memintrinsics.cpp:63)\",\n    \"XXH_memcpy (ext/hash/xxhash/xxhash.h:916)\",\n    \"XXH_INLINE_XXH32_update (ext/hash/xxhash/xxhash.h:1468)\",\n    \"PHP_XXH32Update (ext/hash/hash_xxhash.c:61)\",\n    \"zif_hash_update (ext/hash/hash.c:698)\",\n    \"execute_ex / zend_execute_scripts / php_execute_script / do_cli / main\"\n  ],\n  \"memory_state\": \"ASan reported overlapping memcpy ranges: [0x7f0564c6347c, 0x7f0664c63478) and [0x7f0564c82058, 0x7f0664c82054) overlap, with an apparent copy size near 0xfffffffc (wrap/very large). After the overlap, ASan also reported stack-use-after-return in XXH_memcpy and then a SEGV in glibc memmove (memmove-vec-unaligned-erms.S:384) at 0x7f0664c82044, consistent with memory corruption from the prior undefined behavior.\",\n  \"root_cause_hint\": \"Runtime evidence shows XXH32 update ultimately calls XXH_memcpy(), which is implemented using memcpy() (requires non-overlapping regions). In the failing execution path, source and destination pointers overlap (or appear to overlap due to a huge computed length / wrap), so memcpy exhibits undefined behavior and corrupts memory; this cascades into stack-use-after-return reports and a final SEGV inside optimized memmove/memcpy code.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Make XXH_memcpy safe for overlap: replace the memcpy call at xxhash.h:916 with memmove (or a conditional: if ranges overlap use memmove else memcpy).\",\n      \"reasoning\": \"Directly addresses the observed runtime failure mode (memcpy-param-overlap at XXH_memcpy). Prevents UB regardless of how the overlapping pointers arise (caller bug, unusual aliasing during unserialize, or size wrap).\",\n      \"trade_offs\": \"memmove can be slightly slower than memcpy; conditional overlap checks add a branch. However this path is not typically the dominant cost compared to avoiding crashes/UB. Also, upstream xxHash may intentionally assume non-overlap; deviating may complicate vendor-syncing.\")\n    },\n    {\n      \"approach\": \"Harden XXH_INLINE_XXH32_update() (and/or PHP_XXH32Update wrapper) to prevent overlap by copying the input to a temporary buffer when it aliases the internal state buffer, before calling the update logic.\",\n      \"reasoning\": \"Keeps xxhash\u2019s internal memcpy assumptions intact in most cases while explicitly breaking aliasing when it can occur in PHP\u2019s usage patterns. This targets the overlap shown by ASan without changing all memcpy sites.\",\n      \"trade_offs\": \"Extra allocation/copy for the (rare) aliasing case; requires correctly detecting aliasing between input pointer range and state->mem32 buffer range.\")\n    },\n    {\n      \"approach\": \"Add size/length sanity checks around the buffering math in the update path to prevent extremely large copy lengths (e.g., reject/guard if computed copy size > remaining input length or exceeds the internal buffer capacity), and ensure no signed/unsigned wrap.\",\n      \"reasoning\": \"ASan\u2019s overlap report indicates a near-4GiB size (0xfffffffc), suggesting a potential wrap/underflow in the computed length used by XXH_memcpy. Preventing impossible lengths avoids both overlap and out-of-bounds reads.\",\n      \"trade_offs\": \"Requires careful auditing of integer types and invariants; adds checks on hot paths. Might not fix all overlap cases if aliasing is still possible with valid sizes.\")\n    }\n  ]\n}",
+      "parse_error": true
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 175710,
+      "output_tokens": 5455
+    },
+    "timing": {
+      "start_time": 1768941244.2654886,
+      "end_time": 1768941472.8231256,
+      "duration": 228.55763697624207
+    },
+    "trajectory": {
+      "agent_role": "dynamic_analyzer",
+      "task": "<uploaded_files>\n/src/php-src\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/php-src`. Consider the following issue description:\n\n<issue_description>\nA memcpy-parameter-overlap occurs in the XXH32 update path (XXH_memcpy / XXH_INLINE_XXH32_update called from PHP_XXH32Update in ext/hash/hash_xxhash.c / xxhash.h), causing memcpy to be invoked on overlapping source and destination ranges. This leads to undefined behavior and a heap-buffer-overflow read, resulting in memory",
+      "total_steps": 12,
+      "total_duration": 228.55763697624207,
+      "total_input_tokens": 175710,
+      "total_output_tokens": 5455,
+      "total_cost": 0.2693537,
+      "final_state": "success"
+    }
+  },
+  "history_miner_output": {
+    "role": "history_miner",
+    "raw_output": "{\n  \"file_analyzed\": \"ext/hash/xxhash/xxhash.h\",\n  \"function_analyzed\": \"XXH_INLINE_XXH32_update\",\n  \"relevant_commits\": [\n    {\n      \"hash\": \"23590f7c\",\n      \"message\": \"hash: Implement xxHash\",\n      \"changes\": \"Introduced ext/hash/hash_xxhash.c plus bundled xxHash v0.8.0 header (ext/hash/xxhash/xxhash.h); added xxh32/xxh64 serialize/unserialize glue with a ctx->s.memsize < 32 check.\",\n      \"relevance\": \"This is the commit that introduced the affected update/unserialize path; the too-loose XXH32 memsize validation allows invalid state to reach XXH_INLINE_XXH32_update, enabling size underflow/overlap in XXH_memcpy().\"\n    }\n  ],\n  \"vulnerability_origin\": \"Likely present since the initial xxHash integration (commit 23590f7c). The xxh32 unserialize validation accepts memsize up to 31 (<32), but XXH32\u2019s internal partial buffer is only 16 bytes (valid memsize 0..15). An attacker-controlled serialized state can set an out-of-range memsize, causing later XXH32_update() to compute a negative/underflowed copy length and call memcpy on overlapping/invalid ranges.\",\n  \"fix_hints\": \"History shows serialization was deliberately restricted for xxh3/xxh128 due to state sensitivity; similarly, xxh32/xxh64 unserialize should enforce strict internal invariants (especially memsize bounds) instead of a broad <32 check.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Tighten XXH32 unserialize validation: require ctx->s.memsize <= 15 (and optionally validate other invariants like total_len consistency) before accepting state.\",\n      \"reasoning\": \"Matches the existing pattern already added in the introducing commit (a post-unserialize memsize check), but corrects it to XXH32\u2019s real buffer limit; prevents malformed serialized state from ever reaching xxhash.h update logic.\",\n      \"trade_offs\": \"May reject previously-serialized contexts that were already malformed; minimal risk for valid states.\n\"\n    },\n    {\n      \"approach\": \"Add defensive checks in XXH32_update wrapper (PHP_XXH32Update) or immediately before calling XXH32_update(): if ctx->s.memsize > 15, fail/reset state.\",\n      \"reasoning\": \"Provides a second line of defense even if other code paths can corrupt memsize; contains impact to PHP glue without patching vendor header.\",\n      \"trade_offs\": \"Doesn\u2019t fix underlying library assumptions; may mask bugs by resetting state.\n\"\n    },\n    {\n      \"approach\": \"Harden bundled xxhash.h: in XXH_INLINE_XXH32_update(), guard against invalid state->memsize (>=16) and avoid memcpy UB (e.g., early return error or use memmove only for the small internal buffer copy).\",\n      \"reasoning\": \"Prevents UB even if state becomes corrupted (via unserialize or other memory bugs).\",\n      \"trade_offs\": \"Vendor patch may diverge from upstream xxHash; behavioral changes in a low-level routine.\n\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "raw": "{\n  \"file_analyzed\": \"ext/hash/xxhash/xxhash.h\",\n  \"function_analyzed\": \"XXH_INLINE_XXH32_update\",\n  \"relevant_commits\": [\n    {\n      \"hash\": \"23590f7c\",\n      \"message\": \"hash: Implement xxHash\",\n      \"changes\": \"Introduced ext/hash/hash_xxhash.c plus bundled xxHash v0.8.0 header (ext/hash/xxhash/xxhash.h); added xxh32/xxh64 serialize/unserialize glue with a ctx->s.memsize < 32 check.\",\n      \"relevance\": \"This is the commit that introduced the affected update/unserialize path; the too-loose XXH32 memsize validation allows invalid state to reach XXH_INLINE_XXH32_update, enabling size underflow/overlap in XXH_memcpy().\"\n    }\n  ],\n  \"vulnerability_origin\": \"Likely present since the initial xxHash integration (commit 23590f7c). The xxh32 unserialize validation accepts memsize up to 31 (<32), but XXH32\u2019s internal partial buffer is only 16 bytes (valid memsize 0..15). An attacker-controlled serialized state can set an out-of-range memsize, causing later XXH32_update() to compute a negative/underflowed copy length and call memcpy on overlapping/invalid ranges.\",\n  \"fix_hints\": \"History shows serialization was deliberately restricted for xxh3/xxh128 due to state sensitivity; similarly, xxh32/xxh64 unserialize should enforce strict internal invariants (especially memsize bounds) instead of a broad <32 check.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Tighten XXH32 unserialize validation: require ctx->s.memsize <= 15 (and optionally validate other invariants like total_len consistency) before accepting state.\",\n      \"reasoning\": \"Matches the existing pattern already added in the introducing commit (a post-unserialize memsize check), but corrects it to XXH32\u2019s real buffer limit; prevents malformed serialized state from ever reaching xxhash.h update logic.\",\n      \"trade_offs\": \"May reject previously-serialized contexts that were already malformed; minimal risk for valid states.\n\"\n    },\n    {\n      \"approach\": \"Add defensive checks in XXH32_update wrapper (PHP_XXH32Update) or immediately before calling XXH32_update(): if ctx->s.memsize > 15, fail/reset state.\",\n      \"reasoning\": \"Provides a second line of defense even if other code paths can corrupt memsize; contains impact to PHP glue without patching vendor header.\",\n      \"trade_offs\": \"Doesn\u2019t fix underlying library assumptions; may mask bugs by resetting state.\n\"\n    },\n    {\n      \"approach\": \"Harden bundled xxhash.h: in XXH_INLINE_XXH32_update(), guard against invalid state->memsize (>=16) and avoid memcpy UB (e.g., early return error or use memmove only for the small internal buffer copy).\",\n      \"reasoning\": \"Prevents UB even if state becomes corrupted (via unserialize or other memory bugs).\",\n      \"trade_offs\": \"Vendor patch may diverge from upstream xxHash; behavioral changes in a low-level routine.\n\"\n    }\n  ]\n}",
+      "parse_error": true
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 52237,
+      "output_tokens": 3745
+    },
+    "timing": {
+      "start_time": 1768941472.8303099,
+      "end_time": 1768944004.0690892,
+      "duration": 2531.2387793064117
+    },
+    "trajectory": {
+      "agent_role": "history_miner",
+      "task": "<uploaded_files>\n/src/php-src\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/php-src`. Consider the following issue description:\n\n<issue_description>\nA memcpy-parameter-overlap occurs in the XXH32 update path (XXH_memcpy / XXH_INLINE_XXH32_update called from PHP_XXH32Update in ext/hash/hash_xxhash.c / xxhash.h), causing memcpy to be invoked on overlapping source and destination ranges. This leads to undefined behavior and a heap-buffer-overflow read, resulting in memory",
+      "total_steps": 6,
+      "total_duration": 2531.2387793064117,
+      "total_input_tokens": 52237,
+      "total_output_tokens": 3745,
+      "total_cost": 0.09566235000000001,
+      "final_state": "success"
+    }
+  },
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "{\n  \"root_cause\": \"The xxh32 hash context unserialize validation allowed attacker-controlled XXH32_state_t::memsize values up to 31 (<32). However XXH32_update() assumes memsize is in [0..15] because its internal scratch buffer is only 16 bytes (mem32[4]). When memsize >= 16, (16 - memsize) underflows to a huge size_t and XXH_memcpy() ends up calling memcpy() with an invalid/overlapping range, triggering ASan memcpy-param-overlap and subsequent heap OOB read/corruption.\",\n  \"fix_approach\": \"1) Hardened PHP\u2019s xxh32 unserialize handler to sanitize invalid memsize values: after successful spec unserialize, if ctx->s.memsize >= 16 the state is reset (XXH32_reset) to a safe initialized state, preventing the invalid invariant from reaching the update path while keeping unserialize non-fatal. 2) Added defense-in-depth in the bundled xxhash.h: XXH32_update() now rejects any state with memsize >= 16 before performing the (16 - memsize) calculation/copy.\",\n  \"files_modified\": [\n    \"ext/hash/hash_xxhash.c\",\n    \"ext/hash/xxhash/xxhash.h\"\n  ],\n  \"verification\": {\n    \"build_success\": true,\n    \"repro_success\": true,\n    \"exit_code\": 0,\n    \"asan_output\": \"No sanitizer errors detected\"\n  },\n  \"confidence\": \"high\"\n}",
+    "parsed_output": {
+      "root_cause": "The xxh32 hash context unserialize validation allowed attacker-controlled XXH32_state_t::memsize values up to 31 (<32). However XXH32_update() assumes memsize is in [0..15] because its internal scratch buffer is only 16 bytes (mem32[4]). When memsize >= 16, (16 - memsize) underflows to a huge size_t and XXH_memcpy() ends up calling memcpy() with an invalid/overlapping range, triggering ASan memcpy-param-overlap and subsequent heap OOB read/corruption.",
+      "fix_approach": "1) Hardened PHP\u2019s xxh32 unserialize handler to sanitize invalid memsize values: after successful spec unserialize, if ctx->s.memsize >= 16 the state is reset (XXH32_reset) to a safe initialized state, preventing the invalid invariant from reaching the update path while keeping unserialize non-fatal. 2) Added defense-in-depth in the bundled xxhash.h: XXH32_update() now rejects any state with memsize >= 16 before performing the (16 - memsize) calculation/copy.",
+      "files_modified": [
+        "ext/hash/hash_xxhash.c",
+        "ext/hash/xxhash/xxhash.h"
+      ],
+      "verification": {
+        "build_success": true,
+        "repro_success": true,
+        "exit_code": 0,
+        "asan_output": "No sanitizer errors detected"
+      },
+      "confidence": "high"
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 360215,
+      "output_tokens": 8441
+    },
+    "timing": {
+      "start_time": 1768944004.0735698,
+      "end_time": 1768944193.3348782,
+      "duration": 189.26130843162537
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/php-src\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/php-src`. Consider the following issue description:\n\n<issue_description>\nA memcpy-parameter-overlap occurs in the XXH32 update path (XXH_memcpy / XXH_INLINE_XXH32_update called from PHP_XXH32Update in ext/hash/hash_xxhash.c / xxhash.h), causing memcpy to be invoked on overlapping source and destination ranges. This leads to undefined behavior and a heap-buffer-overflow read, resulting in memory",
+      "total_steps": 17,
+      "total_duration": 189.26130843162537,
+      "total_input_tokens": 360215,
+      "total_output_tokens": 8441,
+      "total_cost": 0.34938225,
+      "final_state": "success"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 720783,
+    "output_tokens": 24251
+  },
+  "timing": {
+    "total_duration": 3131.8952944278717
+  }
+}

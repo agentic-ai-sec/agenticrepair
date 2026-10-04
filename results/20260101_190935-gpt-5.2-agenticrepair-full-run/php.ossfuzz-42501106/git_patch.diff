@@ -1,0 +1,34 @@
+diff --git a/Zend/zend_closures.c b/Zend/zend_closures.c
+index ceeac23531c..462f5b9f8e8 100644
+--- a/Zend/zend_closures.c
++++ b/Zend/zend_closures.c
+@@ -327,8 +327,13 @@ static zend_result zend_create_closure_from_callable(zval *return_value, zval *c
+ 		call.type = ZEND_INTERNAL_FUNCTION;
+ 		call.fn_flags = mptr->common.fn_flags & ZEND_ACC_STATIC;
+ 		call.handler = zend_closure_call_magic;
+-		call.function_name = mptr->common.function_name;
+-		call.scope = mptr->common.scope;
++			/*
++			 * mptr is a CALL_VIA_TRAMPOLINE internal function. zend_free_trampoline()
++			 * will release its function_name, but we keep the name in the fake
++			 * closure for later use (and release it in zend_closure_free_storage()).
++			 */
++			call.function_name = zend_string_copy(mptr->common.function_name);
++			call.scope = mptr->common.scope;
+ 
+ 		zend_free_trampoline(mptr);
+ 		mptr = (zend_function *) &call;
+@@ -797,7 +802,12 @@ void zend_closure_from_frame(zval *return_value, zend_execute_data *call) { /* {
+ 		trampoline.type = ZEND_INTERNAL_FUNCTION;
+ 		trampoline.fn_flags = mptr->common.fn_flags & ZEND_ACC_STATIC;
+ 		trampoline.handler = zend_closure_call_magic;
+-		trampoline.function_name = mptr->common.function_name;
++		/*
++		 * mptr is a CALL_VIA_TRAMPOLINE internal function. The trampoline and its
++		 * function_name will be freed by zend_free_trampoline(). Keep a separate
++		 * reference for the closure.
++		 */
++		trampoline.function_name = zend_string_copy(mptr->common.function_name);
+ 		trampoline.scope = mptr->common.scope;
+ 
+ 		zend_free_trampoline(mptr);

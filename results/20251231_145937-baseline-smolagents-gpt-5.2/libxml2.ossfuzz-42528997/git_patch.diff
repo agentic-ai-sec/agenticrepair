@@ -1,0 +1,21 @@
+diff --git a/parser.c b/parser.c
+index cd89fdb6..240c9986 100644
+--- a/parser.c
++++ b/parser.c
+@@ -4952,6 +4952,16 @@ xmlParseCommentComplex(xmlParserCtxtPtr ctxt, xmlChar *buf,
+             size_t new_size;
+ 
+ 	    new_size = size * 2;
++	    /*
++	     * Make sure that the new buffer is large enough for the
++	     * upcoming COPY_BUF (up to 4 bytes) plus a trailing '\0'.
++	     * Doubling very small buffers (e.g. size == 2) might still
++	     * be insufficient.
++	     */
++	    if (new_size < size)
++	        new_size = len + 6;
++	    if (new_size < len + 6)
++	        new_size = len + 6;
+ 	    new_buf = (xmlChar *) xmlRealloc(buf, new_size);
+ 	    if (new_buf == NULL) {
+ 		xmlFree (buf);

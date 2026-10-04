@@ -1,0 +1,128 @@
+diff --git a/parser.c b/parser.c
+index cd89fdb6..6fc6f424 100644
+--- a/parser.c
++++ b/parser.c
+@@ -3946,8 +3946,11 @@ xmlParseEntityValue(xmlParserCtxtPtr ctxt, xmlChar **orig) {
+ 	if (len + 5 >= size) {
+ 	    xmlChar *tmp;
+ 
+-	    size *= 2;
+-	    tmp = (xmlChar *) xmlRealloc(buf, size);
++	    size_t new_size = size * 2;
++		/* Ensure we allocate at least enough for the current write (xmlCopyCharMultiByte can write up to 4 bytes) plus a terminating NUL */
++		size_t need = len + 5;
++		if (new_size < need) new_size = need;
++		tmp = (xmlChar *) xmlRealloc(buf, new_size);
+ 	    if (tmp == NULL) {
+ 		xmlErrMemory(ctxt, NULL);
+                 goto error;
+@@ -4384,8 +4387,11 @@ xmlParseSystemLiteral(xmlParserCtxtPtr ctxt) {
+ 	if (len + 5 >= size) {
+ 	    xmlChar *tmp;
+ 
+-	    size *= 2;
+-	    tmp = (xmlChar *) xmlRealloc(buf, size);
++	    size_t new_size = size * 2;
++		/* Ensure we allocate at least enough for the current write (xmlCopyCharMultiByte can write up to 4 bytes) plus a terminating NUL */
++		size_t need = len + 5;
++		if (new_size < need) new_size = need;
++		tmp = (xmlChar *) xmlRealloc(buf, new_size);
+ 	    if (tmp == NULL) {
+ 	        xmlFree(buf);
+ 		xmlErrMemory(ctxt, NULL);
+@@ -4464,8 +4470,11 @@ xmlParsePubidLiteral(xmlParserCtxtPtr ctxt) {
+ 	if (len + 1 >= size) {
+ 	    xmlChar *tmp;
+ 
+-	    size *= 2;
+-	    tmp = (xmlChar *) xmlRealloc(buf, size);
++	    size_t new_size = size * 2;
++		/* Ensure we allocate at least enough for the current write (xmlCopyCharMultiByte can write up to 4 bytes) plus a terminating NUL */
++		size_t need = len + 5;
++		if (new_size < need) new_size = need;
++		tmp = (xmlChar *) xmlRealloc(buf, new_size);
+ 	    if (tmp == NULL) {
+ 		xmlErrMemory(ctxt, NULL);
+ 		xmlFree(buf);
+@@ -4916,6 +4925,20 @@ xmlParseCommentComplex(xmlParserCtxtPtr ctxt, xmlChar *buf,
+ 	    return;
+ 	}
+     }
++    else {
++        /* Ensure the provided buffer has room for worst-case multi-byte char + NUL. */
++        if (size <= len + 4) {
++            size_t new_size = len + 5;
++            xmlChar *new_buf = (xmlChar *) xmlRealloc(buf, new_size);
++            if (new_buf == NULL) {
++                xmlFree(buf);
++                xmlErrMemory(ctxt, NULL);
++                return;
++            }
++            buf = new_buf;
++            size = new_size;
++        }
++    }
+     q = CUR_CHAR(ql);
+     if (q == 0)
+         goto not_terminated;
+@@ -4952,7 +4975,10 @@ xmlParseCommentComplex(xmlParserCtxtPtr ctxt, xmlChar *buf,
+             size_t new_size;
+ 
+ 	    new_size = size * 2;
+-	    new_buf = (xmlChar *) xmlRealloc(buf, new_size);
++		/* Ensure we allocate at least enough for the current write (xmlCopyCharMultiByte can write up to 4 bytes) plus a terminating NUL */
++		size_t need = len + 5;
++		if (new_size < need) new_size = need;
++		new_buf = (xmlChar *) xmlRealloc(buf, new_size);
+ 	    if (new_buf == NULL) {
+ 		xmlFree (buf);
+ 		xmlErrMemory(ctxt, NULL);
+@@ -10208,13 +10234,17 @@ xmlParseCDSect(xmlParserCtxtPtr ctxt) {
+ 	if (len + 5 >= size) {
+ 	    xmlChar *tmp;
+ 
+-	    tmp = (xmlChar *) xmlRealloc(buf, size * 2);
++	    size_t new_size = size * 2;
++		/* Ensure we allocate enough for a potential multi-byte char + NUL */
++		size_t need = len + 5;
++		if (new_size < need) new_size = need;
++		tmp = (xmlChar *) xmlRealloc(buf, new_size);
+ 	    if (tmp == NULL) {
+ 		xmlErrMemory(ctxt, NULL);
+                 goto out;
+ 	    }
+-	    buf = tmp;
+-	    size *= 2;
++		buf = tmp;
++		size = new_size;
+ 	}
+ 	COPY_BUF(rl,buf,len,r);
+         if (len > maxLength) {
+@@ -10612,8 +10642,11 @@ xmlParseVersionNum(xmlParserCtxtPtr ctxt) {
+ 	if (len + 1 >= size) {
+ 	    xmlChar *tmp;
+ 
+-	    size *= 2;
+-	    tmp = (xmlChar *) xmlRealloc(buf, size);
++	    size_t new_size = size * 2;
++		/* Ensure we allocate at least enough for the current write (xmlCopyCharMultiByte can write up to 4 bytes) plus a terminating NUL */
++		size_t need = len + 5;
++		if (new_size < need) new_size = need;
++		tmp = (xmlChar *) xmlRealloc(buf, new_size);
+ 	    if (tmp == NULL) {
+ 	        xmlFree(buf);
+ 		xmlErrMemory(ctxt, NULL);
+@@ -10720,8 +10753,11 @@ xmlParseEncName(xmlParserCtxtPtr ctxt) {
+ 	    if (len + 1 >= size) {
+ 	        xmlChar *tmp;
+ 
+-		size *= 2;
+-		tmp = (xmlChar *) xmlRealloc(buf, size);
++		size_t new_size = size * 2;
++		/* Ensure we allocate at least enough for the current write (xmlCopyCharMultiByte can write up to 4 bytes) plus a terminating NUL */
++		size_t need = len + 5;
++		if (new_size < need) new_size = need;
++		tmp = (xmlChar *) xmlRealloc(buf, new_size);
+ 		if (tmp == NULL) {
+ 		    xmlErrMemory(ctxt, NULL);
+ 		    xmlFree(buf);

@@ -1,0 +1,81 @@
+diff --git a/HTMLparser.c b/HTMLparser.c
+index b8b6bd23..48e34eac 100644
+--- a/HTMLparser.c
++++ b/HTMLparser.c
+@@ -13,6 +13,7 @@
+ #include <string.h>
+ #include <ctype.h>
+ #include <stdlib.h>
++#include <limits.h>
+ 
+ #include <libxml/xmlmemory.h>
+ #include <libxml/tree.h>
+@@ -2533,6 +2534,38 @@ htmlNewDoc(const xmlChar *URI, const xmlChar *ExternalID) {
+ 
+ static const xmlChar * htmlParseNameComplex(xmlParserCtxtPtr ctxt);
+ 
++/**
++ * htmlStrndupInput:
++ * : an HTML parser context
++ * : offset from the current input base
++ * : number of bytes to duplicate
++ *
++ * Safely duplicate a substring from the current parser input buffer.
++ * The HTML parser stores offsets relative to BASE_PTR. If the input
++ * buffer is shrunk or moved, BASE_PTR can change and a previously
++ * computed offset may no longer be valid.
++ **/
++static xmlChar *
++htmlStrndupInput(htmlParserCtxtPtr ctxt, size_t startPosition, size_t len) {
++    const xmlChar *base, *end, *start;
++
++    if ((ctxt == NULL) || (ctxt->input == NULL))
++        return(NULL);
++    base = ctxt->input->base;
++    end = ctxt->input->end;
++    if ((base == NULL) || (end == NULL) || (end < base))
++        return(NULL);
++
++    if (startPosition > (size_t)(end - base))
++        return(NULL);
++    start = base + startPosition;
++
++    if ((len > (size_t)(end - start)) || (len > (size_t)INT_MAX))
++        return(NULL);
++
++    return(xmlStrndup(start, (int) len));
++}
++
+ static void
+ htmlSkipBogusComment(htmlParserCtxtPtr ctxt) {
+     int c;
+@@ -3011,8 +3044,12 @@ htmlParseSystemLiteral(htmlParserCtxtPtr ctxt) {
+                      "Unfinished SystemLiteral\n", NULL, NULL);
+     } else {
+         NEXT;
+-        if (err == 0)
+-            ret = xmlStrndup((BASE_PTR+startPosition), len);
++        if (err == 0) {
++            ret = htmlStrndupInput(ctxt, startPosition, len);
++            if (ret == NULL)
++                htmlParseErr(ctxt, XML_ERR_INTERNAL_ERROR,
++                             "SystemLiteral out of bounds\n", NULL, NULL);
++        }
+     }
+ 
+     return(ret);
+@@ -3066,8 +3103,12 @@ htmlParsePubidLiteral(htmlParserCtxtPtr ctxt) {
+                      "Unfinished PubidLiteral\n", NULL, NULL);
+     } else {
+         NEXT;
+-        if (err == 0)
+-            ret = xmlStrndup((BASE_PTR + startPosition), len);
++        if (err == 0) {
++            ret = htmlStrndupInput(ctxt, startPosition, len);
++            if (ret == NULL)
++                htmlParseErr(ctxt, XML_ERR_INTERNAL_ERROR,
++                             "PubidLiteral out of bounds\n", NULL, NULL);
++        }
+     }
+ 
+     return(ret);

@@ -1,0 +1,66 @@
+diff --git a/xmlreader.c b/xmlreader.c
+index d96a2ebc..3e25df0f 100644
+--- a/xmlreader.c
++++ b/xmlreader.c
+@@ -191,6 +191,35 @@ static int xmlTextReaderNextTree(xmlTextReaderPtr reader);
+ 
+ static void xmlTextReaderFreeNode(xmlTextReaderPtr reader, xmlNodePtr cur);
+ static void xmlTextReaderFreeNodeList(xmlTextReaderPtr reader, xmlNodePtr cur);
++/*
++ * In reader mode, we aggressively recycle/free nodes. Entity expansion can
++ * still copy nodes referencing namespace declarations (xmlNs) that were
++ * attached to elements which get freed/recycled by the reader. Freeing the
++ * nsDef list would invalidate those pointers and can lead to use-after-free
++ * reads during xmlDocCopyNode/xmlStaticCopyNode.
++ *
++ * To avoid this, move namespace declarations to the document's oldNs list so
++ * they stay alive for the lifetime of the document.
++ */
++static void
++xmlTextReaderPreserveNsList(xmlDocPtr doc, xmlNsPtr ns)
++{
++    xmlNsPtr last;
++
++    if ((doc == NULL) || (ns == NULL))
++        return;
++
++    if (doc->oldNs == NULL) {
++        doc->oldNs = ns;
++        return;
++    }
++
++    last = doc->oldNs;
++    while (last->next != NULL)
++        last = last->next;
++    last->next = ns;
++}
++
+ 
+ static void
+ xmlTextReaderErrMemory(xmlTextReaderPtr reader) {
+@@ -313,8 +342,10 @@ xmlTextReaderFreeNodeList(xmlTextReaderPtr reader, xmlNodePtr cur) {
+ 	    if (((cur->type == XML_ELEMENT_NODE) ||
+ 	         (cur->type == XML_XINCLUDE_START) ||
+ 		 (cur->type == XML_XINCLUDE_END)) &&
+-		(cur->nsDef != NULL))
+-		xmlFreeNsList(cur->nsDef);
++		(cur->nsDef != NULL)) {
++		xmlTextReaderPreserveNsList(cur->doc, cur->nsDef);
++		cur->nsDef = NULL;
++	    }
+ 
+ 	    /*
+ 	     * we don't free element names here they are interned now
+@@ -400,8 +431,10 @@ xmlTextReaderFreeNode(xmlTextReaderPtr reader, xmlNodePtr cur) {
+     if (((cur->type == XML_ELEMENT_NODE) ||
+ 	 (cur->type == XML_XINCLUDE_START) ||
+ 	 (cur->type == XML_XINCLUDE_END)) &&
+-	(cur->nsDef != NULL))
+-	xmlFreeNsList(cur->nsDef);
++	(cur->nsDef != NULL)) {
++		xmlTextReaderPreserveNsList(cur->doc, cur->nsDef);
++		cur->nsDef = NULL;
++	    }
+ 
+     /*
+      * we don't free names here they are interned now

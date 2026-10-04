@@ -1,0 +1,29 @@
+diff --git a/HTMLtree.c b/HTMLtree.c
+index cdfaed97..d1146cbb 100644
+--- a/HTMLtree.c
++++ b/HTMLtree.c
+@@ -1064,7 +1064,11 @@ htmlSaveFile(const char *filename, xmlDocPtr cur) {
+     handler = htmlFindOutputEncoder(encoding);
+     buf = xmlOutputBufferCreateFilename(filename, handler, cur->compression);
+     if (buf == NULL) {
+-        xmlCharEncCloseFunc(handler);
++        /*
++         * xmlOutputBufferCreateFilename() takes ownership of the
++         * encoding handler and may already free it on internal error
++         * paths. Don't close it here to avoid use-after-free.
++         */
+         return(0);
+     }
+ 
+@@ -1108,7 +1112,11 @@ htmlSaveFileFormat(const char *filename, xmlDocPtr cur,
+      */
+     buf = xmlOutputBufferCreateFilename(filename, handler, 0);
+     if (buf == NULL) {
+-        xmlCharEncCloseFunc(handler);
++        /*
++         * xmlOutputBufferCreateFilename() takes ownership of the
++         * encoding handler and may already free it on internal error
++         * paths. Don't close it here to avoid use-after-free.
++         */
+         return(0);
+     }

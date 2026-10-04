@@ -1,0 +1,11 @@
+{
+  "instance_id": "wasm3.ossfuzz-42495624",
+  "final_status": "success",
+  "total_token_usage": {
+    "input_tokens": 1245475,
+    "output_tokens": 27492
+  },
+  "timing": {
+    "total_duration": 462.96275877952576
+  }
+}

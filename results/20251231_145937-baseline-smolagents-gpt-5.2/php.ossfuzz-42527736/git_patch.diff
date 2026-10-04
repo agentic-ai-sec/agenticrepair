@@ -1,0 +1,80 @@
+diff --git a/ext/standard/file.c b/ext/standard/file.c
+index edaba57748c..dd3adc6640c 100644
+--- a/ext/standard/file.c
++++ b/ext/standard/file.c
+@@ -1989,14 +1989,23 @@ PHPAPI HashTable *php_fgetcsv(php_stream *stream, char delimiter, char enclosure
+ 			bptr++;	/* move on to first character in field */
+ 			hunk_begin = bptr;
+ 
++				/* Recompute inc_len after moving into the field.
++				 * Otherwise we may advance past the end of the buffer based on a stale inc_len,
++				 * which can desynchronize bptr/hunk_begin and lead to negative copy lengths.
++				 */
++				inc_len = (bptr < limit ? (*bptr == '\0' ? 1 : php_mblen(bptr, limit - bptr)) : 0);
+ 			/* 2A. handle enclosure delimited field */
+ 			for (;;) {
+ 				switch (inc_len) {
+ 					case 0:
+ 						switch (state) {
+ 							case 2:
+-								memcpy(tptr, hunk_begin, bptr - hunk_begin - 1);
+-								tptr += (bptr - hunk_begin - 1);
++								ptrdiff_t diff = bptr - hunk_begin;
++								size_t copy_len = diff > 0 ? (size_t) diff - 1 : 0;
++								if (copy_len) {
++									memcpy(tptr, hunk_begin, copy_len);
++									tptr += copy_len;
++								}
+ 								hunk_begin = bptr;
+ 								goto quit_loop_2;
+ 
+@@ -2024,6 +2033,9 @@ PHPAPI HashTable *php_fgetcsv(php_stream *stream, char delimiter, char enclosure
+ 										/* if the line ends with enclosure, we need to go back by
+ 										 * one character so the \0 character is not copied. */
+ 										--bptr;
++										if (bptr < hunk_begin) {
++											hunk_begin = bptr;
++										}
+ 									}
+ 									goto quit_loop_2;
+ 								}
+@@ -2039,6 +2051,9 @@ PHPAPI HashTable *php_fgetcsv(php_stream *stream, char delimiter, char enclosure
+ 										/* if the line ends with enclosure, we need to go back by
+ 										 * one character so the \0 character is not copied. */
+ 										--bptr;
++										if (bptr < hunk_begin) {
++											hunk_begin = bptr;
++										}
+ 									}
+ 									goto quit_loop_2;
+ 								}
+@@ -2076,8 +2091,12 @@ PHPAPI HashTable *php_fgetcsv(php_stream *stream, char delimiter, char enclosure
+ 							case 2: /* embedded enclosure ? let's check it */
+ 								if (*bptr != enclosure) {
+ 									/* real enclosure */
+-									memcpy(tptr, hunk_begin, bptr - hunk_begin - 1);
+-									tptr += (bptr - hunk_begin - 1);
++									ptrdiff_t diff = bptr - hunk_begin;
++									size_t copy_len = diff > 0 ? (size_t) diff - 1 : 0;
++									if (copy_len) {
++										memcpy(tptr, hunk_begin, copy_len);
++										tptr += copy_len;
++									}
+ 									hunk_begin = bptr;
+ 									goto quit_loop_2;
+ 								}
+@@ -2102,8 +2121,12 @@ PHPAPI HashTable *php_fgetcsv(php_stream *stream, char delimiter, char enclosure
+ 						switch (state) {
+ 							case 2:
+ 								/* real enclosure */
+-								memcpy(tptr, hunk_begin, bptr - hunk_begin - 1);
+-								tptr += (bptr - hunk_begin - 1);
++								ptrdiff_t diff = bptr - hunk_begin;
++								size_t copy_len = diff > 0 ? (size_t) diff - 1 : 0;
++								if (copy_len) {
++									memcpy(tptr, hunk_begin, copy_len);
++									tptr += copy_len;
++								}
+ 								hunk_begin = bptr;
+ 								goto quit_loop_2;
+ 							case 1:

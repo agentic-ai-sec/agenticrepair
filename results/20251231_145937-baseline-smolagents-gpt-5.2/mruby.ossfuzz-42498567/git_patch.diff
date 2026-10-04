@@ -1,0 +1,29 @@
+diff --git a/mrbgems/mruby-compiler/core/codegen.c b/mrbgems/mruby-compiler/core/codegen.c
+index 5ab2f6180..225ecf22e 100644
+--- a/mrbgems/mruby-compiler/core/codegen.c
++++ b/mrbgems/mruby-compiler/core/codegen.c
+@@ -445,7 +445,8 @@ genjmp2(codegen_scope *s, mrb_code i, uint16_t a, uint32_t pc, int val)
+     gen_B(s, i);
+     gen_S(s, a);
+     pos = s->pc;
+-    gen_S(s, pc);
++    /* emit jump destination the same way as the non-EXT path */
++    gen_jmpdst(s, pc);
+   }
+   else {
+     gen_B(s, i);
+@@ -564,6 +565,14 @@ dispatch(codegen_scope *s, uint32_t pos0)
+ 
+   if (pos0 == JMPLINK_START) return 0;
+ 
++  /*
++   * Safety check: pos0 points to the 2-byte jump offset field.
++   * A corrupted/invalid link must not cause an out-of-bounds read of s->iseq.
++   */
++  if (pos0 + 1 >= s->pc) {
++    codegen_error(s, "invalid jmp link");
++  }
++
+   pos1 = pos0 + 2;
+   offset = s->pc - pos1;
+   if (offset > INT16_MAX) {

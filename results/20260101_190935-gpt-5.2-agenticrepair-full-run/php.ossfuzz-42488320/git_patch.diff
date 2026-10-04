@@ -1,0 +1,25 @@
+diff --git a/Zend/zend_vm_execute.h b/Zend/zend_vm_execute.h
+index 4e04a022eb5..3d2adc925e8 100644
+--- a/Zend/zend_vm_execute.h
++++ b/Zend/zend_vm_execute.h
+@@ -29904,7 +29904,20 @@ try_assign_dim_array:
+ 
+ 				UNDEF_RESULT();
+ 			} else {
+-				dim = _get_zval_ptr_cv_BP_VAR_R(opline->op2.var EXECUTE_DATA_CC);
++				/*
++				 * Avoid invoking userland error handlers (e.g. on undefined variable)
++				 * while holding an indirect pointer into a HashTable bucket (op1).
++				 * This prevents the bucket from being freed and subsequently used.
++				 */
++				zval tmp_dim;
++				dim = _get_zval_ptr_cv_BP_VAR_IS(opline->op2.var EXECUTE_DATA_CC);
++				if (IS_CV == IS_CONST && Z_EXTRA_P(dim) == ZEND_EXTRA_VALUE) {
++					dim++;
++				}
++				if (UNEXPECTED(Z_TYPE_P(dim) == IS_UNDEF)) {
++					ZVAL_LONG(&tmp_dim, 0);
++					dim = &tmp_dim;
++				}
+ 				value = RT_CONSTANT((opline+1), (opline+1)->op1);
+ 				zend_assign_to_string_offset(object_ptr, dim, value OPLINE_CC EXECUTE_DATA_CC);

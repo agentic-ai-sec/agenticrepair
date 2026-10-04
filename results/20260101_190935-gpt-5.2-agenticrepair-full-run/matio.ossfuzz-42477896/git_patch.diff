@@ -1,0 +1,114 @@
+diff --git a/src/mat.c b/src/mat.c
+index 4227c9c..82aa68d 100644
+--- a/src/mat.c
++++ b/src/mat.c
+@@ -163,6 +163,8 @@ ComplexMalloc(size_t nbytes)
+ void
+ ComplexFree(mat_complex_split_t* complex_data)
+ {
++    if ( NULL == complex_data )
++        return;
+     free(complex_data->Re);
+     free(complex_data->Im);
+     free(complex_data);
+@@ -1027,7 +1029,10 @@ Mat_VarCreate(const char *name,enum matio_classes class_type,
+         mat_sparse_t *sparse_data, *sparse_data_in;
+ 
+         sparse_data_in = (mat_sparse_t*)data;
+-        sparse_data    = (mat_sparse_t*)malloc(sizeof(mat_sparse_t));
++        /* calloc so pointer members default to NULL (safe for Mat_VarFree on
++         * partial initialization/failure paths).
++         */
++        sparse_data    = (mat_sparse_t*)calloc(1,sizeof(mat_sparse_t));
+         if ( NULL != sparse_data ) {
+             sparse_data->nzmax = sparse_data_in->nzmax;
+             sparse_data->nir   = sparse_data_in->nir;
+@@ -1042,7 +1047,8 @@ Mat_VarCreate(const char *name,enum matio_classes class_type,
+                 memcpy(sparse_data->jc,sparse_data_in->jc,
+                        sparse_data->njc*sizeof(*sparse_data->jc));
+             if ( matvar->isComplex ) {
+-                sparse_data->data = malloc(sizeof(mat_complex_split_t));
++                /* calloc so Re/Im start as NULL if subsequent allocations fail */
++                sparse_data->data = calloc(1,sizeof(mat_complex_split_t));
+                 if ( NULL != sparse_data->data ) {
+                     mat_complex_split_t *complex_data,*complex_data_in;
+                     complex_data     = (mat_complex_split_t*)sparse_data->data;
+@@ -1066,7 +1072,8 @@ Mat_VarCreate(const char *name,enum matio_classes class_type,
+         matvar->data = sparse_data;
+     } else {
+         if ( matvar->isComplex ) {
+-            matvar->data   = malloc(sizeof(mat_complex_split_t));
++            /* calloc so Re/Im are NULL when nbytes==0 or on allocation failure */
++            matvar->data   = calloc(1,sizeof(mat_complex_split_t));
+             if ( NULL != matvar->data && matvar->nbytes > 0 ) {
+                 mat_complex_split_t *complex_data    = (mat_complex_split_t*)matvar->data;
+                 mat_complex_split_t *complex_data_in = (mat_complex_split_t*)data;
+@@ -1351,7 +1358,8 @@ Mat_VarDuplicate(const matvar_t *in, int opt)
+             inflateCopy(out->internal->z,in->internal->z);
+         if ( in->internal->data != NULL ) {
+             if ( in->class_type == MAT_C_SPARSE ) {
+-                out->internal->data = malloc(sizeof(mat_sparse_t));
++                /* calloc so pointer members default to NULL */
++                out->internal->data = calloc(1,sizeof(mat_sparse_t));
+                 if ( out->internal->data != NULL ) {
+                     mat_sparse_t *out_sparse = (mat_sparse_t*)out->internal->data;
+                     mat_sparse_t *in_sparse  = (mat_sparse_t*)in->internal->data;
+@@ -1366,7 +1374,7 @@ Mat_VarDuplicate(const matvar_t *in, int opt)
+                         memcpy(out_sparse->jc, in_sparse->jc, in_sparse->njc*sizeof(*out_sparse->jc));
+                     out_sparse->ndata = in_sparse->ndata;
+                     if ( out->isComplex && NULL != in_sparse->data ) {
+-                        out_sparse->data = malloc(sizeof(mat_complex_split_t));
++                        out_sparse->data = calloc(1,sizeof(mat_complex_split_t));
+                         if ( out_sparse->data != NULL ) {
+                             mat_complex_split_t *out_data = (mat_complex_split_t*)out_sparse->data;
+                             mat_complex_split_t *in_data  = (mat_complex_split_t*)in_sparse->data;
+@@ -1389,7 +1397,7 @@ Mat_VarDuplicate(const matvar_t *in, int opt)
+                     }
+                 }
+             } else if ( out->isComplex ) {
+-                out->internal->data = malloc(sizeof(mat_complex_split_t));
++                out->internal->data = calloc(1,sizeof(mat_complex_split_t));
+                 if ( out->internal->data != NULL ) {
+                     mat_complex_split_t *out_data = (mat_complex_split_t*)out->internal->data;
+                     mat_complex_split_t *in_data  = (mat_complex_split_t*)in->internal->data;
+@@ -1433,7 +1441,8 @@ Mat_VarDuplicate(const matvar_t *in, int opt)
+             }
+         }
+     } else if ( (in->data != NULL) && (in->class_type == MAT_C_SPARSE) ) {
+-        out->data = malloc(sizeof(mat_sparse_t));
++        /* calloc so pointer members default to NULL */
++        out->data = calloc(1,sizeof(mat_sparse_t));
+         if ( out->data != NULL ) {
+             mat_sparse_t *out_sparse = (mat_sparse_t*)out->data;
+             mat_sparse_t *in_sparse  = (mat_sparse_t*)in->data;
+@@ -1448,7 +1457,7 @@ Mat_VarDuplicate(const matvar_t *in, int opt)
+                 memcpy(out_sparse->jc, in_sparse->jc, in_sparse->njc*sizeof(*out_sparse->jc));
+             out_sparse->ndata = in_sparse->ndata;
+             if ( out->isComplex && NULL != in_sparse->data ) {
+-                out_sparse->data = malloc(sizeof(mat_complex_split_t));
++                out_sparse->data = calloc(1,sizeof(mat_complex_split_t));
+                 if ( out_sparse->data != NULL ) {
+                     mat_complex_split_t *out_data = (mat_complex_split_t*)out_sparse->data;
+                     mat_complex_split_t *in_data  = (mat_complex_split_t*)in_sparse->data;
+@@ -1469,7 +1478,7 @@ Mat_VarDuplicate(const matvar_t *in, int opt)
+         }
+     } else if ( in->data != NULL ) {
+         if ( out->isComplex ) {
+-            out->data = malloc(sizeof(mat_complex_split_t));
++            out->data = calloc(1,sizeof(mat_complex_split_t));
+             if ( out->data != NULL ) {
+                 mat_complex_split_t *out_data = (mat_complex_split_t*)out->data;
+                 mat_complex_split_t *in_data  = (mat_complex_split_t*)in->data;
+diff --git a/src/mat5.c b/src/mat5.c
+index 82508e7..d609431 100644
+--- a/src/mat5.c
++++ b/src/mat5.c
+@@ -3020,7 +3020,7 @@ Mat_VarRead5(mat_t *mat, matvar_t *matvar)
+             mat_sparse_t *sparse;
+ 
+             matvar->data_size = sizeof(mat_sparse_t);
+-            matvar->data      = malloc(matvar->data_size);
++            matvar->data      = calloc(1, matvar->data_size);
+             if ( matvar->data == NULL ) {
+                 Mat_Critical("Mat_VarRead5: Allocation of data pointer failed");
+                 err = 1;

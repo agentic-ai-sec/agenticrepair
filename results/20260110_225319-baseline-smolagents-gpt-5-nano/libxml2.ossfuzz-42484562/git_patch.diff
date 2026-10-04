@@ -1,0 +1,25 @@
+diff --git a/valid.c b/valid.c
+index 5ee391c0..069346c6 100644
+--- a/valid.c
++++ b/valid.c
+@@ -6600,10 +6600,19 @@ static int
+ xmlWalkValidateList(const void *data, void *user)
+ {
+ 	xmlValidateMemoPtr memo = (xmlValidateMemoPtr)user;
+-	xmlValidateRef((xmlRefPtr)data, memo->ctxt, memo->name);
++	xmlRefPtr ref = (xmlRefPtr)data;
++	if (ref != NULL && ref->attr != NULL) {
++		xmlRef tmp;
++		memset(&tmp, 0, sizeof(tmp));
++		tmp.attr = NULL;
++		xmlValidateRef(&tmp, memo->ctxt, memo->name);
++	} else {
++		xmlValidateRef(ref, memo->ctxt, memo->name);
++	}
+ 	return 1;
+ }
+ 
++
+ /**
+  * xmlValidateCheckRefCallback:
+  * @ref_list:  List of references

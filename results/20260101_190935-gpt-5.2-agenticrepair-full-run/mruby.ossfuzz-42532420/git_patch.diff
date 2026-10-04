@@ -1,0 +1,107 @@
+diff --git a/mrbgems/mruby-compiler/core/y.tab.c b/mrbgems/mruby-compiler/core/y.tab.c
+index 7706d58f6..fc07031eb 100644
+--- a/mrbgems/mruby-compiler/core/y.tab.c
++++ b/mrbgems/mruby-compiler/core/y.tab.c
+@@ -13282,7 +13282,7 @@ mrb_parser_new(mrb_state *mrb)
+ 
+   p->lex_strterm = NULL;
+ 
+-  p->current_filename_index = -1;
++  p->current_filename_index = (uint16_t)-1;
+   p->filename_table = NULL;
+   p->filename_table_length = 0;
+ 
+diff --git a/src/debug.c b/src/debug.c
+index c9c132e7e..de36d674f 100644
+--- a/src/debug.c
++++ b/src/debug.c
+@@ -204,7 +204,7 @@ mrb_debug_info_append_file(mrb_state *mrb, mrb_irep_debug_info *d,
+     if (lines[start_pos + i] == prev_line) continue;
+     packed_size += mrb_packed_int_len(start_pos+i-prev_pc);
+     prev_pc = start_pos+i;
+-    packed_size += mrb_packed_int_len(lines[start_pos+i]-prev_line);
++    packed_size += mrb_packed_int_len((uint32_t)lines[start_pos+i] - (uint32_t)prev_line);
+     prev_line = lines[start_pos + i];
+   }
+   f->lines.packed_map = p = (uint8_t*)mrb_malloc(mrb, packed_size);
+@@ -213,7 +213,7 @@ mrb_debug_info_append_file(mrb_state *mrb, mrb_irep_debug_info *d,
+     if (lines[start_pos + i] == prev_line) continue;
+     p += mrb_packed_int_encode(start_pos+i-prev_pc, p);
+     prev_pc = start_pos + i;
+-    p += mrb_packed_int_encode(lines[start_pos + i]-prev_line, p);
++    p += mrb_packed_int_encode((uint32_t)lines[start_pos + i] - (uint32_t)prev_line, p);
+     prev_line = lines[start_pos + i];
+   }
+   f->line_entry_count = (uint32_t)packed_size;
+diff --git a/src/string.c b/src/string.c
+index 5044c1d50..7bde8afe2 100644
+--- a/src/string.c
++++ b/src/string.c
+@@ -602,16 +602,36 @@ mrb_memsearch_ss(const unsigned char *xs, long m, const unsigned char *ys, long
+   const bitint first = MASK1 * (uint8_t)xs[0];
+   const bitint last  = MASK1 * (uint8_t)xs[m-1];
+ 
++  /*
++   * NOTE: This routine does word-at-a-time reads from `ys` and `ys+m-1`.
++   * The original implementation iterated while `i < n`, which can perform
++   * out-of-bounds reads on the last iteration when fewer than sizeof(bitint)
++   * bytes remain (ASan: heap-buffer-overflow in mrb_memsearch_ss).
++   *
++   * To keep the fast path while avoiding OOB reads, only use word loads when
++   * both *s0 and *s1 are fully in-bounds, then handle the remaining tail with
++   * a byte-wise scan.
++   */
++
++  const mrb_int maxpos = (mrb_int)(n - m);
++  if (maxpos < 0) return -1;
++  const mrb_int W = (mrb_int)sizeof(bitint);
++  const mrb_int last_i = (mrb_int)(n - (m - 1) - (long)sizeof(bitint));
++
+   bitint *s0 = (bitint*)(ys);
+   bitint *s1 = (bitint*)(ys+m-1);
+ 
+-  for (mrb_int i=0; i < n; i+=sizeof(bitint), s0++, s1++) {
++  mrb_int i;
++  for (i = 0; i <= last_i; i += W, s0++, s1++) {
+     const bitint eq = (*s0 ^ first) | (*s1 ^ last);
+     bitint zeros = ((~eq & MASK2) + MASK1) & (~eq & MASK3);
+     size_t j = 0;
+ 
+     while (zeros) {
+       if (zeros & MASK4) {
++        if (i + (mrb_int)j > maxpos) {
++          break;
++        }
+         const char* substr = (char*)s0 + j + 1;
+         if (memcmp(substr, xs + 1, m - 2) == 0) {
+           return i + j;
+@@ -626,6 +646,15 @@ mrb_memsearch_ss(const unsigned char *xs, long m, const unsigned char *ys, long
+       j += 1;
+     }
+   }
++
++  /* tail (byte-wise) */
++  for (mrb_int p = i; p <= maxpos; p++) {
++    if (ys[p] != (unsigned char)xs[0]) continue;
++    if (ys[p + m - 1] != (unsigned char)xs[m - 1]) continue;
++    if (memcmp(ys + p + 1, xs + 1, m - 2) == 0) {
++      return p;
++    }
++  }
+   return -1;
+ }
+ 
+diff --git a/src/symbol.c b/src/symbol.c
+index 3f0ddb535..3760d9cb9 100644
+--- a/src/symbol.c
++++ b/src/symbol.c
+@@ -157,7 +157,8 @@ find_symbol(mrb_state *mrb, const char *name, size_t len, uint8_t *hashp)
+   i = sym_inline_pack(name, len);
+   if (i > 0) return i;
+ 
+-  hash = mrb_byte_hash((const uint8_t*)name, len);
++    /* mrb_byte_hash returns a 32-bit hash; only the low 8 bits are used as a bucket index. */
++    hash = (uint8_t)mrb_byte_hash((const uint8_t*)name, len);
+   if (hashp) *hashp = hash;
+ 
+   i = mrb->symhash[hash];

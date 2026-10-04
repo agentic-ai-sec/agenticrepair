@@ -1,0 +1,20 @@
+diff --git a/ext/hash/hash_xxhash.c b/ext/hash/hash_xxhash.c
+index 3edcdfc9636..bc79e2289c9 100644
+--- a/ext/hash/hash_xxhash.c
++++ b/ext/hash/hash_xxhash.c
+@@ -84,7 +84,14 @@ static int php_hash_xxh32_unserialize(
+ 	int r = FAILURE;
+ 	if (magic == PHP_HASH_SERIALIZE_MAGIC_SPEC
+ 		&& (r = php_hash_unserialize_spec(hash, zv, PHP_XXH32_SPEC)) == SUCCESS
+-		&& ctx->s.memsize < 32) {
++		/*
++		 * XXH32_state_t contains a 16-byte internal buffer (mem32[4]).
++		 * The upstream xxhash implementation assumes memsize is always < 16.
++		 * If a crafted serialized hash context sets memsize >= 16,
++		 * the expression (16 - memsize) underflows and can lead to huge
++		 * overlapping memcpy() ranges and memory corruption.
++		 */
++		&& ctx->s.memsize < 16) {
+ 		return SUCCESS;
+ 	} else {
+ 		return r != SUCCESS ? r : -2000;

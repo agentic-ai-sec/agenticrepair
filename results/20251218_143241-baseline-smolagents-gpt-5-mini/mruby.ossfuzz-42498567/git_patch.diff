@@ -1,0 +1,25 @@
+diff --git a/mrbgems/mruby-compiler/core/codegen.c b/mrbgems/mruby-compiler/core/codegen.c
+index 5ab2f6180..9996766c5 100644
+--- a/mrbgems/mruby-compiler/core/codegen.c
++++ b/mrbgems/mruby-compiler/core/codegen.c
+@@ -570,7 +570,19 @@ dispatch(codegen_scope *s, uint32_t pos0)
+     codegen_error(s, "too big jmp offset");
+   }
+   s->lastlabel = s->pc;
+-  newpos = (int16_t)PEEK_S(s->iseq+pos0);
++  /*
++   * PEEK_S reads two bytes from s->iseq at pos0. If pos0 is at or beyond
++   * the last valid byte of the current iseq buffer this would read
++   * out-of-bounds. Guard against that by checking capacity before the
++   * read. If the stored value is not available treat it as 0 (end of
++   * chain).
++   */
++  if (pos0 + 1 >= s->icapa) {
++    newpos = 0;
++  }
++  else {
++    newpos = (int16_t)PEEK_S(s->iseq+pos0);
++  }
+   emit_S(s, pos0, (uint16_t)offset);
+   if (newpos == 0) return 0;
+   return pos1+newpos;

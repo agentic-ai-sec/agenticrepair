@@ -1,0 +1,85 @@
+diff --git a/src/p_lx_elf.cpp b/src/p_lx_elf.cpp
+index 08b16e5a..88102860 100644
+--- a/src/p_lx_elf.cpp
++++ b/src/p_lx_elf.cpp
+@@ -7317,7 +7317,7 @@ void PackLinuxElf64::unpack(OutputFile *fo)
+     unsigned d_info[6];
+     unsigned sz_d_info = sizeof(d_info);
+     if (!is_shlib) {
+-        if (get_te32(&phdri[0].p_flags) & Elf64_Phdr::PF_X) {
++        if (c_phnum >= 1 && (get_te32(&phdri[0].p_flags) & Elf64_Phdr::PF_X)) {
+             // Old style, such as upx-3.91 thru upx-3.95
+             switch (this->e_machine) {
+                 default: {
+@@ -7330,10 +7330,12 @@ void PackLinuxElf64::unpack(OutputFile *fo)
+                 case Elf64_Ehdr::EM_X86_64:  sz_d_info = 2 * sizeof(unsigned); break;
+             }
+         }
+-        loader_offset = off_entry - sz_d_info;
++        // Prevent underflow if off_entry is corrupt or too small.
++        loader_offset = (off_entry >= sz_d_info) ? (off_entry - sz_d_info) : 0;
+     }
+ 
+-    if (0x1000==get_te64(&phdri[0].p_filesz)  // detect C_BASE style
++    if (c_phnum >= 2
++    &&  0x1000==get_te64(&phdri[0].p_filesz)  // detect C_BASE style
+     &&  0==get_te64(&phdri[1].p_offset)
+     &&  0==get_te64(&phdri[0].p_offset)
+     &&     get_te64(&phdri[1].p_filesz) == get_te64(&phdri[1].p_memsz)) {
+@@ -7349,6 +7351,9 @@ void PackLinuxElf64::unpack(OutputFile *fo)
+         else {
+             funpad4(fi);  // MATCH01
+         }
++        // Avoid seeking/reading nonsensical sizes from a corrupt header.
++        if ((unsigned)lsize < sz_d_info)
++            throwCantUnpack("l_info corrupted");
+         fi->readx(d_info, sz_d_info);
+         if (is_shlib && 0==old_dtinit) {
+             old_dtinit = get_te32(&d_info[2 + (0==d_info[0])]);
+@@ -8463,7 +8468,7 @@ void PackLinuxElf32::unpack(OutputFile *fo)
+     unsigned d_info[6];
+     unsigned sz_d_info = sizeof(d_info);
+     if (!is_shlib) {
+-        if (get_te32(&phdri[0].p_flags) & Elf32_Phdr::PF_X) {
++        if (c_phnum >= 1 && (get_te32(&phdri[0].p_flags) & Elf32_Phdr::PF_X)) {
+             // Old style, such as upx-3.91 thru upx-3.95
+             switch (this->e_machine) {
+                 default: {
+@@ -8477,10 +8482,12 @@ void PackLinuxElf32::unpack(OutputFile *fo)
+                 case Elf32_Ehdr::EM_386: sz_d_info = 2 * sizeof(unsigned); break;
+             }
+         }
+-        loader_offset = off_entry - sz_d_info;
++        // Prevent underflow if off_entry is corrupt or too small.
++        loader_offset = (off_entry >= sz_d_info) ? (off_entry - sz_d_info) : 0;
+     }
+ 
+-    if (0x1000==get_te32(&phdri[0].p_filesz)  // detect C_BASE style
++    if (c_phnum >= 2
++    &&  0x1000==get_te32(&phdri[0].p_filesz)  // detect C_BASE style
+     &&  0==get_te32(&phdri[1].p_offset)
+     &&  0==get_te32(&phdri[0].p_offset)
+     &&     get_te32(&phdri[1].p_filesz) == get_te32(&phdri[1].p_memsz)) {
+@@ -8496,6 +8503,9 @@ void PackLinuxElf32::unpack(OutputFile *fo)
+         else {
+             funpad4(fi);  // MATCH01
+         }
++        // Avoid seeking/reading nonsensical sizes from a corrupt header.
++        if ((unsigned)lsize < sz_d_info)
++            throwCantUnpack("l_info corrupted");
+         fi->readx(d_info, sz_d_info);
+         if (is_shlib && 0==old_dtinit) {
+             old_dtinit = get_te32(&d_info[2 + (0==d_info[0])]);
+diff --git a/src/util/util.cpp b/src/util/util.cpp
+index d6208c80..0b939385 100644
+--- a/src/util/util.cpp
++++ b/src/util/util.cpp
+@@ -278,7 +278,7 @@ void upx_memswap(void *a, void *b, size_t n) {
+ 
+ // much better memswap(), optimized for our use case in sort functions below
+ static void memswap_no_overlap(byte *a, byte *b, size_t n) {
+-#if defined(__clang__) && __clang_major__ < 15
++#if defined(__clang__)
+     // work around a clang < 15 ICE (Internal Compiler Error)
+     // @COMPILER_BUG @CLANG_BUG
+     upx_memswap(a, b, n);

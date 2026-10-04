@@ -1,0 +1,189 @@
+diff --git a/src/fmt_fp.c b/src/fmt_fp.c
+index 807debe11..8fbfda7f0 100644
+--- a/src/fmt_fp.c
++++ b/src/fmt_fp.c
+@@ -79,47 +79,60 @@ static const mrb_float g_neg_pow[] = {
+ int
+ mrb_format_float(mrb_float f, char *buf, size_t buf_size, char fmt, int prec, char sign) {
+   char *s = buf;
+-  int buf_remaining = buf_size - 1;
++  char *end;
++  int buf_remaining;
+   int alt_form = 0;
+ 
++  /*
++   * Safety: Always honor buf_size.
++   *
++   * Callers (e.g. mruby-sprintf) can under-estimate the required buffer length
++   * when width/precision are large. Ensure we never write past buf.
++   */
++  if (buf_size == 0) {
++    return 0;
++  }
++  end = buf + buf_size - 1; /* reserve space for terminating NUL */
++  buf_remaining = (int)(end - s);
++
++#define APPEND_CHAR(ch) do {     if (s >= end) goto overflow;     *s++ = (ch);   } while (0)
++
+   if ((uint8_t)fmt & 0x80) {
+     fmt &= 0x7f;  /* turn off alt_form flag */
+     alt_form = 1;
+   }
+   if (buf_size <= FLT_MIN_BUF_SIZE) {
+-    // Smallest exp notion is -9e+99 (-9e+199) which is 6 (7) chars plus terminating
+-    // null.
+-
++    /* Smallest exp notation is -9e+99 (-9e+199) which is 6 (7) chars plus NUL. */
+     if (buf_size >= 2) {
+-      *s++ = '?';
++      buf[0] = '?';
++      buf[1] = '\0';
++      return 1;
+     }
+-    if (buf_size >= 1) {
+-      *s++ = '\0';
+-    }
+-    return buf_size >= 2;
++    buf[0] = '\0';
++    return 0;
+   }
+   if (signbit(f)) {
+-    *s++ = '-';
++    APPEND_CHAR('-');
+     f = -f;
+   } else if (sign) {
+-    *s++ = sign;
++    APPEND_CHAR(sign);
+   }
+-  buf_remaining -= (s - buf); // Adjust for sign
++  buf_remaining = (int)(end - s); // Adjust for sign
+ 
+   {
+     char uc = fmt & 0x20;
+     if (isinf(f)) {
+-      *s++ = 'I' ^ uc;
+-      *s++ = 'N' ^ uc;
+-      *s++ = 'F' ^ uc;
++      APPEND_CHAR('I' ^ uc);
++      APPEND_CHAR('N' ^ uc);
++      APPEND_CHAR('F' ^ uc);
+       goto ret;
+     } else if (isnan(f)) {
+-      *s++ = 'N' ^ uc;
+-      *s++ = 'A' ^ uc;
+-      *s++ = 'N' ^ uc;
++      APPEND_CHAR('N' ^ uc);
++      APPEND_CHAR('A' ^ uc);
++      APPEND_CHAR('N' ^ uc);
+     ret:
+       *s = '\0';
+-      return s - buf;
++      return (int)(s - buf);
+     }
+   }
+ 
+@@ -178,7 +191,7 @@ mrb_format_float(mrb_float f, char *buf, size_t buf_size, char fmt, int prec, ch
+     if (fmt == 'f' || (fmt == 'g' && e <= 4)) {
+       fmt = 'f';
+       dec = -1;
+-      *s++ = first_dig;
++      APPEND_CHAR(first_dig);
+ 
+       if (prec + e + 1 > buf_remaining) {
+         prec = buf_remaining - e - 1;
+@@ -189,15 +202,14 @@ mrb_format_float(mrb_float f, char *buf, size_t buf_size, char fmt, int prec, ch
+       }
+       num_digits = prec;
+       if (num_digits || alt_form) {
+-        *s++ = '.';
++        APPEND_CHAR('.');
+         while (--e && num_digits) {
+-          *s++ = '0';
++          APPEND_CHAR('0');
+           num_digits--;
+         }
+       }
+     } else {
+-      // For e & g formats, we'll be printing the exponent, so set the
+-      // sign.
++      // For e & g formats, we'll be printing the exponent, so set the sign.
+       e_sign = e_sign_char;
+       dec = 0;
+ 
+@@ -278,14 +290,17 @@ mrb_format_float(mrb_float f, char *buf, size_t buf_size, char fmt, int prec, ch
+   // Print the digits of the mantissa
+   for (int i = 0; i < num_digits; ++i, --dec) {
+     int8_t d = f;
+-    *s++ = '0' + d;
++    APPEND_CHAR('0' + d);
+     if (dec == 0 && (prec > 0 || alt_form)) {
+-      *s++ = '.';
++      APPEND_CHAR('.');
+     }
+     f -= (mrb_float)d;
+     f *= 10.0;
+   }
+ 
++  /* Ensure current output is terminated before any in-place adjustments. */
++  *s = '\0';
++
+   // Round
+   if (f >= 5.0) {
+     char *rs = s;
+@@ -323,13 +338,11 @@ mrb_format_float(mrb_float f, char *buf, size_t buf_size, char fmt, int prec, ch
+           e++;
+         }
+       }
+-      s++;
+-      char *ss = s;
+-      while (ss > rs) {
+-        *ss = ss[-1];
+-        ss--;
+-      }
++      /* Need one extra byte for the inserted digit (NUL is already present). */
++      if (s >= end) goto overflow;
++      memmove(rs+1, rs, (size_t)(s - rs + 1));
+       *rs = '1';
++      s++;
+       if (f < 1.0 && fmt == 'f') {
+         // We rounded up to 1.0
+         prec--;
+@@ -345,23 +358,30 @@ mrb_format_float(mrb_float f, char *buf, size_t buf_size, char fmt, int prec, ch
+     if (s[-1] == '.') {
+       s--;
+     }
++    *s = '\0';
+   }
+   // Append the exponent
+   if (e_sign) {
+-    *s++ = e_char;
+-    *s++ = e_sign;
++    APPEND_CHAR(e_char);
++    APPEND_CHAR(e_sign);
+     if (e >= 100) {
+-      *s++ = '0' + (e / 100);
++      APPEND_CHAR('0' + (e / 100));
+       e %= 100;
+     }
+-    *s++ = '0' + (e / 10);
+-    *s++ = '0' + (e % 10);
++    APPEND_CHAR('0' + (e / 10));
++    APPEND_CHAR('0' + (e % 10));
++    *s = '\0';
+   }
+-  *s = '\0';
+ 
+-  return s - buf;
+-}
++  return (int)(s - buf);
++
++overflow:
++  /* Truncate safely and always NUL-terminate. */
++  *end = '\0';
++  return (int)(end - buf);
+ 
++#undef APPEND_CHAR
++}
+ MRB_API mrb_value
+ mrb_float_to_str(mrb_state *mrb, mrb_value flo)
+ {

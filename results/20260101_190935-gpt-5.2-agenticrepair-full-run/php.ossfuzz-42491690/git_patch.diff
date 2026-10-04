@@ -1,0 +1,91 @@
+diff --git a/ext/hash/hash_xxhash.c b/ext/hash/hash_xxhash.c
+index 28d9d11af71..9ef3c557c20 100644
+--- a/ext/hash/hash_xxhash.c
++++ b/ext/hash/hash_xxhash.c
+@@ -17,6 +17,68 @@
+ #include "php_hash.h"
+ #include "php_hash_xxhash.h"
+ 
++/*
++ * xxHash contexts can be (un)serialized using php_hash_serialize_spec().
++ * The spec only validates the overall context size, not the internal
++ * invariants expected by xxhash.h. In particular, XXH{32,64}_state_t::memsize
++ * is used to compute memcpy lengths and offsets into fixed-size buffers
++ * (mem32/mem64). If memsize is attacker-controlled (via unserialize) and
++ * exceeds the buffer size, calculations such as (32 - memsize) underflow and
++ * lead to huge memcpy() calls (heap-buffer-overflow).
++ *
++ * Provide xxhash-specific unserializers which validate memsize before the
++ * context can be used.
++ */
++
++static int php_hash_xxh32_unserialize(php_hashcontext_object *hash, zend_long magic, const zval *zv)
++{
++	int ret;
++	PHP_XXH32_CTX *ctx = (PHP_XXH32_CTX *) hash->context;
++
++	if (magic != PHP_HASH_SERIALIZE_MAGIC_SPEC) {
++		return FAILURE;
++	}
++
++	ret = php_hash_unserialize_spec(hash, zv, PHP_XXH32_SPEC);
++	if (ret != SUCCESS) {
++		return ret;
++	}
++
++	/* XXH32_state_t::memsize is a byte count into mem32 (16 bytes). */
++	if ((size_t) ctx->s.memsize > sizeof(ctx->s.mem32)) {
++		/* Sanitize corrupted state to avoid underflow/overflow in xxhash update. */
++		ctx->s.memsize = 0;
++		memset(ctx->s.mem32, 0, sizeof(ctx->s.mem32));
++	}
++
++	return SUCCESS;
++}
++
++static int php_hash_xxh64_unserialize(php_hashcontext_object *hash, zend_long magic, const zval *zv)
++{
++	int ret;
++	PHP_XXH64_CTX *ctx = (PHP_XXH64_CTX *) hash->context;
++
++	if (magic != PHP_HASH_SERIALIZE_MAGIC_SPEC) {
++		return FAILURE;
++	}
++
++	ret = php_hash_unserialize_spec(hash, zv, PHP_XXH64_SPEC);
++	if (ret != SUCCESS) {
++		return ret;
++	}
++
++	/* XXH64_state_t::memsize is a byte count into mem64 (32 bytes). */
++	if ((size_t) ctx->s.memsize > sizeof(ctx->s.mem64)) {
++		/* Sanitize corrupted state to avoid underflow/overflow in xxhash update. */
++		ctx->s.memsize = 0;
++		memset(ctx->s.mem64, 0, sizeof(ctx->s.mem64));
++	}
++
++	return SUCCESS;
++}
++
++
+ const php_hash_ops php_hash_xxh32_ops = {
+ 	"xxh32",
+ 	(php_hash_init_func_t) PHP_XXH32Init,
+@@ -24,7 +86,7 @@ const php_hash_ops php_hash_xxh32_ops = {
+ 	(php_hash_final_func_t) PHP_XXH32Final,
+ 	(php_hash_copy_func_t) PHP_XXH32Copy,
+ 	php_hash_serialize,
+-	php_hash_unserialize,
++	php_hash_xxh32_unserialize,
+ 	PHP_XXH32_SPEC,
+ 	4,
+ 	4,
+@@ -79,7 +141,7 @@ const php_hash_ops php_hash_xxh64_ops = {
+ 	(php_hash_final_func_t) PHP_XXH64Final,
+ 	(php_hash_copy_func_t) PHP_XXH64Copy,
+ 	php_hash_serialize,
+-	php_hash_unserialize,
++	php_hash_xxh64_unserialize,
+ 	PHP_XXH64_SPEC,
+ 	8,
+ 	8,

@@ -1,0 +1,64 @@
+diff --git a/ext/date/php_date.c b/ext/date/php_date.c
+index c64ef6afe11..2806b46c76b 100644
+--- a/ext/date/php_date.c
++++ b/ext/date/php_date.c
+@@ -2324,21 +2324,44 @@ PHPAPI bool php_date_initialize(php_date_obj *dateobj, const char *time_str, siz
+ 	}
+ 
+ 	/* update last errors and warnings */
+-	update_errors_warnings(err);
+-
+-	/* If called from a constructor throw an exception */
+-	if ((flags & PHP_DATE_INIT_CTOR) && err && err->error_count) {
+-		/* spit out the first library error message, at least */
+-		zend_throw_exception_ex(NULL, 0, "Failed to parse time string (%s) at position %d (%c): %s", time_str,
+-			err->error_messages[0].position, err->error_messages[0].character, err->error_messages[0].message);
+-	}
+-	if (err && err->error_count) {
+-		timelib_time_dtor(dateobj->time);
+-		dateobj->time = 0;
+-		return 0;
+-	}
+-
+-	if (timezone_object) {
++	/* Save error info locally before update_errors_warnings() may free or
++         * transfer ownership of the timelib_error_container. Accessing 'err'
++         * after update_errors_warnings() may be unsafe. */
++    int saved_err_count = 0;
++    int saved_err_position = 0;
++    int saved_err_character = 0;
++    zend_string *saved_err_message = NULL;
++    if (err) {
++        saved_err_count = err->error_count;
++        if (saved_err_count) {
++            saved_err_position = err->error_messages[0].position;
++            saved_err_character = err->error_messages[0].character;
++            saved_err_message = zend_string_init(err->error_messages[0].message,
++                err->error_messages[0].message ? strlen(err->error_messages[0].message) : 0, 0);
++        }
++    }
++
++    /* update last errors and warnings */
++    update_errors_warnings(err);
++
++    /* If called from a constructor throw an exception */
++    if (saved_err_count) {
++        if (flags & PHP_DATE_INIT_CTOR) {
++            /* spit out the first library error message, at least */
++            zend_throw_exception_ex(NULL, 0, "Failed to parse time string (%s) at position %d (%c): %s",
++                time_str, saved_err_position, saved_err_character,
++                saved_err_message ? ZSTR_VAL(saved_err_message) : "");
++        }
++
++        /* free local copies and fail as before */
++        timelib_time_dtor(dateobj->time);
++        dateobj->time = 0;
++        if (saved_err_message) {
++            zend_string_release(saved_err_message);
++        }
++        return 0;
++    }
++if (timezone_object) {
+ 		php_timezone_obj *tzobj;
+ 
+ 		tzobj = Z_PHPTIMEZONE_P(timezone_object);

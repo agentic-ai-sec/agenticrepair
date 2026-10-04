@@ -1,0 +1,89 @@
+<uploaded_files>
+{{ work_dir }}
+</uploaded_files>
+I've uploaded a code repository in the directory `{{ work_dir }}`. Consider the following issue description:
+
+<issue_description>
+{{ bug_description }}
+---
+{{ sanitizer_report }}
+</issue_description>
+
+## ROOT CAUSE ANALYSIS FROM OTHER AGENTS
+
+<static_analysis_findings>
+{{ static_analyzer_output }}
+</static_analysis_findings>
+
+<dynamic_analysis_findings>
+{{ dynamic_analyzer_output }}
+</dynamic_analysis_findings>
+
+<history_mining_findings>
+{{ history_miner_output }}
+</history_mining_findings>
+
+---
+
+You are the **FIXER AND VERIFIER AGENT**. Your task is to implement a fix for the vulnerability based on the analysis above.
+The ASan report in <issue_description> is your primary guide
+
+
+## Instructions
+
+1. **REFLECT & PLAN**: Review the root cause analysis from all agents (<static_analysis_findings>, <dynamic_analysis_findings>, <history_mining_findings>) and the ASan report (<issue_description>).
+   - Cross-reference findings: What do static, dynamic, and history analyses agree on?
+   - Identify the exact crash location and root cause
+   - Use `find` and `grep` to locate relevant code if needed for additional context
+   - Select the most promising fix approach from the suggestions provided
+
+2. **IMPLEMENT**: Edit the source code to fix the vulnerability.
+   - Make minimal, focused changes targeting the root cause
+   - Add bounds checks, null checks, or validation as needed
+   - Do NOT introduce new security issues
+   - Prefer fixes at the source of the problem (prevent bad data) over symptom fixes (handle bad data at crash site)
+
+3. **VERIFY**: Test your fix thoroughly.
+   - `cd {{ work_dir }}`
+   - Run `secb build` to compile (fix any compilation errors)
+   - Run `secb repro` to verify the crash is prevented
+   - **CRITICAL: Keep iterating until `secb repro` shows:**
+     - **(1) NO existing sanitizer error** (the original bug is fixed)
+     - **(2) NO new sanitizer errors** (your fix didn't introduce new issues)
+     - **(3) Exit code 0** (program completes successfully)
+     - **(4) Completes within 600s** (no hangs or timeouts)
+
+4. **OUTPUT**: Call `final_answer` with the result.
+
+**On SUCCESS** (no existing ASan error, no new ASan errors, exit code 0):
+```json
+{
+  "status": "success",
+  "root_cause": "<brief description of why the bug exists>",
+  "fix_approach": "<what you changed and why>",
+  "files_modified": ["<file1.c>", "<file2.c>"],
+  "verification": {
+    "build_success": true,
+    "repro_success": true,
+    "exit_code": 0
+  },
+  "confidence": "<high|medium|low>"
+}
+```
+
+**On FAILURE** (still has ASan error after multiple attempts):
+```json
+{
+  "status": "failed",
+  "root_cause": "<your understanding of the bug>",
+  "attempted_fixes": ["<approach1>", "<approach2>"],
+  "remaining_issue": "<what still crashes and why>",
+  "files_modified": ["<file1.c>"],
+  "verification": {
+    "build_success": true,
+    "repro_success": false,
+    "asan_output": "<relevant ASan error>"
+  }
+}
+```
+

@@ -1,0 +1,52 @@
+diff --git a/tree.c b/tree.c
+index 07499484..6c3fe80e 100644
+--- a/tree.c
++++ b/tree.c
+@@ -3699,7 +3699,6 @@ xmlFreeNodeList(xmlNodePtr cur) {
+ 	xmlFreeNsList((xmlNsPtr) cur);
+ 	return;
+     }
+-    if (cur->doc != NULL) dict = cur->doc->dict;
+     while (1) {
+         while ((cur->children != NULL) &&
+                (cur->type != XML_DOCUMENT_NODE) &&
+@@ -3710,6 +3709,16 @@ xmlFreeNodeList(xmlNodePtr cur) {
+             depth += 1;
+         }
+ 
++        /*
++         * The node list can contain nodes from different documents.
++         * DICT_FREE relies on the in-scope "dict" variable to decide
++         * whether a string is owned by a document dictionary. Using a
++         * cached dictionary from the list head can misclassify dict-owned
++         * strings as heap allocations and call free() on an interior
++         * pointer.
++         */
++        dict = (cur->doc != NULL) ? cur->doc->dict : NULL;
++
+         next = cur->next;
+         parent = cur->parent;
+ 	if ((cur->type == XML_DOCUMENT_NODE) ||
+@@ -4207,6 +4216,22 @@ xmlCopyPropList(xmlNodePtr target, xmlAttrPtr cur) {
+ static xmlNodePtr
+ xmlStaticCopyNode(xmlNodePtr node, xmlDocPtr doc, xmlNodePtr parent,
+                   int extended) {
++
++    /*
++     * If a parent is provided, the copied node will ultimately belong to the
++     * parent's document. Some code paths (e.g. xmlAddChild coalescing) may
++     * reset ret->doc based on the parent, so make sure we consistently use the
++     * same document/dictionary for allocating/interning strings.
++     */
++    if (parent != NULL) {
++        if ((parent->type == XML_DOCUMENT_NODE) ||
++            (parent->type == XML_HTML_DOCUMENT_NODE)) {
++            doc = (xmlDocPtr) parent;
++        } else if (parent->doc != NULL) {
++            doc = parent->doc;
++        }
++    }
++
+     xmlNodePtr ret;
+ 
+     if (node == NULL) return(NULL);

@@ -1,0 +1,38 @@
+diff --git a/src/vm.c b/src/vm.c
+index 1c59d4406..d43b58cf2 100644
+--- a/src/vm.c
++++ b/src/vm.c
+@@ -478,7 +478,33 @@ mrb_funcall_with_block(mrb_state *mrb, mrb_value self, mrb_sym mid, mrb_int argc
+     }
+     c = mrb_class(mrb, self);
+     m = mrb_method_search_vm(mrb, &c, mid);
+-    mrb_stack_extend(mrb, argc + 3);
++    /*
++     * Ensure we have enough stack space for:
++     *  - temporary slots used before cipush() (e.g. ci->stack[n+1])
++     *  - the new call frame created by cipush() whose stack starts at
++     *    (old_ci->stack + n) and then receives receiver/args/block.
++     *
++     * The previous implementation extended only by (argc + 3) relative to the
++     * current frame base, but we also write to ci->stack[n+1] and after cipush
++     * we access up to (argc+1) (or [2] for variable-args). If n is large, the
++     * old code could write past the end of the allocated stack.
++     */
++    {
++      mrb_int room;
++
++      if (MRB_METHOD_UNDEF_P(m) || argc >= 15) {
++        /* receiver + arg array + block */
++        room = n + 3;
++      }
++      else {
++        /* receiver + argc args + block */
++        room = n + argc + 2;
++      }
++      if (room < 0 || room > MRB_INT_MAX) {
++        mrb_raise(mrb, E_RUNTIME_ERROR, "stack size too large");
++      }
++      mrb_stack_extend(mrb, room);
++    }
+     if (MRB_METHOD_UNDEF_P(m) || argc >= 15) {
+       mrb_value args = mrb_ary_new_from_values(mrb, argc, argv);

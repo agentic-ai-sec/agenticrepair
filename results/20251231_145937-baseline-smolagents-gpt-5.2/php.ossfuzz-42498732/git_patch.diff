@@ -1,0 +1,28 @@
+diff --git a/Zend/zend_operators.c b/Zend/zend_operators.c
+index 193aade5fb3..63e68ac798f 100644
+--- a/Zend/zend_operators.c
++++ b/Zend/zend_operators.c
+@@ -1324,12 +1324,22 @@ ZEND_API zend_result ZEND_FASTCALL div_function(zval *result, zval *op1, zval *o
+ 		return FAILURE;
+ 	}
+ 
++	/* If result and op1 are the same zval (e.g. $a /= $b), we must not
++	 * destroy the destination before we know the operation succeeds.
++	 * Division can fail (e.g. division by zero) and the VM handler may
++	 * still use var_ptr afterwards (RETURN_VALUE_USED), leading to UAF. */
++	zval tmp;
++	zval *res = result;
+ 	if (result == op1) {
+-		zval_ptr_dtor(result);
++		res = &tmp;
+ 	}
+ 
+-	retval = div_function_base(result, &op1_copy, &op2_copy);
++	retval = div_function_base(res, &op1_copy, &op2_copy);
+ 	if (retval == SUCCESS) {
++		if (result == op1) {
++			zval_ptr_dtor(result);
++			ZVAL_COPY_VALUE(result, &tmp);
++		}
+ 		return SUCCESS;
+ 	}

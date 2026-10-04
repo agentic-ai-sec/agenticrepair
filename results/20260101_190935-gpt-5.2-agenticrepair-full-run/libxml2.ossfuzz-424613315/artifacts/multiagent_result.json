@@ -1,0 +1,195 @@
+{
+  "instance_id": "libxml2.ossfuzz-424613315",
+  "final_status": "success",
+  "static_analyzer_output": {
+    "role": "static_analyzer",
+    "raw_output": "{\n  \"analysis_type\": \"memory\",\n  \"findings\": [],\n  \"dataflow_summary\": \"\",\n  \"key_insight\": \"CodeQL\u2019s standard memory queries did not directly flag the off-by-one heap write in parser.c:xmlParsePubidLiteral, but manual review of the reported region shows a size/resize bug: xmlGrowCapacity computes newSize, size is updated to newSize, yet xmlRealloc is called with the *old* size (tmp = xmlRealloc(buf, size) at parser.c:4449). This can leave the allocation unchanged while the code assumes it grew, leading to buf[len++] writes past the end and the final NUL write (buf[len] = 0) overflowing by 1 byte.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Fix the realloc call to use the computed new capacity (tmp = xmlRealloc(buf, newSize)) and only then update size = newSize.\",\n      \"reasoning\": \"Matches the intended growth logic and removes the mismatch between tracked capacity and allocated size that enables the out-of-bounds write.\",\n      \"trade_offs\": \"Minimal behavior change; requires careful review that xmlGrowCapacity\u2019s return value is the desired allocation size (bytes) for xmlChar buffer.\" \n    },\n    {\n      \"approach\": \"Make the growth logic allocation-safe by computing required = len + 2 (for char + NUL) and growing until size >= required; then perform a single realloc with that target.\",\n      \"reasoning\": \"Eliminates off-by-one pitfalls and ensures the NUL terminator always fits.\",\n      \"trade_offs\": \"Slight refactor; could change growth strategy (capacity jumps) and allocation frequency.\" \n    },\n    {\n      \"approach\": \"Add defensive bounds assertions/checks before writes (e.g., if (len >= size) treat as fatal) even after growth.\",\n      \"reasoning\": \"Provides a secondary safety net if future edits reintroduce capacity/accounting bugs.\",\n      \"trade_offs\": \"Adds branches in a hot parsing loop; should be compiled out or kept lightweight if performance-sensitive.\" \n    }\n  ]\n}",
+    "parsed_output": {
+      "analysis_type": "memory",
+      "findings": [],
+      "dataflow_summary": "",
+      "key_insight": "CodeQL\u2019s standard memory queries did not directly flag the off-by-one heap write in parser.c:xmlParsePubidLiteral, but manual review of the reported region shows a size/resize bug: xmlGrowCapacity computes newSize, size is updated to newSize, yet xmlRealloc is called with the *old* size (tmp = xmlRealloc(buf, size) at parser.c:4449). This can leave the allocation unchanged while the code assumes it grew, leading to buf[len++] writes past the end and the final NUL write (buf[len] = 0) overflowing by 1 byte.",
+      "fix_suggestions": [
+        {
+          "approach": "Fix the realloc call to use the computed new capacity (tmp = xmlRealloc(buf, newSize)) and only then update size = newSize.",
+          "reasoning": "Matches the intended growth logic and removes the mismatch between tracked capacity and allocated size that enables the out-of-bounds write.",
+          "trade_offs": "Minimal behavior change; requires careful review that xmlGrowCapacity\u2019s return value is the desired allocation size (bytes) for xmlChar buffer."
+        },
+        {
+          "approach": "Make the growth logic allocation-safe by computing required = len + 2 (for char + NUL) and growing until size >= required; then perform a single realloc with that target.",
+          "reasoning": "Eliminates off-by-one pitfalls and ensures the NUL terminator always fits.",
+          "trade_offs": "Slight refactor; could change growth strategy (capacity jumps) and allocation frequency."
+        },
+        {
+          "approach": "Add defensive bounds assertions/checks before writes (e.g., if (len >= size) treat as fatal) even after growth.",
+          "reasoning": "Provides a secondary safety net if future edits reintroduce capacity/accounting bugs.",
+          "trade_offs": "Adds branches in a hot parsing loop; should be compiled out or kept lightweight if performance-sensitive."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 75152,
+      "output_tokens": 2650
+    },
+    "timing": {
+      "start_time": 1768775007.3864303,
+      "end_time": 1768775096.7641795,
+      "duration": 89.37774920463562
+    },
+    "trajectory": {
+      "agent_role": "static_analyzer",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nA heap-buffer-overflow in libxml2's parser.c: the function xmlParsePubidLiteral can write past the end of an allocated buffer when parsing a PUBLIC (pubid) literal. The overflow corrupts heap memory (write of one byte past the allocation) and is reachable via xmlParseExternalID/xmlParseNotationDecl during document parsing,",
+      "total_steps": 6,
+      "total_duration": 89.37774920463562,
+      "total_input_tokens": 75152,
+      "total_output_tokens": 2650,
+      "total_cost": 0.1470448,
+      "final_state": "success"
+    }
+  },
+  "dynamic_analyzer_output": {
+    "role": "dynamic_analyzer",
+    "raw_output": "{\n  \"tools_used\": [\n    \"gdb\",\n    \"ubsan\"\n  ],\n  \"crash_info\": {\n    \"address\": \"0x50b000000154\",\n    \"type\": \"heap-buffer-overflow (write of size 1)\",\n    \"location\": \"/src/libxml2/parser.c:4458 (xmlParsePubidLiteral)\"\n  },\n  \"backtrace\": [\n    \"#0 xmlParsePubidLiteral /src/libxml2/parser.c:4458\",\n    \"#1 xmlParseExternalID /src/libxml2/parser.c:4782\",\n    \"#2 xmlParseNotationDecl /src/libxml2/parser.c:5369\",\n    \"#3 xmlParseInternalSubset /src/libxml2/parser.c:8036\",\n    \"#4 xmlParseDocument /src/libxml2/parser.c:10449\",\n    \"#5 xmlParseCatalogFile /src/libxml2/catalog.c:902\",\n    \"#6 xmlParseXMLCatalogFile /src/libxml2/catalog.c:1281\",\n    \"#7 xmlFetchXMLCatalogFile /src/libxml2/catalog.c:1382\",\n    \"#8 xmlCatalogListXMLResolve /src/libxml2/catalog.c:1979\",\n    \"#9 xmlACatalogResolvePublic /src/libxml2/catalog.c:2726\",\n    \"#10 main /src/libxml2/xmlcatalog.c:428\"\n  ],\n  \"memory_state\": \"ASan reports a write to 0x50b000000154, which is 0 bytes past a 100-byte heap allocation [0x50b0000000f0, 0x50b000000154). The faulting write is the NUL terminator store (buf[len] = 0) after the loop; len reached exactly the allocation size.\",\n  \"root_cause_hint\": \"Runtime evidence indicates the buffer growth path in xmlParsePubidLiteral is broken: when the code decides to grow (newSize = xmlGrowCapacity(...)), it calls xmlRealloc(buf, size) using the OLD size instead of newSize, then updates size = newSize anyway. This leaves the allocation unchanged while internal bookkeeping assumes it grew, so subsequent writes (including the final terminator at parser.c:4458) can write one byte past the real allocation.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Fix the realloc call to use the new capacity (and keep size consistent): tmp = xmlRealloc(buf, newSize); on success set buf=tmp; size=newSize.\",\n      \"reasoning\": \"This directly matches the ASan symptom: allocation stays at 100 bytes but code believes it grew. Reallocating to newSize removes the mismatch and prevents the 1-byte OOB terminator write observed at parser.c:4458.\",\n      \"trade_offs\": \"Minimal change and low risk; relies on xmlGrowCapacity returning a correct newSize (which it already is used for).\"\n    },\n    {\n      \"approach\": \"Make the capacity check and terminator handling explicit: ensure there is always space for the trailing NUL by growing when (len + 1 >= size) and guaranteeing size accounts for the terminator (e.g., allocate newSize that includes terminator, or grow by 2 and store terminator safely).\",\n      \"reasoning\": \"ASan shows the out-of-bounds write is a single byte (the terminator). Ensuring capacity for the terminator makes the invariant obvious and robust.\",\n      \"trade_offs\": \"Slightly more invasive; must ensure all size calculations stay consistent across different growth paths.\"\n    },\n    {\n      \"approach\": \"Replace manual buffer management with an existing libxml2 growable buffer abstraction (e.g., xmlBuf or xmlString buffer helpers) for PubidLiteral parsing.\",\n      \"reasoning\": \"Eliminates a class of allocation/size bookkeeping bugs like the one dynamically observed here (old-size realloc + new-size variable update).\",\n      \"trade_offs\": \"More code churn and potential performance/behavior differences; requires careful review of error handling and maximum-length enforcement.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "tools_used": [
+        "gdb",
+        "ubsan"
+      ],
+      "crash_info": {
+        "address": "0x50b000000154",
+        "type": "heap-buffer-overflow (write of size 1)",
+        "location": "/src/libxml2/parser.c:4458 (xmlParsePubidLiteral)"
+      },
+      "backtrace": [
+        "#0 xmlParsePubidLiteral /src/libxml2/parser.c:4458",
+        "#1 xmlParseExternalID /src/libxml2/parser.c:4782",
+        "#2 xmlParseNotationDecl /src/libxml2/parser.c:5369",
+        "#3 xmlParseInternalSubset /src/libxml2/parser.c:8036",
+        "#4 xmlParseDocument /src/libxml2/parser.c:10449",
+        "#5 xmlParseCatalogFile /src/libxml2/catalog.c:902",
+        "#6 xmlParseXMLCatalogFile /src/libxml2/catalog.c:1281",
+        "#7 xmlFetchXMLCatalogFile /src/libxml2/catalog.c:1382",
+        "#8 xmlCatalogListXMLResolve /src/libxml2/catalog.c:1979",
+        "#9 xmlACatalogResolvePublic /src/libxml2/catalog.c:2726",
+        "#10 main /src/libxml2/xmlcatalog.c:428"
+      ],
+      "memory_state": "ASan reports a write to 0x50b000000154, which is 0 bytes past a 100-byte heap allocation [0x50b0000000f0, 0x50b000000154). The faulting write is the NUL terminator store (buf[len] = 0) after the loop; len reached exactly the allocation size.",
+      "root_cause_hint": "Runtime evidence indicates the buffer growth path in xmlParsePubidLiteral is broken: when the code decides to grow (newSize = xmlGrowCapacity(...)), it calls xmlRealloc(buf, size) using the OLD size instead of newSize, then updates size = newSize anyway. This leaves the allocation unchanged while internal bookkeeping assumes it grew, so subsequent writes (including the final terminator at parser.c:4458) can write one byte past the real allocation.",
+      "fix_suggestions": [
+        {
+          "approach": "Fix the realloc call to use the new capacity (and keep size consistent): tmp = xmlRealloc(buf, newSize); on success set buf=tmp; size=newSize.",
+          "reasoning": "This directly matches the ASan symptom: allocation stays at 100 bytes but code believes it grew. Reallocating to newSize removes the mismatch and prevents the 1-byte OOB terminator write observed at parser.c:4458.",
+          "trade_offs": "Minimal change and low risk; relies on xmlGrowCapacity returning a correct newSize (which it already is used for)."
+        },
+        {
+          "approach": "Make the capacity check and terminator handling explicit: ensure there is always space for the trailing NUL by growing when (len + 1 >= size) and guaranteeing size accounts for the terminator (e.g., allocate newSize that includes terminator, or grow by 2 and store terminator safely).",
+          "reasoning": "ASan shows the out-of-bounds write is a single byte (the terminator). Ensuring capacity for the terminator makes the invariant obvious and robust.",
+          "trade_offs": "Slightly more invasive; must ensure all size calculations stay consistent across different growth paths."
+        },
+        {
+          "approach": "Replace manual buffer management with an existing libxml2 growable buffer abstraction (e.g., xmlBuf or xmlString buffer helpers) for PubidLiteral parsing.",
+          "reasoning": "Eliminates a class of allocation/size bookkeeping bugs like the one dynamically observed here (old-size realloc + new-size variable update).",
+          "trade_offs": "More code churn and potential performance/behavior differences; requires careful review of error handling and maximum-length enforcement."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 44137,
+      "output_tokens": 1614
+    },
+    "timing": {
+      "start_time": 1768775096.7700982,
+      "end_time": 1768775142.4827037,
+      "duration": 45.712605476379395
+    },
+    "trajectory": {
+      "agent_role": "dynamic_analyzer",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nA heap-buffer-overflow in libxml2's parser.c: the function xmlParsePubidLiteral can write past the end of an allocated buffer when parsing a PUBLIC (pubid) literal. The overflow corrupts heap memory (write of one byte past the allocation) and is reachable via xmlParseExternalID/xmlParseNotationDecl during document parsing,",
+      "total_steps": 4,
+      "total_duration": 45.712605476379395,
+      "total_input_tokens": 44137,
+      "total_output_tokens": 1614,
+      "total_cost": 0.07927255,
+      "final_state": "success"
+    }
+  },
+  "history_miner_output": {
+    "role": "history_miner",
+    "raw_output": "{\n  \"file_analyzed\": \"parser.c\",\n  \"function_analyzed\": \"xmlParsePubidLiteral\",\n  \"relevant_commits\": [\n    {\n      \"hash\": \"8231c036\",\n      \"message\": \"parser: Check reallocations for overflow\",\n      \"changes\": \"Introduced private/memory.h helpers like xmlGrowCapacity and added overflow-aware growth patterns across parser.c.\",\n      \"relevance\": \"The vulnerable code in xmlParsePubidLiteral now uses xmlGrowCapacity; this commit established the new resizing idiom that later got misapplied (realloc called with the old size).\"\n    },\n    {\n      \"hash\": \"5d36664f\",\n      \"message\": \"memory: Deprecate xmlGcMemSetup\",\n      \"changes\": \"Replaced xmlMallocAtomic with xmlMalloc in several parser allocations, including literals parsing routines.\",\n      \"relevance\": \"Shows recent edits in/around literal parsing and allocation logic; useful for understanding how buffer management was being refactored before the bug.\n      \"\n    },\n    {\n      \"hash\": \"04d1bedd\",\n      \"message\": \"parser: Rework shrinking of input buffers\",\n      \"changes\": \"Removed SHRINK calls from xmlParseSystemLiteral/xmlParsePubidLiteral and other parsing loops.\",\n      \"relevance\": \"Touches the same function earlier; while not directly causing the overflow, it indicates prior refactoring in this area and helps bound when later risky resizing changes were introduced.\"\n    }\n  ],\n  \"vulnerability_origin\": \"The overflow is caused by a buffer-growth refactor (likely in the vulnerable base commit 30665ae4) switching xmlParsePubidLiteral to compute a new capacity via xmlGrowCapacity but calling xmlRealloc(buf, size) instead of xmlRealloc(buf, newSize). This leaves the allocation unchanged while the code updates its 'size' bookkeeping to the larger value, enabling a 1-byte write past the real allocation when writing the terminator or next character.\",\n  \"fix_hints\": \"The function previously used the simple pattern `size *= 2; buf = xmlRealloc(buf, size);` (seen in earlier history). The new growth helper must be paired with reallocating to the returned capacity. Also ensure capacity accounts for the NUL terminator.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Fix the realloc size: change `tmp = xmlRealloc(buf, size);` to `tmp = xmlRealloc(buf, newSize);` and only set `size = newSize` after successful realloc.\",\n      \"reasoning\": \"Matches the intent of the xmlGrowCapacity pattern introduced elsewhere (e.g., after 8231c036) and restores correct coupling between allocated bytes and the `size` variable.\",\n      \"trade_offs\": \"Minimal change; low risk. Must double-check all similar call sites for the same pattern.\n      \"\n    },\n    {\n      \"approach\": \"Make the growth condition/terminator explicit: require capacity for data+NUL (e.g., grow when `len + 1 >= size`, but ensure growth computes at least `len + 2` bytes), and keep `size` as size_t.\",\n      \"reasoning\": \"Prevents off-by-one mistakes and aligns with safe string-building conventions.\",\n      \"trade_offs\": \"Slightly larger patch; may require adjusting helper call parameters and types.\n      \"\n    },\n    {\n      \"approach\": \"Replace manual buffer management with an existing safe buffer helper (e.g., xmlSBuf-like pattern used elsewhere) for PubidLiteral assembly.\",\n      \"reasoning\": \"History shows migration toward centralized helpers for safe growth/error reporting; reusing them reduces future resizing bugs.\",\n      \"trade_offs\": \"More invasive refactor; needs careful performance and API/behavior validation.\n      \"\n    }\n  ]\n}",
+    "parsed_output": {
+      "raw": "{\n  \"file_analyzed\": \"parser.c\",\n  \"function_analyzed\": \"xmlParsePubidLiteral\",\n  \"relevant_commits\": [\n    {\n      \"hash\": \"8231c036\",\n      \"message\": \"parser: Check reallocations for overflow\",\n      \"changes\": \"Introduced private/memory.h helpers like xmlGrowCapacity and added overflow-aware growth patterns across parser.c.\",\n      \"relevance\": \"The vulnerable code in xmlParsePubidLiteral now uses xmlGrowCapacity; this commit established the new resizing idiom that later got misapplied (realloc called with the old size).\"\n    },\n    {\n      \"hash\": \"5d36664f\",\n      \"message\": \"memory: Deprecate xmlGcMemSetup\",\n      \"changes\": \"Replaced xmlMallocAtomic with xmlMalloc in several parser allocations, including literals parsing routines.\",\n      \"relevance\": \"Shows recent edits in/around literal parsing and allocation logic; useful for understanding how buffer management was being refactored before the bug.\n      \"\n    },\n    {\n      \"hash\": \"04d1bedd\",\n      \"message\": \"parser: Rework shrinking of input buffers\",\n      \"changes\": \"Removed SHRINK calls from xmlParseSystemLiteral/xmlParsePubidLiteral and other parsing loops.\",\n      \"relevance\": \"Touches the same function earlier; while not directly causing the overflow, it indicates prior refactoring in this area and helps bound when later risky resizing changes were introduced.\"\n    }\n  ],\n  \"vulnerability_origin\": \"The overflow is caused by a buffer-growth refactor (likely in the vulnerable base commit 30665ae4) switching xmlParsePubidLiteral to compute a new capacity via xmlGrowCapacity but calling xmlRealloc(buf, size) instead of xmlRealloc(buf, newSize). This leaves the allocation unchanged while the code updates its 'size' bookkeeping to the larger value, enabling a 1-byte write past the real allocation when writing the terminator or next character.\",\n  \"fix_hints\": \"The function previously used the simple pattern `size *= 2; buf = xmlRealloc(buf, size);` (seen in earlier history). The new growth helper must be paired with reallocating to the returned capacity. Also ensure capacity accounts for the NUL terminator.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Fix the realloc size: change `tmp = xmlRealloc(buf, size);` to `tmp = xmlRealloc(buf, newSize);` and only set `size = newSize` after successful realloc.\",\n      \"reasoning\": \"Matches the intent of the xmlGrowCapacity pattern introduced elsewhere (e.g., after 8231c036) and restores correct coupling between allocated bytes and the `size` variable.\",\n      \"trade_offs\": \"Minimal change; low risk. Must double-check all similar call sites for the same pattern.\n      \"\n    },\n    {\n      \"approach\": \"Make the growth condition/terminator explicit: require capacity for data+NUL (e.g., grow when `len + 1 >= size`, but ensure growth computes at least `len + 2` bytes), and keep `size` as size_t.\",\n      \"reasoning\": \"Prevents off-by-one mistakes and aligns with safe string-building conventions.\",\n      \"trade_offs\": \"Slightly larger patch; may require adjusting helper call parameters and types.\n      \"\n    },\n    {\n      \"approach\": \"Replace manual buffer management with an existing safe buffer helper (e.g., xmlSBuf-like pattern used elsewhere) for PubidLiteral assembly.\",\n      \"reasoning\": \"History shows migration toward centralized helpers for safe growth/error reporting; reusing them reduces future resizing bugs.\",\n      \"trade_offs\": \"More invasive refactor; needs careful performance and API/behavior validation.\n      \"\n    }\n  ]\n}",
+      "parse_error": true
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 232598,
+      "output_tokens": 5212
+    },
+    "timing": {
+      "start_time": 1768775142.4866376,
+      "end_time": 1768776847.8433824,
+      "duration": 1705.3567447662354
+    },
+    "trajectory": {
+      "agent_role": "history_miner",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nA heap-buffer-overflow in libxml2's parser.c: the function xmlParsePubidLiteral can write past the end of an allocated buffer when parsing a PUBLIC (pubid) literal. The overflow corrupts heap memory (write of one byte past the allocation) and is reachable via xmlParseExternalID/xmlParseNotationDecl during document parsing,",
+      "total_steps": 13,
+      "total_duration": 1705.3567447662354,
+      "total_input_tokens": 232598,
+      "total_output_tokens": 5212,
+      "total_cost": 0.2205553,
+      "final_state": "success"
+    }
+  },
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "{\n  \"root_cause\": \"xmlParsePubidLiteral grows its buffer using xmlGrowCapacity(newSize) but mistakenly calls xmlRealloc(buf, size) with the old capacity. The code then updates its internal \\\"size\\\" variable to newSize anyway, so subsequent writes (including the final NUL terminator) can write past the actual allocation by 1 byte, triggering the ASan heap-buffer-overflow.\",\n  \"fix_approach\": \"In parser.c:xmlParsePubidLiteral, reallocate the buffer using the computed newSize (tmp = xmlRealloc(buf, newSize)) and keep the tracked size consistent with the allocation. This minimal change restores the intended growth behavior and prevents the one-byte OOB write.\",\n  \"files_modified\": [\n    \"parser.c\"\n  ],\n  \"verification\": {\n    \"build_success\": true,\n    \"repro_success\": true,\n    \"exit_code\": 0,\n    \"asan_output\": \"No sanitizer errors detected\"\n  },\n  \"confidence\": \"high\"\n}",
+    "parsed_output": {
+      "root_cause": "xmlParsePubidLiteral grows its buffer using xmlGrowCapacity(newSize) but mistakenly calls xmlRealloc(buf, size) with the old capacity. The code then updates its internal \"size\" variable to newSize anyway, so subsequent writes (including the final NUL terminator) can write past the actual allocation by 1 byte, triggering the ASan heap-buffer-overflow.",
+      "fix_approach": "In parser.c:xmlParsePubidLiteral, reallocate the buffer using the computed newSize (tmp = xmlRealloc(buf, newSize)) and keep the tracked size consistent with the allocation. This minimal change restores the intended growth behavior and prevents the one-byte OOB write.",
+      "files_modified": [
+        "parser.c"
+      ],
+      "verification": {
+        "build_success": true,
+        "repro_success": true,
+        "exit_code": 0,
+        "asan_output": "No sanitizer errors detected"
+      },
+      "confidence": "high"
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 222819,
+      "output_tokens": 2787
+    },
+    "timing": {
+      "start_time": 1768776847.8508127,
+      "end_time": 1768776901.9857779,
+      "duration": 54.13496518135071
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nA heap-buffer-overflow in libxml2's parser.c: the function xmlParsePubidLiteral can write past the end of an allocated buffer when parsing a PUBLIC (pubid) literal. The overflow corrupts heap memory (write of one byte past the allocation) and is reachable via xmlParseExternalID/xmlParseNotationDecl during document parsing,",
+      "total_steps": 13,
+      "total_duration": 54.13496518135071,
+      "total_input_tokens": 222819,
+      "total_output_tokens": 2787,
+      "total_cost": 0.17070165,
+      "final_state": "success"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 574706,
+    "output_tokens": 12263
+  },
+  "timing": {
+    "total_duration": 1894.605765581131
+  }
+}

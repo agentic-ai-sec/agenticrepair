@@ -1,0 +1,81 @@
+diff --git a/src/range.c b/src/range.c
+index 0d2a551fa..45339198d 100644
+--- a/src/range.c
++++ b/src/range.c
+@@ -10,6 +10,9 @@
+ #include <mruby/string.h>
+ #include <mruby/array.h>
+ #include <mruby/numeric.h>
++#ifndef MRB_NO_FLOAT
++#include <math.h>
++#endif
+ #include <mruby/presym.h>
+ 
+ #define RANGE_INITIALIZED_FLAG 1
+@@ -382,28 +385,49 @@ range_num_to_a(mrb_state *mrb, mrb_value range)
+     }
+ #ifndef MRB_NO_FLOAT
+     if (mrb_float_p(end)) {
+-      mrb_float a = (mrb_float)mrb_integer(beg);
++      mrb_int a = mrb_integer(beg);
+       mrb_float b = mrb_float(end);
+ 
+-      if (a > b) {
++      /* NaN comparisons are always false; old code would then cast NaN to mrb_int
++       * when computing capacity, which is undefined behavior. */
++      if (isnan(b)) {
+         return mrb_ary_new_capa(mrb, 0);
+       }
+-      ary = mrb_ary_new_capa(mrb, (mrb_int)(b - a) + 1);
+-      mrb_value *ptr = RARRAY_PTR(ary);
+-      mrb_int i = 0;
+-      if (RANGE_EXCL(r)) {
+-        while (a < b) {
+-          ptr[i++] = mrb_int_value(mrb, (mrb_int)a);
+-          ARY_SET_LEN(RARRAY(ary), i);
+-          a += 1.0;
+-        }
++      /* Infinite endpoints would produce an unbounded loop; reject. */
++      if (!isfinite(b)) {
++        mrb_raise(mrb, E_RANGE_ERROR, "integer range too long");
++      }
++
++      if ((mrb_float)a > b) {
++        return mrb_ary_new_capa(mrb, 0);
++      }
++
++      /* Convert the float endpoint to an integer bound first, then allocate/fill
++       * strictly by that bound. This avoids under-allocation from (b-a) rounding. */
++      mrb_float e_f = RANGE_EXCL(r) ? (ceil(b) - 1.0) : floor(b);
++      if (e_f < (mrb_float)a) {
++        return mrb_ary_new_capa(mrb, 0);
+       }
+-      else {
+-        while (a <= b) {
+-          ptr[i++] = mrb_int_value(mrb, (mrb_int)a);
+-          ARY_SET_LEN(RARRAY(ary), i);
+-          a += 1.0;
+-        }
++      if (e_f > (mrb_float)MRB_INT_MAX) {
++        mrb_raise(mrb, E_RANGE_ERROR, "integer range too long");
++      }
++      /* e_f is within [a, MRB_INT_MAX] here */
++      mrb_int e = (mrb_int)e_f;
++
++      mrb_int len;
++      if (mrb_int_sub_overflow(e, a, &len)) {
++        mrb_raise(mrb, E_RANGE_ERROR, "integer range too long");
++      }
++      if (len == MRB_INT_MAX) {
++        mrb_raise(mrb, E_RANGE_ERROR, "integer range too long");
++      }
++      len++; /* inclusive length: [a..e] */
++
++      ary = mrb_ary_new_capa(mrb, len);
++      mrb_value *ptr = RARRAY_PTR(ary);
++      for (mrb_int i = 0; i < len; i++) {
++        ptr[i] = mrb_int_value(mrb, a + i);
++        ARY_SET_LEN(RARRAY(ary), i + 1);
+       }
+       return ary;
+     }

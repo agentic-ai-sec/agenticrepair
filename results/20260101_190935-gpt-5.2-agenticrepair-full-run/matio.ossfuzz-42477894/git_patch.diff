@@ -1,0 +1,95 @@
+diff --git a/src/inflate.c b/src/inflate.c
+index 33e2577..48feac6 100644
+--- a/src/inflate.c
++++ b/src/inflate.c
+@@ -349,7 +349,10 @@ InflateRankDims(mat_t *mat, matvar_t *matvar, void *buf, size_t nbytes, mat_uint
+ {
+     mat_uint8_t comp_buf[32];
+     mat_int32_t tag[2];
+-    int    err, rank, i;
++    int    err;
++    size_t dims_nbytes = 0;
++    size_t pad_nbytes = 0;
++    size_t out_nbytes = 0;
+     size_t bytesread = 0, readresult = 1;
+ 
+     if ( buf == NULL )
+@@ -388,12 +391,23 @@ InflateRankDims(mat_t *mat, matvar_t *matvar, void *buf, size_t nbytes, mat_uint
+         Mat_Critical("InflateRankDims: Reading dimensions expected type MAT_T_INT32");
+         return bytesread;
+     }
+-    rank = tag[1];
+-    if ( rank % 8 != 0 )
+-        i = 8-(rank %8);
+-    else
+-        i = 0;
+-    rank+=i;
++    if ( tag[1] < 0 ) {
++        Mat_Critical("InflateRankDims: Invalid (negative) dimensions length");
++        return bytesread;
++    }
++    dims_nbytes = (size_t)tag[1];
++    pad_nbytes = (dims_nbytes % 8 != 0) ? (8 - (dims_nbytes % 8)) : 0;
++    if ( dims_nbytes > SIZE_MAX - pad_nbytes ) {
++        Mat_Critical("InflateRankDims: Dimensions length overflow");
++        return bytesread;
++    }
++    out_nbytes = dims_nbytes + pad_nbytes;
++
++    /* zlib uses uInt for avail_out */
++    if ( out_nbytes > UINT_MAX ) {
++        Mat_Critical("InflateRankDims: Dimensions length too large");
++        return bytesread;
++    }
+ 
+     if ( !matvar->internal->z->avail_in ) {
+         matvar->internal->z->avail_in = 1;
+@@ -401,12 +415,12 @@ InflateRankDims(mat_t *mat, matvar_t *matvar, void *buf, size_t nbytes, mat_uint
+         bytesread += fread(comp_buf,1,1,(FILE*)mat->fp);
+     }
+ 
+-    matvar->internal->z->avail_out = rank;
+-    if ( sizeof(mat_uint32_t)*(rank + 2) <= nbytes ) {
++    matvar->internal->z->avail_out = (uInt)out_nbytes;
++    if ( 8 + out_nbytes <= nbytes ) {
+         matvar->internal->z->next_out = ZLIB_BYTE_PTR((mat_int32_t *)buf+2);
+     } else {
+         /* Cannot use too small buf, but can allocate output buffer dims */
+-        *dims = (mat_uint32_t*)calloc(rank, sizeof(mat_uint32_t));
++        *dims = (mat_uint32_t*)calloc(1, out_nbytes);
+         if ( NULL != *dims ) {
+             matvar->internal->z->next_out = ZLIB_BYTE_PTR(*dims);
+         } else {
+diff --git a/src/mat5.c b/src/mat5.c
+index 02a4ebf..e6e2713 100644
+--- a/src/mat5.c
++++ b/src/mat5.c
+@@ -4886,7 +4886,28 @@ Mat_VarReadNextInfo5( mat_t *mat )
+                     int j;
+                     size_t size;
+                     nbytes = uncomp_buf[1];
++                    /* Dimensions element: byte length must be a multiple of 4 */
++                    if ( nbytes < 0 || (nbytes % 4) != 0 ) {
++                        if ( do_clean )
++                            free(dims);
++                        (void)fseek((FILE*)mat->fp,nBytes-bytesread,SEEK_CUR);
++                        Mat_VarFree(matvar);
++                        matvar = NULL;
++                        Mat_Critical("Invalid dimensions byte count");
++                        break;
++                    }
+                     matvar->rank = nbytes / 4;
++                    /* If dimensions are stored inline in uncomp_buf, ensure rank fits */
++                    if ( dims == uncomp_buf + 2 ) {
++                        size_t max_rank = (sizeof(uncomp_buf)/sizeof(uncomp_buf[0])) - 2;
++                        if ( (size_t)matvar->rank > max_rank ) {
++                            (void)fseek((FILE*)mat->fp,nBytes-bytesread,SEEK_CUR);
++                            Mat_VarFree(matvar);
++                            matvar = NULL;
++                            Mat_Critical("Invalid dimensions rank");
++                            break;
++                        }
++                    }
+                     err = SafeMul(&size, matvar->rank, sizeof(*matvar->dims));
+                     if ( err ) {
+                         if ( do_clean )

@@ -1,0 +1,23 @@
+diff --git a/xinclude.c b/xinclude.c
+index c92b32bc..6cea511f 100644
+--- a/xinclude.c
++++ b/xinclude.c
+@@ -2384,6 +2384,18 @@ xmlXIncludeDoProcess(xmlXIncludeCtxtPtr ctxt, xmlDocPtr doc, xmlNodePtr tree,
+     }
+     start = ctxt->incNr;
+ 
++    /*
++     * When reusing an XInclude context (e.g. from xmlTextReaderRead), older
++     * entries in incTab may reference nodes which have been freed by the
++     * reader's incremental cleanup.
++     *
++     * Only process the references collected during this invocation.
++     *
++     * xmlXIncludeRecurseDoc sets incBase to the inherited size, which matches
++     * start, so recursion behaviour is preserved.
++     */
++    ctxt->incBase = start;
++
+     /*
+      * TODO: The phases must run separately for recursive inclusions.
+      *

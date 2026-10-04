@@ -1,0 +1,21 @@
+diff --git a/source/m3_parse.c b/source/m3_parse.c
+index 37479f6..867ff0d 100644
+--- a/source/m3_parse.c
++++ b/source/m3_parse.c
+@@ -83,9 +83,15 @@ _               (NormalizeType (& argType, wasmType));
+             u32 numRets;
+ _           (ReadLEB_u32 (& numRets, & i_bytes, i_end));
+ 
+-            _throwif (m3Err_tooManyArgsRets, numRets + numArgs > d_m3MaxSaneFunctionArgRetCount);
++                        // Guard against integer overflow in (numRets + numArgs). If the addition wraps,
++            // AllocFuncType can allocate too small a buffer and the loops below will write
++            // past the end (see ASan report in ParseSection_Type).
++            _throwif (m3Err_tooManyArgsRets, numRets > d_m3MaxSaneFunctionArgRetCount);
+ 
+-_           (AllocFuncType (& ftype, numRets + numArgs));
++            const u64 totalTypes = (u64) numRets + (u64) numArgs;
++            _throwif (m3Err_tooManyArgsRets, totalTypes > d_m3MaxSaneFunctionArgRetCount);
++
++_           (AllocFuncType (& ftype, (u32) totalTypes));
+             ftype->numArgs = numArgs;
+             ftype->numRets = numRets;

@@ -1,0 +1,23 @@
+diff --git a/src/lib/OpenEXRCore/internal_dwa_compressor.h b/src/lib/OpenEXRCore/internal_dwa_compressor.h
+index 688bd51a..320d65b1 100644
+--- a/src/lib/OpenEXRCore/internal_dwa_compressor.h
++++ b/src/lib/OpenEXRCore/internal_dwa_compressor.h
+@@ -799,6 +799,18 @@ DwaCompressor_uncompress (
+             DwaCompressor_readChannelRules (me, &dataPtr, &dataLeft, &ruleSize);
+ 
+         headerSize += ruleSize;
++
++        /*
++         * The size counters in the DWA chunk header only account for the
++         * compressed payload blocks (unknown/ac/dc/rle). For v2+ streams the
++         * channel rules precede the payload, so after consuming them we must
++         * re-validate that the remaining buffer is large enough.
++         *
++         * Without this check, malformed rule sizes can move dataPtr beyond the
++         * end of the input buffer. Subsequent decompression routines (e.g.
++         * Huffman) will then read past the end of the heap buffer.
++         */
++        if (dataLeft < compressedSize) { return EXR_ERR_CORRUPT_CHUNK; }
+     }
+ 
+     if (rv != EXR_ERR_SUCCESS) return rv;

@@ -1,0 +1,53 @@
+diff --git a/src/vm.c b/src/vm.c
+index 40a8a8971..e2981ffdc 100644
+--- a/src/vm.c
++++ b/src/vm.c
+@@ -1310,13 +1310,25 @@ prepare_tagged_break(mrb_state *mrb, uint32_t tag, const mrb_callinfo *return_ci
+ #define CASE(insn,ops) case insn: { const mrb_code *pc = ci->pc+1; FETCH_ ## ops (); ci->pc = pc; } L_ ## insn ## _BODY:
+ #define NEXT goto L_END_DISPATCH
+ #define JUMP NEXT
+-#define END_DISPATCH L_END_DISPATCH:;}}
++#define END_DISPATCH L_END_DISPATCH: \
++  /* VM helpers may re-enter the VM and grow/move c->cibase via realloc(). \
++     Refresh the cached callinfo/irep pointers at the end of each dispatch cycle. */ \
++  ci = mrb->c->ci; \
++  if (ci->proc && !MRB_PROC_CFUNC_P(ci->proc)) { irep = ci->proc->body.irep; } \
++  ;}}
+ 
+ #else
+ 
+ #define INIT_DISPATCH JUMP; return mrb_nil_value();
+ #define CASE(insn,ops) L_ ## insn: { const mrb_code *pc = ci->pc+1; FETCH_ ## ops (); ci->pc = pc; } L_ ## insn ## _BODY:
+-#define NEXT insn=BYTECODE_DECODER(*ci->pc); CODE_FETCH_HOOK(mrb, irep, ci->pc, regs); goto *optable[insn]
++#define NEXT do { \
++  /* See END_DISPATCH comment above: `ci` can become stale across re-entrant calls. */ \
++  ci = mrb->c->ci; \
++  if (ci->proc && !MRB_PROC_CFUNC_P(ci->proc)) { irep = ci->proc->body.irep; } \
++  insn=BYTECODE_DECODER(*ci->pc); \
++  CODE_FETCH_HOOK(mrb, irep, ci->pc, regs); \
++  goto *optable[insn]; \
++} while (0)
+ #define JUMP NEXT
+ 
+ #define END_DISPATCH
+@@ -2669,6 +2681,11 @@ RETRY_TRY_BLOCK:
+ 
+     CASE(OP_ARYCAT, B) {
+       mrb_value splat = mrb_ary_splat(mrb, regs[a+1]);
++      /* mrb_ary_splat() may call Ruby methods (e.g. to_a) and re-enter the VM.
++         Recursive VM execution can grow the callinfo stack via cipush(), which
++         may realloc() c->cibase and invalidate the cached `ci`/`regs`.
++         Refresh `ci` before touching regs again. */
++      ci = mrb->c->ci;
+       if (mrb_nil_p(regs[a])) {
+         regs[a] = splat;
+       }
+@@ -2690,6 +2707,8 @@ RETRY_TRY_BLOCK:
+ 
+     CASE(OP_ARYSPLAT, B) {
+       mrb_value ary = mrb_ary_splat(mrb, regs[a]);
++      /* See OP_ARYCAT: mrb_ary_splat() can re-enter the VM and move callinfo. */
++      ci = mrb->c->ci;
+       regs[a] = ary;
+       mrb_gc_arena_restore(mrb, ai);
+       NEXT;

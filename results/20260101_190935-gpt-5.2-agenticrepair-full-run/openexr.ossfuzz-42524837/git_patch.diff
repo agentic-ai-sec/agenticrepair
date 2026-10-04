@@ -1,0 +1,34 @@
+diff --git a/src/lib/OpenEXRCore/internal_dwa_compressor.h b/src/lib/OpenEXRCore/internal_dwa_compressor.h
+index 688bd51a..3664ede6 100644
+--- a/src/lib/OpenEXRCore/internal_dwa_compressor.h
++++ b/src/lib/OpenEXRCore/internal_dwa_compressor.h
+@@ -803,6 +803,29 @@ DwaCompressor_uncompress (
+ 
+     if (rv != EXR_ERR_SUCCESS) return rv;
+ 
++    /*
++     * Version 2+ streams embed channel-classification rules in front of the
++     * compressed payload. The initial size checks above are performed before
++     * consuming those rules (when headerSize/dataPtr still point to the start
++     * of the payload). After advancing dataPtr, we must re-validate that the
++     * remaining bytes (dataLeft) are sufficient for the compressed payload.
++     *
++     * Without this check, malformed inputs can cause the computed sub-buffer
++     * pointers (compressedAcBuf, etc.) to be near/past the end of the chunk
++     * while still passing a large nCompressed size to the Huffman decoder,
++     * which then performs word reads past the end of the allocated buffer.
++     */
++    {
++        uint64_t rem = dataLeft;
++        if (unknownCompressedSize > rem) return EXR_ERR_CORRUPT_CHUNK;
++        rem -= unknownCompressedSize;
++        if (acCompressedSize > rem) return EXR_ERR_CORRUPT_CHUNK;
++        rem -= acCompressedSize;
++        if (dcCompressedSize > rem) return EXR_ERR_CORRUPT_CHUNK;
++        rem -= dcCompressedSize;
++        if (rleCompressedSize > rem) return EXR_ERR_CORRUPT_CHUNK;
++    }
++
+     outBufferSize = 0;
+     rv            = DwaCompressor_initializeBuffers (me, &outBufferSize);
+     if (rv != EXR_ERR_SUCCESS) return rv;

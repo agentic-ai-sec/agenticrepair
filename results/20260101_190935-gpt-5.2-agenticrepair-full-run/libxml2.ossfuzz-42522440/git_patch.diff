@@ -1,0 +1,36 @@
+diff --git a/HTMLparser.c b/HTMLparser.c
+index 67c39385..7e831322 100644
+--- a/HTMLparser.c
++++ b/HTMLparser.c
+@@ -403,6 +403,13 @@ htmlCurrentChar(xmlParserCtxtPtr ctxt, int *len) {
+     unsigned char c;
+     unsigned int val;
+ 
++    /*
++     * Ensure that callers never observe an uninitialized character length.
++     * Some callers advance the input cursor using NEXTL(len).
++     */
++    if (len != NULL)
++        *len = 0;
++
+     if (ctxt->instate == XML_PARSER_EOF)
+ 	return(0);
+ 
+@@ -2835,7 +2842,7 @@ htmlParseHTMLAttribute(htmlParserCtxtPtr ctxt, const xmlChar stop) {
+ 	    }
+ 	} else {
+ 	    unsigned int c;
+-	    int bits, l;
++	    int bits, l = 0;
+ 
+ 	    if (out - buffer > buffer_size - 100) {
+ 		int indx = out - buffer;
+@@ -2844,6 +2851,8 @@ htmlParseHTMLAttribute(htmlParserCtxtPtr ctxt, const xmlChar stop) {
+ 		out = &buffer[indx];
+ 	    }
+ 	    c = CUR_CHAR(l);
++	    if (c == 0)
++	        break;
+ 	    if      (c <    0x80)
+ 		    { *out++  = c;                bits= -6; }
+ 	    else if (c <   0x800)

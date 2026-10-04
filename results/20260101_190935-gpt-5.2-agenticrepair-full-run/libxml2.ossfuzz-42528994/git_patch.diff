@@ -1,0 +1,33 @@
+diff --git a/parser.c b/parser.c
+index cd89fdb6..a3e7f589 100644
+--- a/parser.c
++++ b/parser.c
+@@ -4947,11 +4947,27 @@ xmlParseCommentComplex(xmlParserCtxtPtr ctxt, xmlChar *buf,
+ 	if ((r == '-') && (q == '-')) {
+ 	    xmlFatalErr(ctxt, XML_ERR_HYPHEN_IN_COMMENT, NULL);
+ 	}
++	/*
++	 * Ensure enough room for one more character.
++	 * xmlCopyCharMultiByte can write up to 4 bytes, plus 1 for the
++	 * terminating NUL added after the loop.
++	 */
+ 	if (len + 5 >= size) {
+ 	    xmlChar *new_buf;
+             size_t new_size;
++            size_t needed;
++
++            needed = len + 5;
++            new_size = size;
++            while (new_size <= needed) {
++                if (new_size > ((size_t)-1) / 2) {
++                    xmlFree(buf);
++                    xmlErrMemory(ctxt, NULL);
++                    return;
++                }
++                new_size *= 2;
++            }
+ 
+-	    new_size = size * 2;
+ 	    new_buf = (xmlChar *) xmlRealloc(buf, new_size);
+ 	    if (new_buf == NULL) {
+ 		xmlFree (buf);

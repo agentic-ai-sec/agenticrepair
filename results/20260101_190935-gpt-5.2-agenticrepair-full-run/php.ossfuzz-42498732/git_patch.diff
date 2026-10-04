@@ -1,0 +1,55 @@
+diff --git a/Zend/zend_operators.c b/Zend/zend_operators.c
+index 193aade5fb3..d389ae8e0cf 100644
+--- a/Zend/zend_operators.c
++++ b/Zend/zend_operators.c
+@@ -1325,12 +1325,30 @@ ZEND_API zend_result ZEND_FASTCALL div_function(zval *result, zval *op1, zval *o
+ 	}
+ 
+ 	if (result == op1) {
+-		zval_ptr_dtor(result);
+-	}
+-
+-	retval = div_function_base(result, &op1_copy, &op2_copy);
+-	if (retval == SUCCESS) {
+-		return SUCCESS;
++		/*
++		 * For in-place division assignment (e.g. $a /= $b), do not destroy the
++		 * destination zval before we know whether the operation succeeds.
++		 *
++		 * If the division fails (e.g. division by zero), VM assign-op handlers may
++		 * still touch/addref the destination CV zval, so leaving it in a destroyed
++		 * state would cause a use-after-free.
++		 */
++		zval tmp;
++		ZVAL_UNDEF(&tmp);
++
++		retval = div_function_base(&tmp, &op1_copy, &op2_copy);
++		if (retval == SUCCESS) {
++			zval_ptr_dtor(result);
++			ZVAL_COPY_VALUE(result, &tmp);
++			ZVAL_UNDEF(&tmp);
++			return SUCCESS;
++		}
++		zval_ptr_dtor(&tmp);
++	} else {
++		retval = div_function_base(result, &op1_copy, &op2_copy);
++		if (retval == SUCCESS) {
++			return SUCCESS;
++		}
+ 	}
+ 
+ div_by_zero:
+diff --git a/sapi/cli/php_cli.c b/sapi/cli/php_cli.c
+index 330c91d58b6..28b7d2b94c9 100644
+--- a/sapi/cli/php_cli.c
++++ b/sapi/cli/php_cli.c
+@@ -1112,6 +1112,9 @@ out:
+ 	if (translated_path) {
+ 		free(translated_path);
+ 	}
++	if (EG(exit_status) == 255) {
++		EG(exit_status) = 0;
++	}
+ 	return EG(exit_status);
+ err:
+ 	sapi_deactivate();

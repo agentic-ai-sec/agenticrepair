@@ -1,0 +1,75 @@
+diff --git a/ext/date/php_date.c b/ext/date/php_date.c
+index abda2a305c7..3c522559b66 100644
+--- a/ext/date/php_date.c
++++ b/ext/date/php_date.c
+@@ -2265,6 +2265,7 @@ PHPAPI zval *php_date_instantiate(zend_class_entry *pce, zval *object) /* {{{ */
+  * parsing, from either strtotime or parse_from_format. */
+ static void update_errors_warnings(timelib_error_container **last_errors) /* {{{ */
+ {
++	/* Free previously stored container */
+ 	if (DATEG(last_errors)) {
+ 		timelib_error_container_dtor(DATEG(last_errors));
+ 		DATEG(last_errors) = NULL;
+@@ -2274,10 +2275,14 @@ static void update_errors_warnings(timelib_error_container **last_errors) /* {{{
+ 		return;
+ 	}
+ 
++	/* If there are warnings or errors, transfer ownership to module globals. */
+ 	if ((*last_errors)->warning_count || (*last_errors)->error_count) {
+ 		DATEG(last_errors) = *last_errors;
++		*last_errors = NULL;
++		return;
+ 	}
+ 
++	/* No useful information: just destroy the container. */
+ 	timelib_error_container_dtor(*last_errors);
+ 	*last_errors = NULL;
+ } /* }}} */
+@@ -2329,9 +2334,6 @@ PHPAPI bool php_date_initialize(php_date_obj *dateobj, const char *time_str, siz
+ 		dateobj->time = timelib_strtotime(time_str, time_str_len, &err, DATE_TIMEZONEDB, php_date_parse_tzfile_wrapper);
+ 	}
+ 
+-	/* update last errors and warnings */
+-	update_errors_warnings(&err);
+-
+ 	/* If called from a constructor throw an exception */
+ 	if ((flags & PHP_DATE_INIT_CTOR) && err && err->error_count) {
+ 		/* spit out the first library error message, at least */
+@@ -2341,9 +2343,14 @@ PHPAPI bool php_date_initialize(php_date_obj *dateobj, const char *time_str, siz
+ 	if (err && err->error_count) {
+ 		timelib_time_dtor(dateobj->time);
+ 		dateobj->time = 0;
++		/* update last errors and warnings */
++		update_errors_warnings(&err);
+ 		return 0;
+ 	}
+ 
++	/* update last errors and warnings */
++	update_errors_warnings(&err);
++
+ 	if (timezone_object) {
+ 		php_timezone_obj *tzobj;
+ 
+@@ -3007,17 +3014,19 @@ static bool php_date_modify(zval *object, char *modify, size_t modify_len) /* {{
+ 
+ 	tmp_time = timelib_strtotime(modify, modify_len, &err, DATE_TIMEZONEDB, php_date_parse_tzfile_wrapper);
+ 
+-	/* update last errors and warnings */
+-	update_errors_warnings(&err);
+-
+ 	if (err && err->error_count) {
+ 		/* spit out the first library error message, at least */
+ 		php_error_docref(NULL, E_WARNING, "Failed to parse time string (%s) at position %d (%c): %s", modify,
+ 			err->error_messages[0].position, err->error_messages[0].character, err->error_messages[0].message);
++		/* update last errors and warnings */
++		update_errors_warnings(&err);
+ 		timelib_time_dtor(tmp_time);
+ 		return 0;
+ 	}
+ 
++	/* update last errors and warnings */
++	update_errors_warnings(&err);
++
+ 	memcpy(&dateobj->time->relative, &tmp_time->relative, sizeof(timelib_rel_time));
+ 	dateobj->time->have_relative = tmp_time->have_relative;
+ 	dateobj->time->sse_uptodate = 0;

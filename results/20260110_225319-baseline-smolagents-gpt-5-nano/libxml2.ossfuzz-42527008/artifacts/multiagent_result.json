@@ -1,0 +1,43 @@
+{
+  "instance_id": "libxml2.ossfuzz-42527008",
+  "final_status": "failed",
+  "static_analyzer_output": null,
+  "dynamic_analyzer_output": null,
+  "history_miner_output": null,
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "Proposed fix plan and minimal patch for the heap-use-after-free in htmlCurrentChar (HTMLparser.c):\n\nRoot cause:\n- In htmlCurrentChar, when an encoding guess is found (guess != NULL) and there is no corresponding handler, the code calls htmlParseErr(...) with the guess pointer. After this, the code frees guess via xmlFree(guess). If htmlParseErr+__xmlRaiseError keeps a reference to the original guess during formatting, a use-after-free can occur.\n\nFix (minimal, focused):\n- Do not pass the original guess pointer to the error reporter when it could still be used after the call. Instead, duplicate the guess string for the error message, report the error using the copy, and then free the copy. Free the original guess afterward as before. This ensures the error path does not retain a reference to freed memory.\n\nPatch (unified diff fragment) - apply to /src/libxml2/HTMLparser.c around the encoding-guess handling block:\n\n*** Begin Patch\n*** Update File: src/libxml2/HTMLparser.c\n@@\n-        } else {\n-            handler = xmlFindCharEncodingHandler((const char *) guess);\n-            if (handler != NULL) {\n-                /*\n-                 * Don't use UTF-8 encoder which isn't required and\n-                 * can produce invalid UTF-8.\n-                 */\n-                if (!xmlStrEqual(BAD_CAST handler->name, BAD_CAST \"UTF-8\"))\n-                    xmlSwitchToEncoding(ctxt, handler);\n-            } else {\n-                htmlParseErr(ctxt, XML_ERR_INVALID_ENCODING,\n-                             \"Unsupported encoding %s\", guess, NULL);\n-            }\n-        }\n-        xmlFree(guess);\n+        } else {\n+            handler = xmlFindCharEncodingHandler((const char *) guess);\n+            if (handler != NULL) {\n+                /*\n+                 * Don't use UTF-8 encoder which isn't required and\n+                 * can produce invalid UTF-8.\n+                 */\n+                if (!xmlStrEqual(BAD_CAST handler->name, BAD_CAST \"UTF-8\"))\n+                    xmlSwitchToEncoding(ctxt, handler);\n+            } else {\n+                /* Avoid use-after-free: pass a copy to the error reporter */\n+                xmlChar *guess_copy = xmlStrdup((const xmlChar *) guess);\n+                if (guess_copy != NULL) {\n+                    htmlParseErr(ctxt, XML_ERR_INVALID_ENCODING,\n+                                 \"Unsupported encoding %s\", guess_copy, NULL);\n+                    xmlFree(guess_copy);\n+                } else {\n+                    /* Fallback if copy fails */\n+                    htmlParseErr(ctxt, XML_ERR_INVALID_ENCODING,\n+                                 \"Unsupported encoding %s\", guess, NULL);\n+                }\n+            }\n+        }\n+        xmlFree(guess);\n*** End Patch\n",
+    "parsed_output": {
+      "raw": "Proposed fix plan and minimal patch for the heap-use-after-free in htmlCurrentChar (HTMLparser.c):\n\nRoot cause:\n- In htmlCurrentChar, when an encoding guess is found (guess != NULL) and there is no corresponding handler, the code calls htmlParseErr(...) with the guess pointer. After this, the code frees guess via xmlFree(guess). If htmlParseErr+__xmlRaiseError keeps a reference to the original guess during formatting, a use-after-free can occur.\n\nFix (minimal, focused):\n- Do not pass the original guess pointer to the error reporter when it could still be used after the call. Instead, duplicate the guess string for the error message, report the error using the copy, and then free the copy. Free the original guess afterward as before. This ensures the error path does not retain a reference to freed memory.\n\nPatch (unified diff fragment) - apply to /src/libxml2/HTMLparser.c around the encoding-guess handling block:\n\n*** Begin Patch\n*** Update File: src/libxml2/HTMLparser.c\n@@\n-        } else {\n-            handler = xmlFindCharEncodingHandler((const char *) guess);\n-            if (handler != NULL) {\n-                /*\n-                 * Don't use UTF-8 encoder which isn't required and\n-                 * can produce invalid UTF-8.\n-                 */\n-                if (!xmlStrEqual(BAD_CAST handler->name, BAD_CAST \"UTF-8\"))\n-                    xmlSwitchToEncoding(ctxt, handler);\n-            } else {\n-                htmlParseErr(ctxt, XML_ERR_INVALID_ENCODING,\n-                             \"Unsupported encoding %s\", guess, NULL);\n-            }\n-        }\n-        xmlFree(guess);\n+        } else {\n+            handler = xmlFindCharEncodingHandler((const char *) guess);\n+            if (handler != NULL) {\n+                /*\n+                 * Don't use UTF-8 encoder which isn't required and\n+                 * can produce invalid UTF-8.\n+                 */\n+                if (!xmlStrEqual(BAD_CAST handler->name, BAD_CAST \"UTF-8\"))\n+                    xmlSwitchToEncoding(ctxt, handler);\n+            } else {\n+                /* Avoid use-after-free: pass a copy to the error reporter */\n+                xmlChar *guess_copy = xmlStrdup((const xmlChar *) guess);\n+                if (guess_copy != NULL) {\n+                    htmlParseErr(ctxt, XML_ERR_INVALID_ENCODING,\n+                                 \"Unsupported encoding %s\", guess_copy, NULL);\n+                    xmlFree(guess_copy);\n+                } else {\n+                    /* Fallback if copy fails */\n+                    htmlParseErr(ctxt, XML_ERR_INVALID_ENCODING,\n+                                 \"Unsupported encoding %s\", guess, NULL);\n+                }\n+            }\n+        }\n+        xmlFree(guess);\n*** End Patch",
+      "parse_error": true
+    },
+    "success": false,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 340445,
+      "output_tokens": 75557
+    },
+    "timing": {
+      "start_time": 1769346350.3280578,
+      "end_time": 1769346662.5360587,
+      "duration": 312.2080008983612
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nHeap-use-after-free in htmlCurrentChar (HTMLparser.c): an encoding name buffer is freed while still referenced by the HTML error reporting path (htmlParseErr / __xmlRaiseError), causing subsequent formatted error output to read freed heap memory. This can lead to crashes (denial of service) and may be exploitable for arbit",
+      "total_steps": 37,
+      "total_duration": 312.2080008983612,
+      "total_input_tokens": 340445,
+      "total_output_tokens": 75557,
+      "total_cost": 0.017269244999999996,
+      "final_state": "failed"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 340445,
+    "output_tokens": 75557
+  },
+  "timing": {
+    "total_duration": 312.2150967121124
+  }
+}

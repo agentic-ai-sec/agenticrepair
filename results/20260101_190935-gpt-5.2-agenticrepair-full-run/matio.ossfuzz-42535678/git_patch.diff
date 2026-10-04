@@ -1,0 +1,80 @@
+diff --git a/src/mat.c b/src/mat.c
+index b217e73..5a60b2b 100644
+--- a/src/mat.c
++++ b/src/mat.c
+@@ -2426,25 +2426,50 @@ Mat_VarPrint(const matvar_t *matvar, int printdata)
+                 }
+                 break;
+             }
++
+             case MAT_C_SPARSE: {
+                 mat_sparse_t *sparse;
+                 size_t stride = Mat_SizeOf(matvar->data_type);
++                /*
++                 * Defensive bounds for malformed/crafted MAT files:
++                 * printing iterates using jc[] (column pointers), but
++                 * accesses ir[] and data[] at index j. Ensure j never
++                 * exceeds the allocated lengths tracked by nir/ndata.
++                 */
++                size_t nnz_max;
+ #if !defined(EXTENDED_SPARSE)
+                 if ( MAT_T_DOUBLE != matvar->data_type )
+                     break;
+ #endif
+                 sparse = (mat_sparse_t *)matvar->data;
+-                if ( sparse == NULL || sparse->ndata == 0 || sparse->nir == 0 || sparse->njc == 0 ||
+-                     sparse->data == NULL ) {
++                if ( sparse == NULL || sparse->ndata == 0 || sparse->nir == 0 || sparse->njc < 2 ||
++                     sparse->data == NULL || sparse->ir == NULL || sparse->jc == NULL ) {
+                     break;
+                 }
++
++                nnz_max = (size_t)sparse->ndata;
++                if ( (size_t)sparse->nir < nnz_max )
++                    nnz_max = (size_t)sparse->nir;
++                if ( nnz_max == 0 )
++                    break;
++
+                 if ( matvar->isComplex ) {
+                     mat_complex_split_t *complex_data = (mat_complex_split_t *)sparse->data;
+                     const char *re = (const char *)complex_data->Re;
+                     const char *im = (const char *)complex_data->Im;
++                    if ( complex_data == NULL || re == NULL || im == NULL ) {
++                        break;
++                    }
+                     for ( i = 0; i < (size_t)sparse->njc - 1; i++ ) {
+-                        for ( j = sparse->jc[i];
+-                              j < (size_t)sparse->jc[i + 1] && j < (size_t)sparse->ndata; j++ ) {
++                        size_t col_start = (size_t)sparse->jc[i];
++                        size_t col_end = (size_t)sparse->jc[i + 1];
++                        if ( col_start > col_end )
++                            continue;
++                        if ( col_start > nnz_max )
++                            continue;
++                        if ( col_end > nnz_max )
++                            col_end = nnz_max;
++                        for ( j = col_start; j < col_end; j++ ) {
+                             printf("    (%u,%" SIZE_T_FMTSTR ")  ", sparse->ir[j] + 1, i + 1);
+                             Mat_PrintNumber(matvar->data_type, re + j * stride);
+                             printf(" + ");
+@@ -2454,9 +2479,18 @@ Mat_VarPrint(const matvar_t *matvar, int printdata)
+                     }
+                 } else {
+                     const char *data = (const char *)sparse->data;
++                    if ( data == NULL )
++                        break;
+                     for ( i = 0; i < (size_t)sparse->njc - 1; i++ ) {
+-                        for ( j = sparse->jc[i];
+-                              j < (size_t)sparse->jc[i + 1] && j < (size_t)sparse->ndata; j++ ) {
++                        size_t col_start = (size_t)sparse->jc[i];
++                        size_t col_end = (size_t)sparse->jc[i + 1];
++                        if ( col_start > col_end )
++                            continue;
++                        if ( col_start > nnz_max )
++                            continue;
++                        if ( col_end > nnz_max )
++                            col_end = nnz_max;
++                        for ( j = col_start; j < col_end; j++ ) {
+                             printf("    (%u,%" SIZE_T_FMTSTR ")  ", sparse->ir[j] + 1, i + 1);
+                             Mat_PrintNumber(matvar->data_type, data + j * stride);
+                             printf("\n");

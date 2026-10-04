@@ -1,0 +1,55 @@
+diff --git a/HTMLparser.c b/HTMLparser.c
+index a3c47f69..51aadc66 100644
+--- a/HTMLparser.c
++++ b/HTMLparser.c
+@@ -2756,11 +2756,15 @@ htmlParseHTMLAttribute(htmlParserCtxtPtr ctxt, const xmlChar stop) {
+     /*
+      * Ok loop until we reach one of the ending chars
+      */
+-    while ((CUR != 0) && (CUR != stop)) {
++    while ((ctxt->instate != XML_PARSER_EOF) &&
++	   (ctxt->input != NULL) && (ctxt->input->cur != NULL) &&
++	   (ctxt->input->end != NULL) &&
++	   (ctxt->input->cur < ctxt->input->end) &&
++	   (CUR != 0) && (CUR != stop)) {
+ 	if ((stop == 0) && (CUR == '>')) break;
+ 	if ((stop == 0) && (IS_BLANK_CH(CUR))) break;
+         if (CUR == '&') {
+-	    if (NXT(1) == '#') {
++	    if ((ctxt->input->cur + 1 < ctxt->input->end) && (NXT(1) == '#')) {
+ 		unsigned int c;
+ 		int bits;
+ 
+@@ -2939,10 +2943,21 @@ static xmlChar *
+ htmlParseAttValue(htmlParserCtxtPtr ctxt) {
+     xmlChar *ret = NULL;
+ 
++    /* Ensure CUR dereferences are safe even on empty/EOF buffers. */
++    if ((ctxt == NULL) || (ctxt->input == NULL) ||
++        (ctxt->input->cur == NULL) || (ctxt->input->end == NULL) ||
++        (ctxt->instate == XML_PARSER_EOF))
++        return(NULL);
++    GROW;
++    if (ctxt->input->cur >= ctxt->input->end)
++        return(NULL);
++
++
+     if (CUR == '"') {
+         NEXT;
+ 	ret = htmlParseHTMLAttribute(ctxt, '"');
+-        if (CUR != '"') {
++        GROW;
++        if ((ctxt->input->cur >= ctxt->input->end) || (CUR != '"')) {
+ 	    htmlParseErr(ctxt, XML_ERR_ATTRIBUTE_NOT_FINISHED,
+ 	                 "AttValue: \" expected\n", NULL, NULL);
+ 	} else
+@@ -2950,7 +2965,8 @@ htmlParseAttValue(htmlParserCtxtPtr ctxt) {
+     } else if (CUR == '\'') {
+         NEXT;
+ 	ret = htmlParseHTMLAttribute(ctxt, '\'');
+-        if (CUR != '\'') {
++        GROW;
++        if ((ctxt->input->cur >= ctxt->input->end) || (CUR != '\'')) {
+ 	    htmlParseErr(ctxt, XML_ERR_ATTRIBUTE_NOT_FINISHED,
+ 	                 "AttValue: ' expected\n", NULL, NULL);
+ 	} else

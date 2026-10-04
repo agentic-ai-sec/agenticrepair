@@ -1,0 +1,29 @@
+diff --git a/mrbgems/mruby-pack/src/pack.c b/mrbgems/mruby-pack/src/pack.c
+index 08c22b5eb..a50c82d7c 100644
+--- a/mrbgems/mruby-pack/src/pack.c
++++ b/mrbgems/mruby-pack/src/pack.c
+@@ -12,6 +12,7 @@
+ #include "mruby/endian.h"
+ 
+ #include <ctype.h>
++#include <limits.h>
+ #include <string.h>
+ 
+ #define INT_OVERFLOW_P(n)  ((n) < MRB_INT_MIN || (n) > MRB_INT_MAX)
+@@ -1309,7 +1310,15 @@ alias:
+       if (!mrb_read_int(tptr+tmpl->idx, tptr+tlen, &e, &n)) {
+         mrb_raise(mrb, E_RUNTIME_ERROR, "too big template length");
+       }
+-      count = (int)n;
++      /* template counts are stored in an `int`.
++       * If a count does not fit in `int`, treat it as '*' (consume as much as possible)
++       * to avoid wrap-around and huge allocations/loops. */
++      if (n > (mrb_int)INT_MAX || n < (mrb_int)INT_MIN) {
++        count = (type == PACK_TYPE_NONE) ? 0 : -1;
++      }
++      else {
++        count = (int)n;
++      }
+       tmpl->idx = (int)(e - tptr);
+       continue;
+     } else if (ch == '*')  {

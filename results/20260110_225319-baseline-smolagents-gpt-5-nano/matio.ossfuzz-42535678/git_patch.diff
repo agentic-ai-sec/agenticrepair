@@ -1,0 +1,32 @@
+diff --git a/src/mat.c b/src/mat.c
+index b217e73..3a9e31b 100644
+--- a/src/mat.c
++++ b/src/mat.c
+@@ -2442,7 +2442,12 @@ Mat_VarPrint(const matvar_t *matvar, int printdata)
+                     mat_complex_split_t *complex_data = (mat_complex_split_t *)sparse->data;
+                     const char *re = (const char *)complex_data->Re;
+                     const char *im = (const char *)complex_data->Im;
+-                    for ( i = 0; i < (size_t)sparse->njc - 1; i++ ) {
++                    for ( i = 0; i + 1 < (size_t)sparse->njc; i++ ) {
++                        size_t start = sparse->jc[i];
++                        size_t end = sparse->jc[i + 1];
++                        if ( start >= (size_t)sparse->ndata ) continue;
++                        if ( end > (size_t)sparse->ndata ) end = (size_t)sparse->ndata;
++                        if ( start >= end ) continue;
+                         for ( j = sparse->jc[i];
+                               j < (size_t)sparse->jc[i + 1] && j < (size_t)sparse->ndata; j++ ) {
+                             printf("    (%u,%" SIZE_T_FMTSTR ")  ", sparse->ir[j] + 1, i + 1);
+@@ -2454,7 +2459,12 @@ Mat_VarPrint(const matvar_t *matvar, int printdata)
+                     }
+                 } else {
+                     const char *data = (const char *)sparse->data;
+-                    for ( i = 0; i < (size_t)sparse->njc - 1; i++ ) {
++                    for ( i = 0; i + 1 < (size_t)sparse->njc; i++ ) {
++                        size_t start = sparse->jc[i];
++                        size_t end = sparse->jc[i + 1];
++                        if ( start >= (size_t)sparse->ndata ) continue;
++                        if ( end > (size_t)sparse->ndata ) end = (size_t)sparse->ndata;
++                        if ( start >= end ) continue;
+                         for ( j = sparse->jc[i];
+                               j < (size_t)sparse->jc[i + 1] && j < (size_t)sparse->ndata; j++ ) {
+                             printf("    (%u,%" SIZE_T_FMTSTR ")  ", sparse->ir[j] + 1, i + 1);

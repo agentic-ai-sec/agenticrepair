@@ -1,0 +1,99 @@
+diff --git a/src/lib/OpenEXRCore/internal_huf.c b/src/lib/OpenEXRCore/internal_huf.c
+index fa769c9e..63101da1 100644
+--- a/src/lib/OpenEXRCore/internal_huf.c
++++ b/src/lib/OpenEXRCore/internal_huf.c
+@@ -1179,10 +1179,11 @@ FastHufDecoder_refill (
+ 
+ static inline uint64_t
+ fasthuf_read_bits (
+-    int numBits, uint64_t* buffer, int* bufferNumBits, const uint8_t** currByte)
++    int numBits, uint64_t* buffer, int* bufferNumBits, const uint8_t** currByte, const uint8_t* end)
+ {
+     while (*bufferNumBits < numBits)
+     {
++        if (*currByte >= end) return UINT64_MAX;
+         *buffer = ((*buffer) << 8) | *((*currByte)++);
+         *bufferNumBits += 8;
+     }
+@@ -1267,7 +1268,17 @@ fasthuf_initialize (
+         //
+ 
+         uint64_t codeLen =
+-            fasthuf_read_bits (6, &currBits, &currBitCount, &currByte);
++            fasthuf_read_bits (6, &currBits, &currBitCount, &currByte, topByte);
++
++        if (codeLen == UINT64_MAX)
++        {
++            if (pctxt)
++                pctxt->print_error (
++                    pctxt,
++                    EXR_ERR_CORRUPT_CHUNK,
++                    "Error decoding Huffman table (Truncated table data).");
++            return EXR_ERR_CORRUPT_CHUNK;
++        }
+ 
+         if (codeLen < (uint64_t) SHORT_ZEROCODE_RUN)
+         {
+@@ -1280,9 +1291,19 @@ fasthuf_initialize (
+             codeCount[codeLen]++;
+         }
+         else if (codeLen == (uint64_t) LONG_ZEROCODE_RUN)
+-            symbol +=
+-                fasthuf_read_bits (8, &currBits, &currBitCount, &currByte) +
++            {uint64_t _tmp = fasthuf_read_bits (8, &currBits, &currBitCount, &currByte, topByte);
++                if (_tmp == UINT64_MAX)
++                {
++                    if (pctxt)
++                        pctxt->print_error (
++                            pctxt,
++                            EXR_ERR_CORRUPT_CHUNK,
++                            "Error decoding Huffman table (Truncated table data).");
++                    return EXR_ERR_CORRUPT_CHUNK;
++                }
++                symbol += _tmp +
+                 SHORTEST_LONG_RUN - 1;
++                }
+         else
+             symbol += codeLen - SHORT_ZEROCODE_RUN + 1;
+ 
+@@ -1372,7 +1393,17 @@ fasthuf_initialize (
+          symbol++)
+     {
+         uint64_t codeLen =
+-            fasthuf_read_bits (6, &currBits, &currBitCount, &currByte);
++            fasthuf_read_bits (6, &currBits, &currBitCount, &currByte, topByte);
++
++        if (codeLen == UINT64_MAX)
++        {
++            if (pctxt)
++                pctxt->print_error (
++                    pctxt,
++                    EXR_ERR_CORRUPT_CHUNK,
++                    "Error decoding Huffman table (Truncated table data).");
++            return EXR_ERR_CORRUPT_CHUNK;
++        }
+ 
+         if (codeLen < (uint64_t) SHORT_ZEROCODE_RUN)
+         {
+@@ -1391,9 +1422,19 @@ fasthuf_initialize (
+             mapping[codeLen]++;
+         }
+         else if (codeLen == (uint64_t) LONG_ZEROCODE_RUN)
+-            symbol +=
+-                fasthuf_read_bits (8, &currBits, &currBitCount, &currByte) +
++            {uint64_t _tmp = fasthuf_read_bits (8, &currBits, &currBitCount, &currByte, topByte);
++                if (_tmp == UINT64_MAX)
++                {
++                    if (pctxt)
++                        pctxt->print_error (
++                            pctxt,
++                            EXR_ERR_CORRUPT_CHUNK,
++                            "Error decoding Huffman table (Truncated table data).");
++                    return EXR_ERR_CORRUPT_CHUNK;
++                }
++                symbol += _tmp +
+                 SHORTEST_LONG_RUN - 1;
++                }
+         else
+             symbol += codeLen - SHORT_ZEROCODE_RUN + 1;
+     }

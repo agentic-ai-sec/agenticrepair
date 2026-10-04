@@ -1,0 +1,43 @@
+{
+  "instance_id": "php.ossfuzz-42500752",
+  "final_status": "failed",
+  "static_analyzer_output": null,
+  "dynamic_analyzer_output": null,
+  "history_miner_output": null,
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "Root cause: use-after-free occurs because the code path that frees a closure's function_name in the zend_closure_free_storage path is malformed (brace/flow issue) causing a zend_string_release to run on a freed string. Minimal fix: restore the proper structure of the else-if branch and guard the release with a NULL check, ensuring we release only non-interned function_name once and then set it to NULL. Patch (conceptual):\n\nIn src/php-src/Zend/zend_closures.c, within zend_closure_free_storage, replace the problematic block around lines 485-491 with:\n\n} else if (closure->orig_internal_handler == zend_closure_call_magic) {\n    if (closure->func.common.function_name && !ZSTR_IS_INTERNED(closure->func.common.function_name)) {\n        zend_string_release(closure->func.common.function_name);\n    }\n    closure->func.common.function_name = NULL;\n}\n\nThis restores the intended control flow: the else-if is properly closed, the release happens only when the name is heap-allocated, and we clear the pointer to avoid double-free. This should eliminate the heap-use-after-free reported by AddressSanitizer when closures are destroyed. \n\nNotes:\n- The fix is minimal, localized to the destructor path, and does not impact functional behavior otherwise.\n- No tests were modified; just the non-test source file. \n\nIf you want, I can generate a concrete git patch diff as well.",
+    "parsed_output": {
+      "raw": "Root cause: use-after-free occurs because the code path that frees a closure's function_name in the zend_closure_free_storage path is malformed (brace/flow issue) causing a zend_string_release to run on a freed string. Minimal fix: restore the proper structure of the else-if branch and guard the release with a NULL check, ensuring we release only non-interned function_name once and then set it to NULL. Patch (conceptual):\n\nIn src/php-src/Zend/zend_closures.c, within zend_closure_free_storage, replace the problematic block around lines 485-491 with:\n\n} else if (closure->orig_internal_handler == zend_closure_call_magic) {\n    if (closure->func.common.function_name && !ZSTR_IS_INTERNED(closure->func.common.function_name)) {\n        zend_string_release(closure->func.common.function_name);\n    }\n    closure->func.common.function_name = NULL;\n}\n\nThis restores the intended control flow: the else-if is properly closed, the release happens only when the name is heap-allocated, and we clear the pointer to avoid double-free. This should eliminate the heap-use-after-free reported by AddressSanitizer when closures are destroyed. \n\nNotes:\n- The fix is minimal, localized to the destructor path, and does not impact functional behavior otherwise.\n- No tests were modified; just the non-test source file. \n\nIf you want, I can generate a concrete git patch diff as well.",
+      "parse_error": true
+    },
+    "success": false,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 2805064,
+      "output_tokens": 160354
+    },
+    "timing": {
+      "start_time": 1769382977.8198166,
+      "end_time": 1769383730.471621,
+      "duration": 752.6518044471741
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/php-src\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/php-src`. Consider the following issue description:\n\n<issue_description>\nHeap-use-after-free in Zend/zend_closures.c: zend_closure_free_storage can end up invoking zend_string_release on a function name that has already been freed, causing subsequent reads of freed heap memory (seen via zend_string_release and zend_objects_store_del). This use-after-free during closure/object destruction can ca",
+      "total_steps": 64,
+      "total_duration": 752.6518044471741,
+      "total_input_tokens": 2805064,
+      "total_output_tokens": 160354,
+      "total_cost": 0.04296155999999999,
+      "final_state": "failed"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 2805064,
+    "output_tokens": 160354
+  },
+  "timing": {
+    "total_duration": 752.6755211353302
+  }
+}

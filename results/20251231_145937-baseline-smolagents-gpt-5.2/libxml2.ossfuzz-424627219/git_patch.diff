@@ -1,0 +1,21 @@
+diff --git a/parser.c b/parser.c
+index 9ca09455..62e511c9 100644
+--- a/parser.c
++++ b/parser.c
+@@ -4446,7 +4446,15 @@ xmlParsePubidLiteral(xmlParserCtxt *ctxt) {
+                 xmlFree(buf);
+                 return(NULL);
+             }
+-	    tmp = xmlRealloc(buf, size);
++	    /*
++             * Grow the buffer to the new size.
++             *
++             * The previous code mistakenly reallocated with the old size
++             * which could leave the buffer unchanged while the \"size\" variable
++             * was updated. This would allow a one-byte write past the end when
++             * adding the terminating NUL.
++             */
++            tmp = xmlRealloc(buf, newSize);
+ 	    if (tmp == NULL) {
+ 		xmlErrMemory(ctxt);
+ 		xmlFree(buf);

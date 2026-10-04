@@ -1,0 +1,67 @@
+diff --git a/src/p_lx_elf.cpp b/src/p_lx_elf.cpp
+index f0a7bf72..6d383368 100644
+--- a/src/p_lx_elf.cpp
++++ b/src/p_lx_elf.cpp
+@@ -7391,7 +7391,7 @@ void PackLinuxElf64::unpack(OutputFile *fo)
+                 ) {
+                     opt->info_mode++;
+                     infoWarning("bad b_info at %#zx", (size_t)pos);
+-                    unsigned const N_PEEK(16 * sizeof(int)), H_PEEK(N_PEEK >> 1);
++                    unsigned const N_PEEK(64 * sizeof(int)), H_PEEK(N_PEEK >> 1);
+                     unsigned char peek_arr[N_PEEK];
+                     fi->seek(pos - H_PEEK, SEEK_SET);
+                     fi->readx(peek_arr, sizeof(peek_arr));
+@@ -7405,10 +7405,13 @@ void PackLinuxElf64::unpack(OutputFile *fo)
+                         }
+                     }
+                     int boff = find_le32(peek_arr, sizeof(peek_arr), size);
+-                    if (boff < 0) {
++                    // Ensure that a full b_info fits inside peek_arr before reading.
++                    if (boff < 0 || (unsigned)boff + sizeof(b_info) > sizeof(peek_arr)) {
+                         throwCantUnpack("b_info corrupted");
+                     }
+-                    bp = (b_info *)(void *)&peek_arr[boff];
++                    // Avoid any risk of out-of-bounds or misaligned reads by copying.
++                    memcpy(&b_peek, &peek_arr[boff], sizeof(b_peek));
++                    bp = &b_peek;
+ 
+                     sz_unc = get_le32(&bp->sz_unc);
+                     sz_cpr = get_le32(&bp->sz_cpr);
+@@ -8537,7 +8540,7 @@ void PackLinuxElf32::unpack(OutputFile *fo)
+                 ) {
+                     opt->info_mode++;
+                     infoWarning("bad b_info at %#zx", (size_t)pos);
+-                    unsigned const N_PEEK(16 * sizeof(int)), H_PEEK(N_PEEK >> 1);
++                    unsigned const N_PEEK(64 * sizeof(int)), H_PEEK(N_PEEK >> 1);
+                     unsigned char peek_arr[N_PEEK];
+                     fi->seek(pos - H_PEEK, SEEK_SET);
+                     fi->readx(peek_arr, sizeof(peek_arr));
+@@ -8551,10 +8554,13 @@ void PackLinuxElf32::unpack(OutputFile *fo)
+                         }
+                     }
+                     int boff = find_le32(peek_arr, sizeof(peek_arr), size);
+-                    if (boff < 0) {
++                    // Ensure that a full b_info fits inside peek_arr before reading.
++                    if (boff < 0 || (unsigned)boff + sizeof(b_info) > sizeof(peek_arr)) {
+                         throwCantUnpack("b_info corrupted");
+                     }
+-                    bp = (b_info *)(void *)&peek_arr[boff];
++                    // Avoid any risk of out-of-bounds or misaligned reads by copying.
++                    memcpy(&b_peek, &peek_arr[boff], sizeof(b_peek));
++                    bp = &b_peek;
+ 
+                     sz_unc = get_le32(&bp->sz_unc);
+                     sz_cpr = get_le32(&bp->sz_cpr);
+diff --git a/src/util/util.cpp b/src/util/util.cpp
+index d6208c80..0b939385 100644
+--- a/src/util/util.cpp
++++ b/src/util/util.cpp
+@@ -278,7 +278,7 @@ void upx_memswap(void *a, void *b, size_t n) {
+ 
+ // much better memswap(), optimized for our use case in sort functions below
+ static void memswap_no_overlap(byte *a, byte *b, size_t n) {
+-#if defined(__clang__) && __clang_major__ < 15
++#if defined(__clang__)
+     // work around a clang < 15 ICE (Internal Compiler Error)
+     // @COMPILER_BUG @CLANG_BUG
+     upx_memswap(a, b, n);

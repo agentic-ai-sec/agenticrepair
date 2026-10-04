@@ -1,0 +1,43 @@
+diff --git a/Zend/zend_hash.c b/Zend/zend_hash.c
+index 6d065cd03ea..fa4f6df8da7 100644
+--- a/Zend/zend_hash.c
++++ b/Zend/zend_hash.c
+@@ -643,6 +643,12 @@ static zend_always_inline Bucket *zend_hash_find_bucket(const HashTable *ht, zen
+ 	uint32_t idx;
+ 	Bucket *p, *arData;
+ 
++	/* Guard against corrupted nTableMask which would make HT_HASH_EX() index out-of-bounds. */
++	if (UNEXPECTED((int32_t) ht->nTableMask > (int32_t) HT_MIN_MASK)) {
++		return NULL;
++	}
++
++
+ 	if (known_hash) {
+ 		h = ZSTR_H(key);
+ 	} else {
+@@ -683,6 +689,12 @@ static zend_always_inline Bucket *zend_hash_str_find_bucket(const HashTable *ht,
+ 	uint32_t idx;
+ 	Bucket *p, *arData;
+ 
++	/* Guard against corrupted nTableMask which would make HT_HASH_EX() index out-of-bounds. */
++	if (UNEXPECTED((int32_t) ht->nTableMask > (int32_t) HT_MIN_MASK)) {
++		return NULL;
++	}
++
++
+ 	arData = ht->arData;
+ 	nIndex = h | ht->nTableMask;
+ 	idx = HT_HASH_EX(arData, nIndex);
+@@ -706,6 +718,12 @@ static zend_always_inline Bucket *zend_hash_index_find_bucket(const HashTable *h
+ 	uint32_t idx;
+ 	Bucket *p, *arData;
+ 
++	/* Guard against corrupted nTableMask which would make HT_HASH_EX() index out-of-bounds. */
++	if (UNEXPECTED((int32_t) ht->nTableMask > (int32_t) HT_MIN_MASK)) {
++		return NULL;
++	}
++
++
+ 	arData = ht->arData;
+ 	nIndex = h | ht->nTableMask;
+ 	idx = HT_HASH_EX(arData, nIndex);

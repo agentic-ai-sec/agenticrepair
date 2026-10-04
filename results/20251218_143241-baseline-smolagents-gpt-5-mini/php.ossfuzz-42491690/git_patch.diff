@@ -1,0 +1,39 @@
+diff --git a/ext/hash/hash.c b/ext/hash/hash.c
+index 216f80687eb..099b96fdf7d 100644
+--- a/ext/hash/hash.c
++++ b/ext/hash/hash.c
+@@ -21,6 +21,11 @@
+ 
+ #include <math.h>
+ #include "php_hash.h"
++#include "php_hash_xxhash.h"
++
++/* Forward declare xxhash ops for validation in unserialize */
++extern const php_hash_ops php_hash_xxh64_ops;
++extern const php_hash_ops php_hash_xxh32_ops;
+ #include "ext/standard/info.h"
+ #include "ext/standard/file.h"
+ #include "ext/standard/php_var.h"
+@@ -324,6 +329,22 @@ PHP_HASH_API int php_hash_unserialize_spec(php_hashcontext_object *hash, const z
+ 	if (*spec == '.' && align_to(pos, max_alignment) != hash->ops->context_size) {
+ 		return -999;
+ 	}
++
++	/* Algorithm-specific sanity checks to prevent out-of-bounds memsize values */
++	if (hash->ops == &php_hash_xxh64_ops) {
++		PHP_XXH64_CTX *ctx = (PHP_XXH64_CTX *) hash->context;
++		/* memsize must be within 0..31 for XXH64 */
++		if (ctx->s.memsize >= 32) {
++			return -1000 - pos;
++		}
++	}
++	if (hash->ops == &php_hash_xxh32_ops) {
++		PHP_XXH32_CTX *ctx = (PHP_XXH32_CTX *) hash->context;
++		/* memsize must be within 0..15 for XXH32 */
++		if (ctx->s.memsize >= 16) {
++			return -1000 - pos;
++		}
++	}
+ 	return SUCCESS;
+ }
+ /* }}} */

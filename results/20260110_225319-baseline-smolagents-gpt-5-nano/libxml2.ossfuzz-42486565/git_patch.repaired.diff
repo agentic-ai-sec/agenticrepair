@@ -1,0 +1,12 @@
+diff --git a/xinclude.c b/xinclude.c
+index 41ff4e5f..a0d737af 100644
+--- a/xinclude.c
++++ b/xinclude.c
+@@ -2264,7 +2264,6 @@ xmlXIncludeIncludeNode(xmlXIncludeCtxtPtr ctxt, int nr) {
+ 	    xmlAddPrevSibling(cur, end);
+ 	}
+ 	xmlUnlinkNode(cur);
+-	xmlFreeNode(cur);
+     } else {
+         xmlNodePtr child, next;
+ 

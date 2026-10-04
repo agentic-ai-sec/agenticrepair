@@ -1,0 +1,85 @@
+diff --git a/source/fitz/load-bmp.c b/source/fitz/load-bmp.c
+index 3d27d749e..a339b6643 100644
+--- a/source/fitz/load-bmp.c
++++ b/source/fitz/load-bmp.c
+@@ -600,10 +600,15 @@ bmp_read_bitmap(fz_context *ctx, struct info *info, const unsigned char *begin,
+ 	height = info->height;
+ 
+ 	sstride = ((width * bitcount + 31) / 32) * 4;
+-	if (ssp + sstride * height > end)
++	if ((size_t)(end - ssp) < (size_t)sstride * (size_t)height)
+ 	{
+-		int32_t h = (end - ssp) / sstride;
+-		if (h == 0 || h > SHRT_MAX)
++		int32_t h = sstride ? (int32_t)((end - ssp) / sstride) : 0;
++		/*
++		 * Truncated bitmap data is common in malformed files. Decode what we can
++		 * safely: missing rows remain cleared (fz_clear_pixmap already did this).
++		 * Only reject clearly insane values.
++		 */
++		if (h > SHRT_MAX)
+ 		{
+ 			fz_free(ctx, decompressed);
+ 			fz_throw(ctx, FZ_ERROR_GENERIC, "image dimensions out of range in bmp image");
+@@ -630,10 +635,10 @@ bmp_read_bitmap(fz_context *ctx, struct info *info, const unsigned char *begin,
+ 		dstride = -dstride;
+ 	}
+ 
+-	if (ssp + sstride * height > end)
++	if ((size_t)(end - ssp) < (size_t)sstride * (size_t)height)
+ 	{
+ 		fz_warn(ctx, "premature end in bitmap data in bmp image");
+-		height = (end - ssp) / sstride;
++		height = sstride ? (int32_t)((end - ssp) / sstride) : 0;
+ 	}
+ 
+ 	/* These are only used for 16- and 32-bit components
+@@ -933,14 +938,36 @@ bmp_read_palette(fz_context *ctx, struct info *info, const unsigned char *begin,
+ {
+ 	int i, expected, present, entry_size;
+ 	const unsigned char *bitmap;
++	size_t avail, avail_to_end, avail_to_bitmap;
++	size_t file_len, pal_off, bmp_off;
+ 
+ 	entry_size = palette_entry_size(info);
+-	bitmap = begin + info->bitmapoffset;
++	if (entry_size <= 0)
++		fz_throw(ctx, FZ_ERROR_GENERIC, "invalid palette entry size in bmp image");
++
++	/*
++	 * Don't trust bitmapoffset when deciding how many palette entries are present.
++	 * Crafted headers can set bitmapoffset past end-of-buffer (or before the
++	 * palette start), leading to out-of-bounds reads.
++	 */
++	file_len = (size_t)(end - begin);
++	pal_off = (size_t)(p - begin);
++	bmp_off = (size_t)info->bitmapoffset;
++	if (bmp_off > file_len)
++		bmp_off = file_len;
++	if (bmp_off < pal_off)
++		bmp_off = pal_off;
++	bitmap = begin + bmp_off;
+ 
+ 	expected = fz_mini(info->colors, 1 << info->bitcount);
+ 	if (expected == 0)
+ 		expected = 1 << info->bitcount;
+-	present = fz_mini(expected, (bitmap - p) / entry_size);
++
++	/* Clamp reads to both bitmapoffset and actual buffer end. */
++	avail_to_end = (size_t)(end - p);
++	avail_to_bitmap = (size_t)(bitmap - p);
++	avail = fz_mini(avail_to_end, avail_to_bitmap);
++	present = fz_mini(expected, (int)(avail / (size_t)entry_size));
+ 
+ 	for (i = 0; i < present; i++)
+ 	{
+@@ -1099,6 +1126,10 @@ bmp_read_image(fz_context *ctx, struct info *info, const unsigned char *begin, c
+ 
+ 	p = bmp_read_info_header(ctx, info, begin, end, p);
+ 
++	/* Clamp bitmap offset to buffer size before using it to bound palette/masks. */
++	if ((uint32_t)(end - begin) < info->bitmapoffset)
++		info->bitmapoffset = end - begin;
++
+ 	if (has_palette(info))
+ 		p = bmp_read_palette(ctx, info, begin, end, p);

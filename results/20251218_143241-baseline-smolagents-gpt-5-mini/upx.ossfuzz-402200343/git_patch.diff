@@ -1,0 +1,107 @@
+diff --git a/src/p_lx_elf.cpp b/src/p_lx_elf.cpp
+index d7f435aa..e31b992c 100644
+--- a/src/p_lx_elf.cpp
++++ b/src/p_lx_elf.cpp
+@@ -370,7 +370,14 @@ PackLinuxElf32::PackLinuxElf32help1(InputFile *f)
+         }
+         jni_onload_sym = elf_lookup("JNI_OnLoad");
+         if (jni_onload_sym) {
+-            jni_onload_va = get_te32(&jni_onload_sym->st_value);
++            const char *symptr = (const char *)jni_onload_sym;
++            const char *baseptr = (const char *)file_image.raw_ptr();
++            ptrdiff_t off = symptr - baseptr;
++            if (off >= 0 && (size_t)off + sizeof(Elf32_Sym) <= (size_t)file_size_u) {
++                jni_onload_va = get_te32(&jni_onload_sym->st_value);
++            } else {
++                jni_onload_sym = nullptr;
++            }
+             jni_onload_va = 0;  // FIXME not understood; need example
+         }
+     }
+@@ -1179,7 +1186,15 @@ PackLinuxElf64::PackLinuxElf64help1(InputFile *f)
+         }
+         jni_onload_sym = elf_lookup("JNI_OnLoad");
+         if (jni_onload_sym) {
+-            jni_onload_va = get_te64(&jni_onload_sym->st_value);
++            // ensure the full symbol entry is inside file_image before reading fields
++            const char *symptr = (const char *)jni_onload_sym;
++            const char *baseptr = (const char *)file_image.raw_ptr();
++            ptrdiff_t off = symptr - baseptr;
++            if (off >= 0 && (size_t)off + sizeof(Elf64_Sym) <= (size_t)file_size_u) {
++                jni_onload_va = get_te64(&jni_onload_sym->st_value);
++            } else {
++                jni_onload_sym = nullptr;
++            }
+             jni_onload_va = 0;  // FIXME not understood; need example
+         }
+     }
+@@ -8178,9 +8193,15 @@ Elf32_Dyn *PackLinuxElf32::elf_find_dynptr(unsigned int key) const
+ {
+     Elf32_Dyn *dynp= dynseg;
+     if (dynp) {
+-        Elf32_Dyn *const last = (Elf32_Dyn *)(sz_dynseg + (char *)dynseg);
+-        for (; dynp < last; ++dynp) {
+-            if (get_te32(&dynp->d_tag)==key) {
++        char const *const base = (char const *)dynseg;
++        char const *end = base + sz_dynseg;
++        if (file_image) {
++            char const *const avail = (char const *)file_image.getVoidPtr() + (size_t)file_size_u;
++            if (avail < end) end = avail;
++        }
++        if (end <= base) return nullptr;
++        for (; (char *)dynp + (ptrdiff_t)sizeof(*dynp) <= end; ++dynp) {
++            if (get_te32(&dynp->d_tag) == key) {
+                 return dynp;
+             }
+             if (Elf32_Dyn::DT_NULL == dynp->d_tag) {
+@@ -8195,9 +8216,15 @@ Elf64_Dyn *PackLinuxElf64::elf_find_dynptr(unsigned int key) const
+ {
+     Elf64_Dyn *dynp= dynseg;
+     if (dynp) {
+-        Elf64_Dyn *const last = (Elf64_Dyn *)(sz_dynseg + (char *)dynseg);
+-        for (; dynp < last; ++dynp) {
+-            if (get_te64(&dynp->d_tag)==key) {
++        char const *const base = (char const *)dynseg;
++        char const *end = base + sz_dynseg;
++        if (file_image) {
++            char const *const avail = (char const *)file_image.getVoidPtr() + (size_t)file_size_u;
++            if (avail < end) end = avail;
++        }
++        if (end <= base) return nullptr;
++        for (; (char *)dynp + (ptrdiff_t)sizeof(*dynp) <= end; ++dynp) {
++            if (get_te64(&dynp->d_tag) == key) {
+                 return dynp;
+             }
+             if (Elf64_Dyn::DT_NULL == dynp->d_tag) {
+@@ -8214,8 +8241,13 @@ PackLinuxElf32::elf_find_dynamic(unsigned int key) const
+     Elf32_Dyn const *dynp= elf_find_dynptr(key);
+     if (dynp) {
+         unsigned const t= elf_get_offset_from_address(get_te32(&dynp->d_val));
+-        if (t && t < file_size_u) {
+-            return t + file_image;
++        if (t) {
++            /* Ensure at least 8 bytes are available at the returned location to avoid
++             * out-of-bounds reads when callers read 64-bit values from the table.
++             */
++            if (t + 8 <= file_size_u) {
++                return (char *)file_image.raw_ptr() + t;
++            }
+         }
+     }
+     return nullptr;
+@@ -8227,8 +8259,13 @@ PackLinuxElf64::elf_find_dynamic(unsigned int key) const
+     Elf64_Dyn const *dynp= elf_find_dynptr(key);
+     if (dynp) {
+         upx_uint64_t const t= elf_get_offset_from_address(get_te64(&dynp->d_val));
+-        if (t && t < file_size_u) {
+-            return t + file_image;
++        if (t) {
++            /* Ensure at least 8 bytes are available at the returned location to avoid
++             * out-of-bounds reads when callers read 64-bit values from the table.
++             */
++            if (t + 8 <= file_size_u) {
++                return (char *)file_image.raw_ptr() + (size_t)t;
++            }
+         }
+     }
+     return nullptr;

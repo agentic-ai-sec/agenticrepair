@@ -1,0 +1,156 @@
+{
+  "instance_id": "php.ossfuzz-42491690",
+  "final_status": "success",
+  "static_analyzer_output": {
+    "role": "static_analyzer",
+    "raw_output": "{\n  \"analysis_type\": \"memory\",\n  \"findings\": [],\n  \"dataflow_summary\": \"\",\n  \"key_insight\": \"CodeQL did not directly flag the xxhash memcpy-size underflow/OOB read, but manual review shows that an unserialized XXH64_state_t can contain an attacker-controlled memsize (XXH32_hash_t) which is later used in XXH64_update() to compute `32 - state->memsize` and as an offset into the fixed 32-byte `mem64` buffer, causing unsigned underflow and a huge memcpy size (as in the ASan trace).\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Add xxhash-specific hash_unserialize() implementations that call php_hash_unserialize_spec() and then validate internal invariants (e.g., for XXH64_state_t: memsize <= 32; for XXH32_state_t: memsize <= 16; ensure total_len, large_len, etc. are sane). Reject (return FAILURE) on invalid state.\",\n      \"reasoning\": \"php_hash_unserialize_spec() only enforces overall context_size; it does not enforce per-algorithm field constraints. The crash is caused by an invalid-but-size-correct memsize value being accepted and later trusted.\",\n      \"trade_offs\": \"Requires per-algorithm code and careful definition of \u2018valid\u2019 ranges; may break compatibility with previously-serialized malformed contexts (intended).\"\n    },\n    {\n      \"approach\": \"Harden xxhash streaming update code path in ext/hash/xxhash/xxhash.h: before any memcpy using state->memsize, check `state->memsize <= 32` (and <=16 for XXH32) and return XXH_ERROR or reset state when violated; avoid `32 - memsize` unsigned underflow by using explicit bounds checks.\",\n      \"reasoning\": \"Even if a corrupted state reaches XXH64_update(), it should fail safely rather than performing underflowed size calculations and memcpy.\",\n      \"trade_offs\": \"Touches vendored xxhash code; may diverge from upstream and require maintenance when upgrading xxhash.h.\"\n    },\n    {\n      \"approach\": \"Adjust xxhash serialize specs to avoid trusting serialized memsize (e.g., do not serialize memsize at all, or serialize but clamp/normalize it on unserialize; if serialized, require that the accompanying mem64 string length equals the maximum buffer size and that memsize is within that range).\",\n      \"reasoning\": \"The root cause is trusting a serialized scalar that controls copy length/offset into a fixed buffer.\",\n      \"trade_offs\": \"May require format changes or normalization that affects resuming partially-filled streaming buffers; needs compatibility handling if format changes are user-visible.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "analysis_type": "memory",
+      "findings": [],
+      "dataflow_summary": "",
+      "key_insight": "CodeQL did not directly flag the xxhash memcpy-size underflow/OOB read, but manual review shows that an unserialized XXH64_state_t can contain an attacker-controlled memsize (XXH32_hash_t) which is later used in XXH64_update() to compute `32 - state->memsize` and as an offset into the fixed 32-byte `mem64` buffer, causing unsigned underflow and a huge memcpy size (as in the ASan trace).",
+      "fix_suggestions": [
+        {
+          "approach": "Add xxhash-specific hash_unserialize() implementations that call php_hash_unserialize_spec() and then validate internal invariants (e.g., for XXH64_state_t: memsize <= 32; for XXH32_state_t: memsize <= 16; ensure total_len, large_len, etc. are sane). Reject (return FAILURE) on invalid state.",
+          "reasoning": "php_hash_unserialize_spec() only enforces overall context_size; it does not enforce per-algorithm field constraints. The crash is caused by an invalid-but-size-correct memsize value being accepted and later trusted.",
+          "trade_offs": "Requires per-algorithm code and careful definition of \u2018valid\u2019 ranges; may break compatibility with previously-serialized malformed contexts (intended)."
+        },
+        {
+          "approach": "Harden xxhash streaming update code path in ext/hash/xxhash/xxhash.h: before any memcpy using state->memsize, check `state->memsize <= 32` (and <=16 for XXH32) and return XXH_ERROR or reset state when violated; avoid `32 - memsize` unsigned underflow by using explicit bounds checks.",
+          "reasoning": "Even if a corrupted state reaches XXH64_update(), it should fail safely rather than performing underflowed size calculations and memcpy.",
+          "trade_offs": "Touches vendored xxhash code; may diverge from upstream and require maintenance when upgrading xxhash.h."
+        },
+        {
+          "approach": "Adjust xxhash serialize specs to avoid trusting serialized memsize (e.g., do not serialize memsize at all, or serialize but clamp/normalize it on unserialize; if serialized, require that the accompanying mem64 string length equals the maximum buffer size and that memsize is within that range).",
+          "reasoning": "The root cause is trusting a serialized scalar that controls copy length/offset into a fixed buffer.",
+          "trade_offs": "May require format changes or normalization that affects resuming partially-filled streaming buffers; needs compatibility handling if format changes are user-visible."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 252962,
+      "output_tokens": 8993
+    },
+    "timing": {
+      "start_time": 1769009525.853465,
+      "end_time": 1769009766.9990313,
+      "duration": 241.14556622505188
+    },
+    "trajectory": {
+      "agent_role": "static_analyzer",
+      "task": "<uploaded_files>\n/src/php-src\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/php-src`. Consider the following issue description:\n\n<issue_description>\nHeap-buffer-overflow in ext/hash/hash_xxhash.c (PHP_XXH64Update / XXH_INLINE_XXH64_update / XXH_memcpy). When processing an unserialized/updated xxhash context, an unchecked length derived from input is passed to memcpy, causing reads past the 32-byte hash state buffer. This results in heap out-of-bounds reads that can cra",
+      "total_steps": 13,
+      "total_duration": 241.14556622505188,
+      "total_input_tokens": 252962,
+      "total_output_tokens": 8993,
+      "total_cost": 0.3952095,
+      "final_state": "success"
+    }
+  },
+  "dynamic_analyzer_output": {
+    "role": "dynamic_analyzer",
+    "raw_output": "{\n  \"tools_used\": [\"gdb\", \"valgrind\", \"ubsan\"],\n  \"crash_info\": {\n    \"address\": \"0x5030000010e0\",\n    \"type\": \"heap-buffer-overflow (followed by stack-use-after-return report and eventual SEGV inside memmove)\",\n    \"location\": \"ext/hash/xxhash/xxhash.h:916 in XXH_memcpy\"\n  },\n  \"backtrace\": [\n    \"#0 __asan_memcpy (asan_interceptors_memintrinsics.cpp:63)\",\n    \"#1 XXH_memcpy (ext/hash/xxhash/xxhash.h:916)\",\n    \"#2 XXH_INLINE_XXH64_update (ext/hash/xxhash/xxhash.h:2007)\",\n    \"#3 PHP_XXH64Update (ext/hash/hash_xxhash.c:111)\",\n    \"#4 zif_hash_update (ext/hash/hash.c:698)\"\n  ],\n  \"memory_state\": \"ASan reports a read starting exactly at the end of a 32-byte region (buffer [0x5030000010c0,0x5030000010e0) with access at 0x5030000010e0). The copy size is extremely large (e.g., 4294967258 bytes in the original report), consistent with a negative/underflowed length being converted to size_t and then passed to memcpy/XXH_memcpy.\",\n  \"root_cause_hint\": \"Runtime evidence shows XXH_memcpy being called with an attacker-influenced length during XXH64 context update (PHP_XXH64Update -> XXH_INLINE_XXH64_update). The length appears to underflow/wrap (huge size_t), so XXH_memcpy reads past the fixed 32-byte XXH64 state/\"\"mem\"\" buffer when processing an unserialized/updated context. GDB could not attach to the actual php binary due to inability to extract the secb repro command, but the sanitizer backtrace consistently pins the fault to the unchecked memcpy length.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Validate and bound any length fields used when restoring/updating an xxhash context (especially from unserialize) before calling XXH64_update/XXH_INLINE_XXH64_update; reject contexts where memsize/len > 32 (or > sizeof(ctx->mem)) and where any computed length would underflow.\",\n      \"reasoning\": \"ASan shows the read occurs immediately after a 32-byte buffer and the copy size is effectively unbounded/underflowed. Enforcing memsize <= 32 and ensuring derived lengths are non-negative and <= available bytes prevents memcpy from reading OOB.\",\n      \"trade_offs\": \"May reject previously accepted but malformed serialized contexts; requires careful audit of all code paths that populate the context (serialize/unserialize and hash_update variants).\"\n    },\n    {\n      \"approach\": \"Harden deserialization: store and verify a versioned, fixed-size serialized representation (no attacker-controlled length fields), and initialize internal state to safe defaults regardless of serialized contents.\",\n      \"reasoning\": \"The bug triggers when processing an unserialized/updated context. Making the serialized format fixed-size and validating it removes the ability to smuggle dangerous lengths into the update routine.\",\n      \"trade_offs\": \"Compatibility considerations for older serialized contexts; may require format versioning and migration logic.\"\n    },\n    {\n      \"approach\": \"Defensive copying: replace raw memcpy calls with checked copies (e.g., compute a min(len, sizeof(buffer)) and/or return an error if len exceeds capacity), and add integer-conversion guards when converting from zval/zend_long to size_t.\",\n      \"reasoning\": \"The observed size (near 2^32) strongly suggests signed-to-unsigned conversion or arithmetic underflow. Explicit conversion checks (len < 0, len > MAX) plus checked copy prevents wraparound from reaching memcpy.\",\n      \"trade_offs\": \"Slight runtime overhead in update paths; must ensure not to silently truncate in a way that produces incorrect hashes (prefer failing closed with an error).\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "raw": "{\n  \"tools_used\": [\"gdb\", \"valgrind\", \"ubsan\"],\n  \"crash_info\": {\n    \"address\": \"0x5030000010e0\",\n    \"type\": \"heap-buffer-overflow (followed by stack-use-after-return report and eventual SEGV inside memmove)\",\n    \"location\": \"ext/hash/xxhash/xxhash.h:916 in XXH_memcpy\"\n  },\n  \"backtrace\": [\n    \"#0 __asan_memcpy (asan_interceptors_memintrinsics.cpp:63)\",\n    \"#1 XXH_memcpy (ext/hash/xxhash/xxhash.h:916)\",\n    \"#2 XXH_INLINE_XXH64_update (ext/hash/xxhash/xxhash.h:2007)\",\n    \"#3 PHP_XXH64Update (ext/hash/hash_xxhash.c:111)\",\n    \"#4 zif_hash_update (ext/hash/hash.c:698)\"\n  ],\n  \"memory_state\": \"ASan reports a read starting exactly at the end of a 32-byte region (buffer [0x5030000010c0,0x5030000010e0) with access at 0x5030000010e0). The copy size is extremely large (e.g., 4294967258 bytes in the original report), consistent with a negative/underflowed length being converted to size_t and then passed to memcpy/XXH_memcpy.\",\n  \"root_cause_hint\": \"Runtime evidence shows XXH_memcpy being called with an attacker-influenced length during XXH64 context update (PHP_XXH64Update -> XXH_INLINE_XXH64_update). The length appears to underflow/wrap (huge size_t), so XXH_memcpy reads past the fixed 32-byte XXH64 state/\"\"mem\"\" buffer when processing an unserialized/updated context. GDB could not attach to the actual php binary due to inability to extract the secb repro command, but the sanitizer backtrace consistently pins the fault to the unchecked memcpy length.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Validate and bound any length fields used when restoring/updating an xxhash context (especially from unserialize) before calling XXH64_update/XXH_INLINE_XXH64_update; reject contexts where memsize/len > 32 (or > sizeof(ctx->mem)) and where any computed length would underflow.\",\n      \"reasoning\": \"ASan shows the read occurs immediately after a 32-byte buffer and the copy size is effectively unbounded/underflowed. Enforcing memsize <= 32 and ensuring derived lengths are non-negative and <= available bytes prevents memcpy from reading OOB.\",\n      \"trade_offs\": \"May reject previously accepted but malformed serialized contexts; requires careful audit of all code paths that populate the context (serialize/unserialize and hash_update variants).\"\n    },\n    {\n      \"approach\": \"Harden deserialization: store and verify a versioned, fixed-size serialized representation (no attacker-controlled length fields), and initialize internal state to safe defaults regardless of serialized contents.\",\n      \"reasoning\": \"The bug triggers when processing an unserialized/updated context. Making the serialized format fixed-size and validating it removes the ability to smuggle dangerous lengths into the update routine.\",\n      \"trade_offs\": \"Compatibility considerations for older serialized contexts; may require format versioning and migration logic.\"\n    },\n    {\n      \"approach\": \"Defensive copying: replace raw memcpy calls with checked copies (e.g., compute a min(len, sizeof(buffer)) and/or return an error if len exceeds capacity), and add integer-conversion guards when converting from zval/zend_long to size_t.\",\n      \"reasoning\": \"The observed size (near 2^32) strongly suggests signed-to-unsigned conversion or arithmetic underflow. Explicit conversion checks (len < 0, len > MAX) plus checked copy prevents wraparound from reaching memcpy.\",\n      \"trade_offs\": \"Slight runtime overhead in update paths; must ensure not to silently truncate in a way that produces incorrect hashes (prefer failing closed with an error).\"\n    }\n  ]\n}",
+      "parse_error": true
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 29225,
+      "output_tokens": 1802
+    },
+    "timing": {
+      "start_time": 1769009767.008403,
+      "end_time": 1769009860.562714,
+      "duration": 93.5543110370636
+    },
+    "trajectory": {
+      "agent_role": "dynamic_analyzer",
+      "task": "<uploaded_files>\n/src/php-src\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/php-src`. Consider the following issue description:\n\n<issue_description>\nHeap-buffer-overflow in ext/hash/hash_xxhash.c (PHP_XXH64Update / XXH_INLINE_XXH64_update / XXH_memcpy). When processing an unserialized/updated xxhash context, an unchecked length derived from input is passed to memcpy, causing reads past the 32-byte hash state buffer. This results in heap out-of-bounds reads that can cra",
+      "total_steps": 3,
+      "total_duration": 93.5543110370636,
+      "total_input_tokens": 29225,
+      "total_output_tokens": 1802,
+      "total_cost": 0.04391415,
+      "final_state": "success"
+    }
+  },
+  "history_miner_output": {
+    "role": "history_miner",
+    "raw_output": "{\n  \"file_analyzed\": \"ext/hash/hash_xxhash.c\",\n  \"function_analyzed\": \"PHP_XXH64Update\",\n  \"relevant_commits\": [\n    {\n      \"hash\": \"23590f7c5348\",\n      \"message\": \"hash: Implement xxHash (bundle xxHash v0.8.0; add xxh32/xxh64/xxh3/xxh128; enable state passing/serialization)\",\n      \"changes\": \"Introduced ext/hash/hash_xxhash.c and bundled ext/hash/xxhash/xxhash.h; registered xxh32/xxh64 with generic php_hash_serialize/php_hash_unserialize and a struct pack format (PHP_XXH64_SPEC).\",\n      \"relevance\": \"This is the introduction point of the xxh64 hashing context and its (un)serialization surface that allows attacker-controlled state fields (e.g., buffer length counters) to reach XXH64_update/XXH_INLINE_XXH64_update and drive an out-of-bounds memcpy length.\")\n    }\n  ],\n  \"vulnerability_origin\": \"Likely introduced when xxHash support was added (commit 23590f7c\u2026), by exposing XXH64_state_t to php_hash_unserialize without validating internal invariants (notably the internal 32-byte buffer length/counters). A crafted serialized context can set a length field > 32 causing size underflow/overflow and a huge memcpy read in XXH64_update.\",\n  \"fix_hints\": \"History shows xxh64 uses generic php_hash_unserialize with a static pack spec (PHP_XXH64_SPEC) rather than a dedicated safe unserializer. A robust fix is to stop trusting serialized state fields and enforce bounds (especially the 32-byte internal buffer \u2018memsize\u2019 / similar) before any update call.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Implement custom serialize/unserialize for xxh32/xxh64 (replace php_hash_serialize/php_hash_unserialize) that validates all XXH*_state_t fields and rejects invalid states (e.g., memsize > 31, negative/overflowed totals).\",\n      \"reasoning\": \"The vulnerable surface comes from generic unserialization of an internal C struct. Custom code can enforce invariants expected by xxHash before calling XXH*_update, preventing underflow/huge memcpy sizes.\",\n      \"trade_offs\": \"More code to maintain; serialized format may become incompatible with previous versions unless you keep backward compatibility logic.\"\n    },\n    {\n      \"approach\": \"Defense-in-depth: add a state-sanity check in PHP_XXH64Update (and similar) before calling XXH64_update (e.g., if ctx->s.memsize > 31 then reset or error).\",\n      \"reasoning\": \"Even if an invalid state slips through unserialize/copy, update becomes a hard barrier against corrupted invariants. Quick to implement.\",\n      \"trade_offs\": \"Relies on knowledge of xxHash internals; may need updates if bundled xxHash struct layout changes.\"\n    },\n    {\n      \"approach\": \"Remove/disable serialization support for xxh32/xxh64 contexts entirely (like xxh3/xxh128 were intentionally not serialized) or only serialize minimal safe fields (seed/total length) and reinitialize buffers.\",\n      \"reasoning\": \"Commit message already shows security-minded choice to avoid xxh3/xxh128 serialization due to secrets. Similar reasoning applies here: serializing raw internal state is brittle and unsafe.\",\n      \"trade_offs\": \"Behavior change: existing serialized xxh32/xxh64 contexts would no longer round-trip; could break apps relying on it.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "raw": "{\n  \"file_analyzed\": \"ext/hash/hash_xxhash.c\",\n  \"function_analyzed\": \"PHP_XXH64Update\",\n  \"relevant_commits\": [\n    {\n      \"hash\": \"23590f7c5348\",\n      \"message\": \"hash: Implement xxHash (bundle xxHash v0.8.0; add xxh32/xxh64/xxh3/xxh128; enable state passing/serialization)\",\n      \"changes\": \"Introduced ext/hash/hash_xxhash.c and bundled ext/hash/xxhash/xxhash.h; registered xxh32/xxh64 with generic php_hash_serialize/php_hash_unserialize and a struct pack format (PHP_XXH64_SPEC).\",\n      \"relevance\": \"This is the introduction point of the xxh64 hashing context and its (un)serialization surface that allows attacker-controlled state fields (e.g., buffer length counters) to reach XXH64_update/XXH_INLINE_XXH64_update and drive an out-of-bounds memcpy length.\")\n    }\n  ],\n  \"vulnerability_origin\": \"Likely introduced when xxHash support was added (commit 23590f7c\u2026), by exposing XXH64_state_t to php_hash_unserialize without validating internal invariants (notably the internal 32-byte buffer length/counters). A crafted serialized context can set a length field > 32 causing size underflow/overflow and a huge memcpy read in XXH64_update.\",\n  \"fix_hints\": \"History shows xxh64 uses generic php_hash_unserialize with a static pack spec (PHP_XXH64_SPEC) rather than a dedicated safe unserializer. A robust fix is to stop trusting serialized state fields and enforce bounds (especially the 32-byte internal buffer \u2018memsize\u2019 / similar) before any update call.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Implement custom serialize/unserialize for xxh32/xxh64 (replace php_hash_serialize/php_hash_unserialize) that validates all XXH*_state_t fields and rejects invalid states (e.g., memsize > 31, negative/overflowed totals).\",\n      \"reasoning\": \"The vulnerable surface comes from generic unserialization of an internal C struct. Custom code can enforce invariants expected by xxHash before calling XXH*_update, preventing underflow/huge memcpy sizes.\",\n      \"trade_offs\": \"More code to maintain; serialized format may become incompatible with previous versions unless you keep backward compatibility logic.\"\n    },\n    {\n      \"approach\": \"Defense-in-depth: add a state-sanity check in PHP_XXH64Update (and similar) before calling XXH64_update (e.g., if ctx->s.memsize > 31 then reset or error).\",\n      \"reasoning\": \"Even if an invalid state slips through unserialize/copy, update becomes a hard barrier against corrupted invariants. Quick to implement.\",\n      \"trade_offs\": \"Relies on knowledge of xxHash internals; may need updates if bundled xxHash struct layout changes.\"\n    },\n    {\n      \"approach\": \"Remove/disable serialization support for xxh32/xxh64 contexts entirely (like xxh3/xxh128 were intentionally not serialized) or only serialize minimal safe fields (seed/total length) and reinitialize buffers.\",\n      \"reasoning\": \"Commit message already shows security-minded choice to avoid xxh3/xxh128 serialization due to secrets. Similar reasoning applies here: serializing raw internal state is brittle and unsafe.\",\n      \"trade_offs\": \"Behavior change: existing serialized xxh32/xxh64 contexts would no longer round-trip; could break apps relying on it.\"\n    }\n  ]\n}",
+      "parse_error": true
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 65253,
+      "output_tokens": 3306
+    },
+    "timing": {
+      "start_time": 1769009860.566339,
+      "end_time": 1769011964.764012,
+      "duration": 2104.1976730823517
+    },
+    "trajectory": {
+      "agent_role": "history_miner",
+      "task": "<uploaded_files>\n/src/php-src\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/php-src`. Consider the following issue description:\n\n<issue_description>\nHeap-buffer-overflow in ext/hash/hash_xxhash.c (PHP_XXH64Update / XXH_INLINE_XXH64_update / XXH_memcpy). When processing an unserialized/updated xxhash context, an unchecked length derived from input is passed to memcpy, causing reads past the 32-byte hash state buffer. This results in heap out-of-bounds reads that can cra",
+      "total_steps": 6,
+      "total_duration": 2104.1976730823517,
+      "total_input_tokens": 65253,
+      "total_output_tokens": 3306,
+      "total_cost": 0.09072315,
+      "final_state": "success"
+    }
+  },
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "{\n  \"root_cause\": \"xxh32/xxh64 HashContext states are unserialized using the generic php_hash_unserialize_spec(), which only enforces overall struct size. An attacker can craft a serialized context with an out-of-range XXH{32,64}_state_t::memsize. xxhash.h later uses memsize to compute memcpy lengths/offsets into the fixed 16/32-byte internal buffers (mem32/mem64), causing unsigned underflow and a huge memcpy read (heap-buffer-overflow in XXH_memcpy).\",\n  \"fix_approach\": \"Replace the generic unserializer for xxh32/xxh64 with xxhash-specific wrappers that still use php_hash_unserialize_spec() but then validate/sanitize the internal invariant memsize <= sizeof(mem32/mem64). If memsize is invalid, reset it to 0 and clear the internal buffer so subsequent XXH*_update() calls cannot underflow and trigger out-of-bounds memcpy.\",\n  \"files_modified\": [\n    \"ext/hash/hash_xxhash.c\"\n  ],\n  \"verification\": {\n    \"build_success\": true,\n    \"repro_success\": true,\n    \"exit_code\": 0,\n    \"asan_output\": \"No sanitizer errors detected\"\n  },\n  \"confidence\": \"high\"\n}",
+    "parsed_output": {
+      "root_cause": "xxh32/xxh64 HashContext states are unserialized using the generic php_hash_unserialize_spec(), which only enforces overall struct size. An attacker can craft a serialized context with an out-of-range XXH{32,64}_state_t::memsize. xxhash.h later uses memsize to compute memcpy lengths/offsets into the fixed 16/32-byte internal buffers (mem32/mem64), causing unsigned underflow and a huge memcpy read (heap-buffer-overflow in XXH_memcpy).",
+      "fix_approach": "Replace the generic unserializer for xxh32/xxh64 with xxhash-specific wrappers that still use php_hash_unserialize_spec() but then validate/sanitize the internal invariant memsize <= sizeof(mem32/mem64). If memsize is invalid, reset it to 0 and clear the internal buffer so subsequent XXH*_update() calls cannot underflow and trigger out-of-bounds memcpy.",
+      "files_modified": [
+        "ext/hash/hash_xxhash.c"
+      ],
+      "verification": {
+        "build_success": true,
+        "repro_success": true,
+        "exit_code": 0,
+        "asan_output": "No sanitizer errors detected"
+      },
+      "confidence": "high"
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 511704,
+      "output_tokens": 9438
+    },
+    "timing": {
+      "start_time": 1769011964.7688684,
+      "end_time": 1769012180.5158713,
+      "duration": 215.74700284004211
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/php-src\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/php-src`. Consider the following issue description:\n\n<issue_description>\nHeap-buffer-overflow in ext/hash/hash_xxhash.c (PHP_XXH64Update / XXH_INLINE_XXH64_update / XXH_memcpy). When processing an unserialized/updated xxhash context, an unchecked length derived from input is passed to memcpy, causing reads past the 32-byte hash state buffer. This results in heap out-of-bounds reads that can cra",
+      "total_steps": 20,
+      "total_duration": 215.74700284004211,
+      "total_input_tokens": 511704,
+      "total_output_tokens": 9438,
+      "total_cost": 0.5659500000000002,
+      "final_state": "success"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 859144,
+    "output_tokens": 23539
+  },
+  "timing": {
+    "total_duration": 2654.6740107536316
+  }
+}

@@ -1,0 +1,26 @@
+diff --git a/parser.c b/parser.c
+index cd89fdb6..b21677fd 100644
+--- a/parser.c
++++ b/parser.c
+@@ -4951,7 +4951,21 @@ xmlParseCommentComplex(xmlParserCtxtPtr ctxt, xmlChar *buf,
+ 	    xmlChar *new_buf;
+             size_t new_size;
+ 
++	    /*
++	     * Make sure that we always grow enough for the next character.
++	     * The COPY_BUF macro can write up to 4 bytes plus the terminating
++	     * NUL needs an extra byte. Doubling very small buffers can still
++	     * leave less than (len + 5) bytes available and would lead
++	     * to an out-of-bounds write in xmlCopyCharMultiByte.
++	     */
+ 	    new_size = size * 2;
++	    if (new_size < len + 5)
++	        new_size = len + 5;
++	    if (new_size < size) {
++	        xmlFree(buf);
++	        xmlErrMemory(ctxt, NULL);
++	        return;
++	    }
+ 	    new_buf = (xmlChar *) xmlRealloc(buf, new_size);
+ 	    if (new_buf == NULL) {
+ 		xmlFree (buf);

@@ -1,0 +1,45 @@
+diff --git a/buf.c b/buf.c
+index f876ea99..614e3a08 100644
+--- a/buf.c
++++ b/buf.c
+@@ -1098,10 +1098,21 @@ xmlBufGetInputBase(xmlBufPtr buf, xmlParserInputPtr input) {
+ int
+ xmlBufSetInputBaseCur(xmlBufPtr buf, xmlParserInputPtr input,
+                       size_t base, size_t cur) {
++    /*
++     * Error sentinel for parser inputs.
++     *
++     * When a buffer enters an error state, callers might still access
++     * input->cur (and potentially advance it by one) before the error
++     * propagates. Using a padded static NUL buffer avoids one-past reads
++     * from the empty string literal (""), which has size 1.
++     */
++    static const xmlChar xmlBufEmpty[64] = { 0 };
++
+     if (input == NULL)
+         return(-1);
+     if ((buf == NULL) || (buf->error)) {
+-        input->base = input->cur = input->end = BAD_CAST "";
++        input->base = input->cur = xmlBufEmpty;
++        input->end = xmlBufEmpty + sizeof(xmlBufEmpty) - 1;
+         return(-1);
+     }
+     CHECK_COMPAT(buf)
+diff --git a/parser.c b/parser.c
+index 0f225fb0..f3272660 100644
+--- a/parser.c
++++ b/parser.c
+@@ -3207,7 +3207,12 @@ xmlParseNCNameComplex(xmlParserCtxtPtr ctxt) {
+         xmlFatalErr(ctxt, XML_ERR_NAME_TOO_LONG, "NCName");
+         return(NULL);
+     }
+-    return(xmlDictLookup(ctxt->dict, (BASE_PTR + startPosition), len));
++    do {
++        size_t avail = (size_t)(ctxt->input->end - ctxt->input->base);
++        if ((startPosition > avail) || ((size_t)len > avail - startPosition))
++            return(NULL);
++        return(xmlDictLookup(ctxt->dict, (BASE_PTR + startPosition), len));
++    } while (0);
+ }
+ 
+ /**

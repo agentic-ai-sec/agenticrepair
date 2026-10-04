@@ -1,0 +1,17 @@
+# macOS Finder metadata
+.DS_Store
+**/.DS_Store
+
+# Windows "downloaded from the internet" metadata
+*Zone.Identifier
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+
+# Local evaluation scratch (regenerate with ./eval_and_view_patch.sh)
+output/

@@ -1,0 +1,22 @@
+diff --git a/xmlreader.c b/xmlreader.c
+index 6ae6e922..19cb71c7 100644
+--- a/xmlreader.c
++++ b/xmlreader.c
+@@ -1581,6 +1581,17 @@ node_found:
+ 	(reader->node->ns != NULL) &&
+ 	((xmlStrEqual(reader->node->ns->href, XINCLUDE_NS)) ||
+ 	 (xmlStrEqual(reader->node->ns->href, XINCLUDE_OLD_NS)))) {
++	/*
++	 * The XInclude engine can keep a reference to the current xi:include
++	 * node (ctxt->incTab[nr]->ref) while processing includes in multiple
++	 * phases. The reader may aggressively unlink and free past nodes while
++	 * streaming which can otherwise invalidate that reference and lead to
++	 * use-after-free.
++	 *
++	 * Preserve this node so it won't be freed by the reader cleanup logic
++	 * until the document gets cleaned up.
++	 */
++	reader->node->extra |= NODE_IS_PRESERVED;
+ 	if (reader->xincctxt == NULL) {
+ 	    reader->xincctxt = xmlXIncludeNewContext(reader->ctxt->myDoc);
+ 	    xmlXIncludeSetFlags(reader->xincctxt,

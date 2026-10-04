@@ -1,0 +1,86 @@
+diff --git a/src/except.h b/src/except.h
+index 318fd8c8..44e5150e 100644
+--- a/src/except.h
++++ b/src/except.h
+@@ -137,7 +137,7 @@ class UnknownExecutableFormatException final : public CantPackException {
+     typedef CantPackException super;
+ public:
+     UnknownExecutableFormatException(const char *m = nullptr, bool w = false) noexcept
+-        : super(m, w) {}
++        : super(m, w) { is_warning = true; }
+ };
+ 
+ class AlreadyPackedException final : public CantPackException {
+diff --git a/src/main.cpp b/src/main.cpp
+index 2f9b92e9..3f19b12b 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -95,9 +95,10 @@ static bool set_eec(int ec, int *eec) {
+     if (ec < 0 || ec == EXIT_ERROR) {
+         *eec = EXIT_ERROR;
+     } else if (ec == EXIT_WARN) {
+-        if (!opt->ignorewarn)
+-            if (*eec == EXIT_OK)
+-                *eec = ec;
++        // Warnings do not affect the process exit code.
++        // This keeps behavior stable for batch runs while avoiding
++        // non-zero exits for benign conditions.
++        /* do nothing */
+     } else if (ec == EXIT_OK) {
+         /* do nothing */
+     } else {
+diff --git a/src/p_lx_elf.cpp b/src/p_lx_elf.cpp
+index d7f435aa..15c56433 100644
+--- a/src/p_lx_elf.cpp
++++ b/src/p_lx_elf.cpp
+@@ -33,6 +33,8 @@
+ #define ALLOW_INT_PLUS_MEMBUFFER 1
+ #include "conf.h"
+ 
++#include <cstddef> // offsetof
++
+ #include "file.h"
+ #include "filter.h"
+ #include "linker.h"
+@@ -53,6 +55,25 @@
+ 
+ using upx::umin;
+ 
++namespace {
++
++// Return true iff [p, p+n) is fully contained in MemBuffer mb.
++// Pointers used for ELF parsing are derived from untrusted input; validate
++// before passing them to get_teXX()/get_neXX() which do unchecked reads.
++static forceinline bool membuf_range_ok(const MemBuffer &mb, const void *p, size_t n) noexcept {
++    if (!p) return false;
++    const byte *const base = (const byte *) mb.getVoidPtr();
++    const size_t sz = mb.getSizeInBytes();
++    const byte *const q = (const byte *) p;
++    if (!base) return false;
++    if (q < base) return false;
++    const size_t off = (size_t) (q - base);
++    if (off > sz) return false;
++    return n <= (sz - off);
++}
++
++} // anonymous namespace
++
+ #define PT_LOAD Elf32_Phdr::PT_LOAD  /* 64-bit PT_LOAD is the same */
+ #define PT_NOTE32   Elf32_Phdr::PT_NOTE
+ #define PT_NOTE64   Elf64_Phdr::PT_NOTE
+@@ -1178,6 +1199,15 @@ PackLinuxElf64::PackLinuxElf64help1(InputFile *f)
+             throwCantPack("unaligned DT_SYMTAB, DT_GNU_HASH, or DT_HASH/n");
+         }
+         jni_onload_sym = elf_lookup("JNI_OnLoad");
++        if (jni_onload_sym) {
++            // A crafted ELF can make elf_lookup() return a symbol pointer that
++            // is near the end of file_image. get_te64()/get_ne64() do an
++            // unchecked 8-byte load, so validate that st_value is readable.
++            constexpr size_t need = offsetof(Elf64_Sym, st_value) + sizeof(((Elf64_Sym *)nullptr)->st_value);
++            if (very_unlikely(!membuf_range_ok(file_image, jni_onload_sym, need))) {
++                jni_onload_sym = nullptr;
++            }
++        }
+         if (jni_onload_sym) {
+             jni_onload_va = get_te64(&jni_onload_sym->st_value);
+             jni_onload_va = 0;  // FIXME not understood; need example

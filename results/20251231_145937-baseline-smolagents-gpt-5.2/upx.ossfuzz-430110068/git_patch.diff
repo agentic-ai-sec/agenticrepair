@@ -1,0 +1,136 @@
+diff --git a/src/p_lx_elf.cpp b/src/p_lx_elf.cpp
+index b57dfe5a..9d724a8e 100644
+--- a/src/p_lx_elf.cpp
++++ b/src/p_lx_elf.cpp
+@@ -8643,9 +8643,12 @@ unsigned PackLinuxElf::elf_hash(char const *p)
+ Elf32_Sym const *PackLinuxElf32::elf_lookup(char const *name) const
+ {
+     if (hashtab && dynsym && dynstr) {
++        // SysV DT_HASH layout: u32 nbucket; u32 nchain; u32 bucket[nbucket]; u32 chain[nchain]
++        // A malformed DT_HASH must not cause out-of-bounds reads while walking chains.
+         unsigned const n_bucket = get_te32(&hashtab[0]);
++        unsigned const n_chain  = get_te32(&hashtab[1]);
+         unsigned const *const buckets = &hashtab[2];
+-        unsigned const *const chains = &buckets[n_bucket];
++
+         // Find the end of DT_HASH and DT_DYNSYM. Perhaps elf_find_table_size()
+         // depends on too many valid input values?
+         void const *l_hash = nullptr, *l_sym = nullptr;
+@@ -8662,23 +8665,41 @@ Elf32_Sym const *PackLinuxElf32::elf_lookup(char const *name) const
+             if (this->file_size == (off_t)dt_offsets[j])
+                 break;  // end sentinel
+         }
+-        if (n_bucket) {
++
++        // Determine available words after buckets[] in DT_HASH and bound-check n_bucket/n_chain.
++        // If invalid, ignore DT_HASH instead of crashing.
++        unsigned chain_limit = 0;
++        unsigned const *hash_limit = hashend;
++        if (!hash_limit) hash_limit = (unsigned const *)l_hash;
++        if (!hash_limit) hash_limit = (unsigned const *)(void const *)((char const *)file_image.getVoidPtr() + file_size);
++        if (hash_limit > buckets) {
++            unsigned const n_words = (unsigned)(hash_limit - buckets);
++            if (n_words >= n_bucket) {
++                unsigned const max_chain = n_words - n_bucket;
++                chain_limit = (n_chain < max_chain) ? n_chain : max_chain;
++            }
++        }
++
++        if (n_bucket && chain_limit) {
++            unsigned const *const chains = &buckets[n_bucket];
+             unsigned const m = elf_hash(name) % n_bucket;
+             unsigned n_visit = 0;
+-            unsigned si;
+-            if (l_hash <= &buckets[m])
+-                throwCantPack("bad DT_HASH %u", m);
+-            for (si= get_te32(&buckets[m]); si; si = get_te32(&chains[si])) {
+-                if (l_sym <= &dynsym[si])
+-                    throwCantPack("bad DT_HASH chain %d\n", si);
+-                char const *const p= get_dynsym_name(si, (unsigned)-1);
++            unsigned si = get_te32(&buckets[m]);
++            while (si && n_visit++ < chain_limit) {
++                if (si >= chain_limit)
++                    break;
++                if (symnum_max && si >= symnum_max)
++                    break;
++                if (l_sym && l_sym <= &dynsym[si])
++                    break;
++                char const *const p = get_dynsym_name(si, (unsigned)-1);
+                 if (p && 0==strcmp(name, p))
+                     return &dynsym[si];
+-                if (l_sym <= &dynsym[n_visit++])
+-                    throwCantPack("circular DT_HASH chain %d\n", si);
++                si = get_te32(&chains[si]);
+             }
+         }
+     }
++
+     if (gashtab && dynsym && dynstr) {
+         unsigned const n_bucket = get_te32(&gashtab[0]);
+         unsigned const symbias  = get_te32(&gashtab[1]);
+@@ -8744,9 +8765,12 @@ Elf32_Sym const *PackLinuxElf32::elf_lookup(char const *name) const
+ Elf64_Sym const *PackLinuxElf64::elf_lookup(char const *name) const
+ {
+     if (hashtab && dynsym && dynstr) {
++        // SysV DT_HASH layout: u32 nbucket; u32 nchain; u32 bucket[nbucket]; u32 chain[nchain]
++        // A malformed DT_HASH must not cause out-of-bounds reads while walking chains.
+         unsigned const n_bucket = get_te32(&hashtab[0]);
++        unsigned const n_chain  = get_te32(&hashtab[1]);
+         unsigned const *const buckets = &hashtab[2];
+-        unsigned const *const chains = &buckets[n_bucket];
++
+         // Find the end of DT_HASH and DT_DYNSYM. Perhaps elf_find_table_size()
+         // depends on too many valid input values?
+         void const *l_hash = nullptr, *l_sym = nullptr;
+@@ -8763,23 +8787,41 @@ Elf64_Sym const *PackLinuxElf64::elf_lookup(char const *name) const
+             if (this->file_size == (off_t)dt_offsets[j])
+                 break;  //end
+         }
+-        if (n_bucket) { // -rust-musl can have "empty" hashtab
++
++        // Determine available words after buckets[] in DT_HASH and bound-check n_bucket/n_chain.
++        // If invalid, ignore DT_HASH instead of crashing.
++        unsigned chain_limit = 0;
++        unsigned const *hash_limit = hashend;
++        if (!hash_limit) hash_limit = (unsigned const *)l_hash;
++        if (!hash_limit) hash_limit = (unsigned const *)(void const *)((char const *)file_image.getVoidPtr() + file_size);
++        if (hash_limit > buckets) {
++            unsigned const n_words = (unsigned)(hash_limit - buckets);
++            if (n_words >= n_bucket) {
++                unsigned const max_chain = n_words - n_bucket;
++                chain_limit = (n_chain < max_chain) ? n_chain : max_chain;
++            }
++        }
++
++        if (n_bucket && chain_limit) {
++            unsigned const *const chains = &buckets[n_bucket];
+             unsigned const m = elf_hash(name) % n_bucket;
+             unsigned n_visit = 0;
+-            unsigned si;
+-            if (l_hash <= &buckets[m])
+-                throwCantPack("bad DT_HASH %u", m);
+-            for (si= get_te32(&buckets[m]); si; si = get_te32(&chains[si])) {
+-                if (l_sym <= &dynsym[si])
+-                    throwCantPack("bad DT_HASH chain %d\n", si);
+-                char const *const p= get_dynsym_name(si, (unsigned)-1);
++            unsigned si = get_te32(&buckets[m]);
++            while (si && n_visit++ < chain_limit) {
++                if (si >= chain_limit)
++                    break;
++                if (symnum_max && si >= symnum_max)
++                    break;
++                if (l_sym && l_sym <= &dynsym[si])
++                    break;
++                char const *const p = get_dynsym_name(si, (unsigned)-1);
+                 if (p && 0==strcmp(name, p))
+                     return &dynsym[si];
+-                if (l_sym <= &dynsym[n_visit++])
+-                    throwCantPack("circular DT_HASH chain %d\n", si);
++                si = get_te32(&chains[si]);
+             }
+         }
+     }
++
+     if (gashtab && dynsym && dynstr) {
+         unsigned const n_bucket = get_te32(&gashtab[0]);
+         unsigned const symbias  = get_te32(&gashtab[1]);

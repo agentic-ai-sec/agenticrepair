@@ -1,0 +1,13 @@
+diff --git a/ext/hash/xxhash/xxhash.h b/ext/hash/xxhash/xxhash.h
+index 2d56d23c5d0..ea85f4d5b71 100644
+--- a/ext/hash/xxhash/xxhash.h
++++ b/ext/hash/xxhash/xxhash.h
+@@ -913,7 +913,7 @@ static void XXH_free(void* p) { free(p); }
+ #include <string.h>
+ static void* XXH_memcpy(void* dest, const void* src, size_t size)
+ {
+-    return memcpy(dest,src,size);
++    return memmove(dest,src,size);
+ }
+ 
+ #include <limits.h>   /* ULLONG_MAX */

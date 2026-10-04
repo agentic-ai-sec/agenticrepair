@@ -1,0 +1,24 @@
+diff --git a/src/mat5.c b/src/mat5.c
+index 02a4ebf..634f6e0 100644
+--- a/src/mat5.c
++++ b/src/mat5.c
+@@ -4887,6 +4887,19 @@ Mat_VarReadNextInfo5( mat_t *mat )
+                     size_t size;
+                     nbytes = uncomp_buf[1];
+                     matvar->rank = nbytes / 4;
++                    /* Ensure dims in uncomp_buf are within bounds */
++                    if ( dims == uncomp_buf + 2 ) {
++                        size_t max_uncomp_elems = sizeof(uncomp_buf)/sizeof(uncomp_buf[0]);
++                        if ( matvar->rank > max_uncomp_elems - 2 ) {
++                            if ( do_clean )
++                                free(dims);
++                            (void)fseek((FILE*)mat->fp,nBytes-bytesread,SEEK_CUR);
++                            Mat_VarFree(matvar);
++                            matvar = NULL;
++                            Mat_Critical("Integer overflow or corrupt rank in compressed variable");
++                            break;
++                        }
++                    }
+                     err = SafeMul(&size, matvar->rank, sizeof(*matvar->dims));
+                     if ( err ) {
+                         if ( do_clean )

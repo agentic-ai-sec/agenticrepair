@@ -1,0 +1,106 @@
+diff --git a/source/fitz/draw-edge.c b/source/fitz/draw-edge.c
+index efa307910..bbd80fc5c 100644
+--- a/source/fitz/draw-edge.c
++++ b/source/fitz/draw-edge.c
+@@ -27,6 +27,7 @@
+ #include <limits.h>
+ #include <math.h>
+ #include <stdlib.h>
++#include <stdint.h>
+ #include <string.h>
+ 
+ /*
+@@ -476,13 +477,46 @@ add_span_aa(fz_context *ctx, fz_gel *gel, int *list, int x0, int x1, int xofs, i
+ 	int x0pix, x0sub;
+ 	int x1pix, x1sub;
+ 	const int hscale = fz_rasterizer_aa_hscale(&gel->super);
++	int xmin, xmax;
++	int max_sub;
+ 
+ 	if (x0 == x1)
+ 		return;
+ 
+-	/* x between 0 and width of bbox */
+-	x0 -= xofs;
+-	x1 -= xofs;
++	/* Ensure we always draw left to right to avoid unsigned wraparound. */
++	if (x0 > x1)
++	{
++		int t = x0;
++		x0 = x1;
++		x1 = t;
++	}
++
++	/* Convert x0/x1 into bbox-relative subpixel coordinates. */
++	{
++		/* Use 64-bit arithmetic to avoid signed overflow when handling
++		 * malformed files with extreme coordinates. */
++		int64_t xx0 = (int64_t)x0 - (int64_t)xofs;
++		int64_t xx1 = (int64_t)x1 - (int64_t)xofs;
++
++		/* Defensive clipping: malformed PDFs can generate coordinates outside
++		 * the expected [0,width] range, which would cause OOB writes into the
++		 * deltas buffer. */
++		xmin = fz_idiv(gel->super.bbox.x0, hscale);
++		xmax = fz_idiv_up(gel->super.bbox.x1, hscale);
++		max_sub = (xmax - xmin) * hscale;
++
++		if (xx1 <= 0 || xx0 >= max_sub)
++			return;
++		if (xx0 < 0)
++			xx0 = 0;
++		if (xx1 > max_sub)
++			xx1 = max_sub;
++		if (xx0 == xx1)
++			return;
++
++		x0 = (int)xx0;
++		x1 = (int)xx1;
++	}
+ 
+ 	/* The cast to unsigned below helps the compiler produce faster
+ 	 * code on ARMs as the multiply by reciprocal trick it uses does not
+@@ -491,13 +525,23 @@ add_span_aa(fz_context *ctx, fz_gel *gel, int *list, int x0, int x1, int xofs, i
+ 	x0sub = ((unsigned int)x0) % hscale;
+ 	x1pix = ((unsigned int)x1) / hscale;
+ 	x1sub = ((unsigned int)x1) % hscale;
+-
++	{
++		/* Clamp indexes to the allocated deltas buffer size.
++		 *
++		 * Crafted inputs can lead to edge x positions that lie just outside
++		 * the expected bbox range (e.g. due to rounding during rasterisation),
++		 * causing x?pix+1 writes to run off the end of the buffer. */
++		int lim = gel->bcap - 2;
++		if (lim < 0)
++			return;
++		if (x0pix > lim) { x0pix = lim; x0sub = 0; }
++		if (x1pix > lim) { x1pix = lim; x1sub = 0; }
++	}
+ 	if (x0pix == x1pix)
+ 	{
+ 		list[x0pix] += h*(x1sub - x0sub);
+ 		list[x0pix+1] += h*(x0sub - x1sub);
+ 	}
+-
+ 	else
+ 	{
+ 		list[x0pix] += h*(hscale - x0sub);
+@@ -593,7 +637,7 @@ fz_scan_convert_aa(fz_context *ctx, fz_gel *gel, int eofill, const fz_irect *cli
+ 	assert(clip->x0 >= xmin);
+ 	assert(clip->x1 <= xmax);
+ 
+-	bcap = xmax - xmin + 2; /* big enough for both alphas and deltas */
++	bcap = xmax - xmin + 8; /* big enough for both alphas and deltas (+6 safety) */
+ 	if (bcap > gel->bcap)
+ 	{
+ 		gel->bcap = bcap;
+@@ -607,7 +651,7 @@ fz_scan_convert_aa(fz_context *ctx, fz_gel *gel, int eofill, const fz_irect *cli
+ 	alphas = gel->alphas;
+ 	deltas = gel->deltas;
+ 
+-	memset(deltas, 0, (xmax - xmin + 1) * sizeof(int));
++	memset(deltas, 0, bcap * sizeof(int));
+ 	gel->alen = 0;
+ 
+ 	/* The theory here is that we have a list of the edges (gel) of length

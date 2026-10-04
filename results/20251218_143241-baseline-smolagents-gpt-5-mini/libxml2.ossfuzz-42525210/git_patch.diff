@@ -1,0 +1,81 @@
+diff --git a/HTMLparser.c b/HTMLparser.c
+index a3c47f69..bc2cfb23 100644
+--- a/HTMLparser.c
++++ b/HTMLparser.c
+@@ -282,13 +282,13 @@ htmlNodeInfoPop(htmlParserCtxtPtr ctxt)
+  *   COPY(to) copy one char to *to, increment CUR_PTR and to accordingly
+  */
+ 
+-#define UPPER (toupper(*ctxt->input->cur))
++#define UPPER ((ctxt->input->cur < ctxt->input->end) ? toupper(*ctxt->input->cur) : 0)
+ 
+ #define SKIP(val) ctxt->input->cur += (val),ctxt->input->col+=(val)
+ 
+-#define NXT(val) ctxt->input->cur[(val)]
++#define NXT(val) ((ctxt->input->cur + (val) < ctxt->input->end) ? ctxt->input->cur[(val)] : 0)
+ 
+-#define UPP(val) (toupper(ctxt->input->cur[(val)]))
++#define UPP(val) ((ctxt->input->cur + (val) < ctxt->input->end) ? toupper(ctxt->input->cur[(val)]) : 0)
+ 
+ #define CUR_PTR ctxt->input->cur
+ #define BASE_PTR ctxt->input->base
+@@ -305,10 +305,10 @@ htmlNodeInfoPop(htmlParserCtxtPtr ctxt)
+ 
+ /* Imported from XML */
+ 
+-#define CUR (*ctxt->input->cur)
++#define CUR ((ctxt->input->cur < ctxt->input->end) ? (*ctxt->input->cur) : 0)
+ #define NEXT xmlNextChar(ctxt)
+ 
+-#define RAW (ctxt->token ? -1 : (*ctxt->input->cur))
++#define RAW (ctxt->token ? -1 : ((ctxt->input->cur < ctxt->input->end) ? (*ctxt->input->cur) : 0))
+ 
+ 
+ #define NEXTL(l) do {							\
+@@ -586,15 +586,22 @@ static int
+ htmlSkipBlankChars(xmlParserCtxtPtr ctxt) {
+     int res = 0;
+ 
+-    while (IS_BLANK_CH(*(ctxt->input->cur))) {
+-        if (*(ctxt->input->cur) == '\n') {
++    /* ensure we don't read past the input buffer */
++    while ((ctxt->input != NULL) && (ctxt->input->cur < ctxt->input->end) && IS_BLANK_CH(*(ctxt->input->cur))) {
++        if (*(ctxt->input->cur) == '
++') {
+             ctxt->input->line++; ctxt->input->col = 1;
+         } else ctxt->input->col++;
+         ctxt->input->cur++;
+-        if (*ctxt->input->cur == 0)
+-            xmlParserGrow(ctxt);
+-	if (res < INT_MAX)
+-	    res++;
++        /* try to grow the buffer if needed */
++        if (ctxt->input->cur >= ctxt->input->end) {
++            if (ctxt->progressive == 0)
++                xmlParserGrow(ctxt);
++            if (ctxt->instate == XML_PARSER_EOF)
++                break;
++        }
++        if (res < INT_MAX)
++            res++;
+     }
+     return(res);
+ }
+diff --git a/error.c b/error.c
+index 4de1418e..40ee8aa5 100644
+--- a/error.c
++++ b/error.c
+@@ -184,6 +184,13 @@ xmlParserPrintFileContextInternal(xmlParserInputPtr input ,
+ 
+     cur = input->cur;
+     base = input->base;
++    /* If cur points at or past end, move back to last valid char or return if empty */
++    if (cur >= input->end) {
++        if (input->end > input->base)
++            cur = input->end - 1;
++        else
++            return;
++    }
+     /* skip backwards over any end-of-lines */
+     while ((cur > base) && ((*(cur) == '\n') || (*(cur) == '\r'))) {
+ 	cur--;

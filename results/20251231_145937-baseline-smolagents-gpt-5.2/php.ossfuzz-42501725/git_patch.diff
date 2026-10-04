@@ -1,0 +1,88 @@
+diff --git a/Zend/zend_vm_def.h b/Zend/zend_vm_def.h
+index 6a55dd9d87a..7288ca5b0da 100644
+--- a/Zend/zend_vm_def.h
++++ b/Zend/zend_vm_def.h
+@@ -7004,17 +7004,14 @@ ZEND_VM_HANDLER(126, ZEND_FE_FETCH_RW, VAR, ANY, JMP_ADDR)
+ 					ZEND_VM_C_GOTO(fe_fetch_w_exit);
+ 				}
+ 			}
+-			value = funcs->get_current_data(iter);
+-			if (UNEXPECTED(EG(exception) != NULL)) {
+-				UNDEF_RESULT();
+-				HANDLE_EXCEPTION();
+-			}
+-			if (!value) {
+-				/* failure in get_current_data */
+-				ZEND_VM_C_GOTO(fe_fetch_w_exit);
+-			}
+ 			if (RETURN_VALUE_USED(opline)) {
+ 				if (funcs->get_current_key) {
++					/*
++					 * get_current_key() may execute user code which can replace/destroy
++					 * the underlying storage. Fetch the key before accessing the current
++					 * value to avoid use-after-free of the zval pointer returned by
++					 * get_current_data().
++					 */
+ 					funcs->get_current_key(iter, EX_VAR(opline->result.var));
+ 					if (UNEXPECTED(EG(exception) != NULL)) {
+ 						UNDEF_RESULT();
+@@ -7024,6 +7021,15 @@ ZEND_VM_HANDLER(126, ZEND_FE_FETCH_RW, VAR, ANY, JMP_ADDR)
+ 					ZVAL_LONG(EX_VAR(opline->result.var), iter->index);
+ 				}
+ 			}
++			value = funcs->get_current_data(iter);
++			if (UNEXPECTED(EG(exception) != NULL)) {
++				UNDEF_RESULT();
++				HANDLE_EXCEPTION();
++			}
++			if (!value) {
++				/* failure in get_current_data */
++				ZEND_VM_C_GOTO(fe_fetch_w_exit);
++			}
+ 			value_type = Z_TYPE_INFO_P(value);
+ 		}
+ 	} else {
+diff --git a/Zend/zend_vm_execute.h b/Zend/zend_vm_execute.h
+index f2eb205d53c..a322b5f4369 100644
+--- a/Zend/zend_vm_execute.h
++++ b/Zend/zend_vm_execute.h
+@@ -22074,17 +22074,14 @@ static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL ZEND_FE_FETCH_RW_SPEC_VAR_HANDLER(Z
+ 					goto fe_fetch_w_exit;
+ 				}
+ 			}
+-			value = funcs->get_current_data(iter);
+-			if (UNEXPECTED(EG(exception) != NULL)) {
+-				UNDEF_RESULT();
+-				HANDLE_EXCEPTION();
+-			}
+-			if (!value) {
+-				/* failure in get_current_data */
+-				goto fe_fetch_w_exit;
+-			}
+ 			if (RETURN_VALUE_USED(opline)) {
+ 				if (funcs->get_current_key) {
++					/*
++					 * get_current_key() may execute user code which can replace/destroy
++					 * the underlying storage. Fetch the key before accessing the current
++					 * value to avoid use-after-free of the zval pointer returned by
++					 * get_current_data().
++					 */
+ 					funcs->get_current_key(iter, EX_VAR(opline->result.var));
+ 					if (UNEXPECTED(EG(exception) != NULL)) {
+ 						UNDEF_RESULT();
+@@ -22094,6 +22091,15 @@ static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL ZEND_FE_FETCH_RW_SPEC_VAR_HANDLER(Z
+ 					ZVAL_LONG(EX_VAR(opline->result.var), iter->index);
+ 				}
+ 			}
++			value = funcs->get_current_data(iter);
++			if (UNEXPECTED(EG(exception) != NULL)) {
++				UNDEF_RESULT();
++				HANDLE_EXCEPTION();
++			}
++			if (!value) {
++				/* failure in get_current_data */
++				goto fe_fetch_w_exit;
++			}
+ 			value_type = Z_TYPE_INFO_P(value);
+ 		}
+ 	} else {

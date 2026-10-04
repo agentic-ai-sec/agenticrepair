@@ -1,0 +1,34 @@
+diff --git a/parser.c b/parser.c
+index cd89fdb6..d9d8903a 100644
+--- a/parser.c
++++ b/parser.c
+@@ -4947,11 +4947,27 @@ xmlParseCommentComplex(xmlParserCtxtPtr ctxt, xmlChar *buf,
+ 	if ((r == '-') && (q == '-')) {
+ 	    xmlFatalErr(ctxt, XML_ERR_HYPHEN_IN_COMMENT, NULL);
+ 	}
++	/*
++	 * Make sure that we have enough room for one UTF-8 encoded character
++	 * plus the NUL terminator.
++	 *
++	 * The old code doubled the buffer once which could still be too small
++	 * for very small initial sizes (e.g. size==2 -> new_size==4).
++	 */
+ 	if (len + 5 >= size) {
+ 	    xmlChar *new_buf;
+             size_t new_size;
+-
+-	    new_size = size * 2;
++	    size_t needed;
++
++	    needed = len + 5;
++	    new_size = (size > 0) ? (size * 2) : 64;
++	    while (new_size <= needed) {
++	        if (new_size > (size_t)-1 / 2) {
++	            new_size = needed + 1;
++	            break;
++	        }
++	        new_size *= 2;
++	    }
+ 	    new_buf = (xmlChar *) xmlRealloc(buf, new_size);
+ 	    if (new_buf == NULL) {
+ 		xmlFree (buf);

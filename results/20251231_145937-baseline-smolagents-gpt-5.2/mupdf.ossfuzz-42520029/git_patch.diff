@@ -1,0 +1,18 @@
+diff --git a/source/pdf/pdf-cmap-parse.c b/source/pdf/pdf-cmap-parse.c
+index 07881da5a..c497009ef 100644
+--- a/source/pdf/pdf-cmap-parse.c
++++ b/source/pdf/pdf-cmap-parse.c
+@@ -243,7 +243,12 @@ pdf_parse_bf_range_array(fz_context *ctx, pdf_cmap *cmap, fz_stream *file, pdf_l
+ 			for (i = 0; i < len; i++)
+ 				dst[i] = pdf_code_from_string(&buf->scratch[i * 2], 2);
+ 
+-			pdf_map_one_to_many(ctx, cmap, lo, dst, buf->len / 2);
++			/*
++			 * Pass the actual number of values available in dst.
++			 * Using buf->len/2 here can read past the end of dst when
++			 * the input string is longer than the stack buffer.
++			 */
++			pdf_map_one_to_many(ctx, cmap, lo, dst, len);
+ 		}
+ 
+ 		lo ++;

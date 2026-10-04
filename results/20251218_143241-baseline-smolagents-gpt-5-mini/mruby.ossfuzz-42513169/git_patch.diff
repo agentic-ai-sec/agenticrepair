@@ -1,0 +1,20 @@
+diff --git a/src/numeric.c b/src/numeric.c
+index 27a7cb8c3..6f608aeef 100644
+--- a/src/numeric.c
++++ b/src/numeric.c
+@@ -1802,7 +1802,15 @@ cmpnum(mrb_state *mrb, mrb_value v1, mrb_value v2)
+ {
+ #ifdef MRB_USE_BIGINT
+   if (mrb_bigint_p(v2)) {
+-    return mrb_bint_cmp(mrb, v1, v2);
++    if (mrb_bigint_p(v1)) {
++      return mrb_bint_cmp(mrb, v1, v2);
++    }
++    /* v2 is bigint but v1 is not: compare by calling bint_cmp with args reversed and invert result */
++    {
++      mrb_int r = mrb_bint_cmp(mrb, v2, v1);
++      if (r == -2) return -2;
++      return (-r);
++    }
+   }
+ #endif
