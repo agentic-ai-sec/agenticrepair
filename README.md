@@ -36,7 +36,6 @@ A vulnerability report normally sends an engineer through static scans, sanitize
 
 <div align="center">
   <img src="imgs/overview.png" alt="AgenticRepair architecture" width="780" height="573" />
-  <p><em>Program context is gathered in parallel, then used to synthesize the repair.</em></p>
 </div>
 
 ---
