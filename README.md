@@ -11,8 +11,6 @@
 [![runtime](https://img.shields.io/badge/runtime-Docker-111827?style=flat-square&labelColor=0f172a&color=2563eb)](#environment-setup)
 [![python](https://img.shields.io/badge/python-3.10%2B-111827?style=flat-square&labelColor=0f172a&color=eab308)](#environment-setup)
 
-Four agents read the vulnerable program, then one agent writes and checks the patch.
-
 </div>
 
 ---
