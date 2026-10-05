@@ -1,0 +1,202 @@
+{
+  "instance_id": "mruby.ossfuzz-42497373",
+  "final_status": "success",
+  "static_analyzer_output": {
+    "role": "static_analyzer",
+    "raw_output": "{\n  \"analysis_type\": \"memory\",\n  \"findings\": [\n    {\n      \"file\": \"src/mruby/src/fmt_fp.c\",\n      \"line\": 384,\n      \"message\": \"CodeQL (dataflow) flagged call to dangerous function `strcat(buf, \\\".0\\\")` which can overflow the fixed 25-byte stack buffer in `mrb_float_to_str` if `mrb_format_float` produces a near-full string.\",\n      \"severity\": \"warning\"\n    },\n    {\n      \"file\": \"src/mruby/src/fmt_fp.c\",\n      \"line\": 194,\n      \"message\": \"No direct CodeQL `memory` finding for `mrb_format_float`; manual review of the ASan line shows repeated `*s++ = '0'` writes in a loop whose bounds are derived from `e`/`prec` but not guarded by an advancing output limit (only a one-time `buf_remaining` estimate).\",\n      \"severity\": \"note\"\n    }\n  ],\n  \"dataflow_summary\": \"CodeQL dataflow did not produce a taint path into `mrb_format_float`. From the reported call stack, user-controlled sprintf format/precision/width (mrbgems/mruby-sprintf/src/sprintf.c: fmt_float/mrb_str_format/mrb_f_sprintf) reaches `mrb_format_float`, affecting `prec`/`fmt` and therefore the number of `*s++` writes.\",\n  \"key_insight\": \"`mrb_format_float` relies on a coarse `buf_remaining` calculation but does not consistently enforce it as `s` advances; in the `f<1.0`/fixed-format path (and later rounding/exponent appending) it can emit more characters than the clamped `prec` accounts for, causing `*s++` writes past `buf_size-1` (ASan hit at fmt_fp.c:194).\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Convert `mrb_format_float` to use an explicit end pointer (`char *end = buf + buf_size - 1`) and guard every write (`if (s >= end) goto trunc_or_error;`). Also update remaining capacity after each emission rather than using a one-time `buf_remaining` estimate.\",\n      \"reasoning\": \"The overflow is caused by unchecked `*s++` writes; end-pointer checks eliminate off-by-one/precision-miscalculation issues across all branches (fixed, exp, rounding insertion, exponent append).\",\n      \"trade_offs\": \"Slight performance cost (extra branches) and needs a defined truncation/error policy (truncate vs. return failure).\"\n    },\n    {\n      \"approach\": \"Precompute a strict upper bound of output length before writing (including sign, first digit, optional '.', leading zeros, mantissa digits, and exponent) and clamp `prec`/format selection so the bound <= `buf_size-1`.\",\n      \"reasoning\": \"Keeps the fast write loop style while making the `prec` trimming logic correct for the actual characters emitted (not just `prec+e+1`).\",\n      \"trade_offs\": \"More complex math and easy to get wrong again (multiple formats + rounding insertion can change length).\"\n    },\n    {\n      \"approach\": \"In mruby-sprintf, allocate the destination string buffer based on requested width/precision (or grow dynamically) rather than relying on `mrb_format_float` to fit a small pre-sized buffer; additionally hard-limit maximum accepted precision/width for float formatting.\",\n      \"reasoning\": \"The reported crash shows the output buffer came from `mrb_str_resize`; ensuring sufficient capacity reduces exploitability and avoids tight coupling to `mrb_format_float`\u2019s internal sizing.\",\n      \"trade_offs\": \"Higher memory use for extreme formats; still should keep internal bounds checks to prevent corruption if caller mis-sizes the buffer.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "analysis_type": "memory",
+      "findings": [
+        {
+          "file": "src/mruby/src/fmt_fp.c",
+          "line": 384,
+          "message": "CodeQL (dataflow) flagged call to dangerous function `strcat(buf, \".0\")` which can overflow the fixed 25-byte stack buffer in `mrb_float_to_str` if `mrb_format_float` produces a near-full string.",
+          "severity": "warning"
+        },
+        {
+          "file": "src/mruby/src/fmt_fp.c",
+          "line": 194,
+          "message": "No direct CodeQL `memory` finding for `mrb_format_float`; manual review of the ASan line shows repeated `*s++ = '0'` writes in a loop whose bounds are derived from `e`/`prec` but not guarded by an advancing output limit (only a one-time `buf_remaining` estimate).",
+          "severity": "note"
+        }
+      ],
+      "dataflow_summary": "CodeQL dataflow did not produce a taint path into `mrb_format_float`. From the reported call stack, user-controlled sprintf format/precision/width (mrbgems/mruby-sprintf/src/sprintf.c: fmt_float/mrb_str_format/mrb_f_sprintf) reaches `mrb_format_float`, affecting `prec`/`fmt` and therefore the number of `*s++` writes.",
+      "key_insight": "`mrb_format_float` relies on a coarse `buf_remaining` calculation but does not consistently enforce it as `s` advances; in the `f<1.0`/fixed-format path (and later rounding/exponent appending) it can emit more characters than the clamped `prec` accounts for, causing `*s++` writes past `buf_size-1` (ASan hit at fmt_fp.c:194).",
+      "fix_suggestions": [
+        {
+          "approach": "Convert `mrb_format_float` to use an explicit end pointer (`char *end = buf + buf_size - 1`) and guard every write (`if (s >= end) goto trunc_or_error;`). Also update remaining capacity after each emission rather than using a one-time `buf_remaining` estimate.",
+          "reasoning": "The overflow is caused by unchecked `*s++` writes; end-pointer checks eliminate off-by-one/precision-miscalculation issues across all branches (fixed, exp, rounding insertion, exponent append).",
+          "trade_offs": "Slight performance cost (extra branches) and needs a defined truncation/error policy (truncate vs. return failure)."
+        },
+        {
+          "approach": "Precompute a strict upper bound of output length before writing (including sign, first digit, optional '.', leading zeros, mantissa digits, and exponent) and clamp `prec`/format selection so the bound <= `buf_size-1`.",
+          "reasoning": "Keeps the fast write loop style while making the `prec` trimming logic correct for the actual characters emitted (not just `prec+e+1`).",
+          "trade_offs": "More complex math and easy to get wrong again (multiple formats + rounding insertion can change length)."
+        },
+        {
+          "approach": "In mruby-sprintf, allocate the destination string buffer based on requested width/precision (or grow dynamically) rather than relying on `mrb_format_float` to fit a small pre-sized buffer; additionally hard-limit maximum accepted precision/width for float formatting.",
+          "reasoning": "The reported crash shows the output buffer came from `mrb_str_resize`; ensuring sufficient capacity reduces exploitability and avoids tight coupling to `mrb_format_float`\u2019s internal sizing.",
+          "trade_offs": "Higher memory use for extreme formats; still should keep internal bounds checks to prevent corruption if caller mis-sizes the buffer."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 82121,
+      "output_tokens": 3344
+    },
+    "timing": {
+      "start_time": 1768828524.501237,
+      "end_time": 1768828643.772963,
+      "duration": 119.27172613143921
+    },
+    "trajectory": {
+      "agent_role": "static_analyzer",
+      "task": "<uploaded_files>\n/src/mruby\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/mruby`. Consider the following issue description:\n\n<issue_description>\nA heap-buffer-overflow in mrb_format_float (src/fmt_fp.c): incorrect handling of floating-point formatting precision/width (reachable via fmt_float / mrb_str_format / mrb_f_sprintf) can cause writes past the end of the output buffer, leading to heap corruption, crashes, or potential code execution.\n---\n==697==ERROR: AddressSan",
+      "total_steps": 7,
+      "total_duration": 119.27172613143921,
+      "total_input_tokens": 82121,
+      "total_output_tokens": 3344,
+      "total_cost": 0.09335655000000001,
+      "final_state": "success"
+    }
+  },
+  "dynamic_analyzer_output": {
+    "role": "dynamic_analyzer",
+    "raw_output": "{\n  \"tools_used\": [\"gdb\", \"ubsan\"],\n  \"crash_info\": {\n    \"address\": \"0x50c000002ab9\",\n    \"type\": \"heap-buffer-overflow (WRITE of size 1)\",\n    \"location\": \"src/fmt_fp.c:194 (mrb_format_float)\"\n  },\n  \"backtrace\": [\n    \"#0 mrb_format_float src/fmt_fp.c:194\",\n    \"#1 fmt_float mrbgems/mruby-sprintf/src/sprintf.c:147\",\n    \"#2 mrb_str_format mrbgems/mruby-sprintf/src/sprintf.c:1158\",\n    \"#3 mrb_f_sprintf mrbgems/mruby-sprintf/src/sprintf.c:584\",\n    \"#4 mrb_vm_exec src/vm.c\"\n  ],\n  \"memory_state\": \"ASan reports a 1-byte write at 0x50c000002ab9, which is exactly 0 bytes past the end of a 121-byte heap region [0x50c000002a40, 0x50c000002ab9) allocated via mrb_str_resize/mrb_realloc during mrb_str_format. This is a classic off-by-one write into the heap redzone.\",\n  \"root_cause_hint\": \"Runtime evidence points to an off-by-one/insufficient-capacity condition in mrb_format_float\u2019s fixed-format path. At src/fmt_fp.c:194 the code performs repeated `*s++ = '0'` writes inside `while (--e && num_digits)` after earlier truncation logic that only adjusts `prec` against `buf_remaining`. The calculations appear to underestimate total bytes that will be emitted (e.g., leading digit + optional '.' + zero-padding loop and/or missing room for final terminator), allowing `s` to advance exactly one byte beyond the allocated output buffer.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Centralize and enforce bounds checks on every output byte (or before each block write) in mrb_format_float: treat `buf_remaining` as the true remaining writable space and guard each `*s++ = ...` with `if (buf_remaining==0) break/return` (or grow the destination). Also reserve space for the final NUL (if the caller expects it) by using `buf_remaining = capacity-1` or similar.\",\n      \"reasoning\": \"The overflow is a single-byte write at `*s++` (line 194). A per-write (or per-loop-iteration) remaining-space check directly prevents advancing past the buffer regardless of how `prec`/`e` interact.\",\n      \"trade_offs\": \"Slight runtime overhead in tight formatting loops; requires careful agreement with callers about whether the buffer includes/needs a terminator.\"\n    },\n    {\n      \"approach\": \"Precompute the maximum number of characters that will be emitted for the chosen format branch (including first digit, '.', leading zero padding for negative exponent, exponent part for 'e'/'g', and any terminator), then ensure capacity up-front (resize the mruby string) or clamp precision/width so the computed total never exceeds capacity.\",\n      \"reasoning\": \"The dynamic trace shows the destination buffer is resized just before formatting, yet formatting still writes past it; this suggests the size calculation used to allocate/resize is inconsistent with actual emission. Precomputing total output length makes allocation consistent with writes.\",\n      \"trade_offs\": \"More complex logic and higher risk of miscounting unless thoroughly tested; must handle edge cases (alt_form, 'g' switching, exponent digits, sign).\"\n    },\n    {\n      \"approach\": \"Format into a bounded temporary buffer using a known-safe routine (e.g., a small internal snprintf-like builder or a growable vector abstraction) and then append/copy to the mruby string.\",\n      \"reasoning\": \"Moves correctness burden to a single reusable bounded-write primitive; reduces chances of future off-by-one errors in multiple format branches.\",\n      \"trade_offs\": \"May increase memory usage and copying; needs careful integration to preserve mruby\u2019s formatting semantics and performance.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "tools_used": [
+        "gdb",
+        "ubsan"
+      ],
+      "crash_info": {
+        "address": "0x50c000002ab9",
+        "type": "heap-buffer-overflow (WRITE of size 1)",
+        "location": "src/fmt_fp.c:194 (mrb_format_float)"
+      },
+      "backtrace": [
+        "#0 mrb_format_float src/fmt_fp.c:194",
+        "#1 fmt_float mrbgems/mruby-sprintf/src/sprintf.c:147",
+        "#2 mrb_str_format mrbgems/mruby-sprintf/src/sprintf.c:1158",
+        "#3 mrb_f_sprintf mrbgems/mruby-sprintf/src/sprintf.c:584",
+        "#4 mrb_vm_exec src/vm.c"
+      ],
+      "memory_state": "ASan reports a 1-byte write at 0x50c000002ab9, which is exactly 0 bytes past the end of a 121-byte heap region [0x50c000002a40, 0x50c000002ab9) allocated via mrb_str_resize/mrb_realloc during mrb_str_format. This is a classic off-by-one write into the heap redzone.",
+      "root_cause_hint": "Runtime evidence points to an off-by-one/insufficient-capacity condition in mrb_format_float\u2019s fixed-format path. At src/fmt_fp.c:194 the code performs repeated `*s++ = '0'` writes inside `while (--e && num_digits)` after earlier truncation logic that only adjusts `prec` against `buf_remaining`. The calculations appear to underestimate total bytes that will be emitted (e.g., leading digit + optional '.' + zero-padding loop and/or missing room for final terminator), allowing `s` to advance exactly one byte beyond the allocated output buffer.",
+      "fix_suggestions": [
+        {
+          "approach": "Centralize and enforce bounds checks on every output byte (or before each block write) in mrb_format_float: treat `buf_remaining` as the true remaining writable space and guard each `*s++ = ...` with `if (buf_remaining==0) break/return` (or grow the destination). Also reserve space for the final NUL (if the caller expects it) by using `buf_remaining = capacity-1` or similar.",
+          "reasoning": "The overflow is a single-byte write at `*s++` (line 194). A per-write (or per-loop-iteration) remaining-space check directly prevents advancing past the buffer regardless of how `prec`/`e` interact.",
+          "trade_offs": "Slight runtime overhead in tight formatting loops; requires careful agreement with callers about whether the buffer includes/needs a terminator."
+        },
+        {
+          "approach": "Precompute the maximum number of characters that will be emitted for the chosen format branch (including first digit, '.', leading zero padding for negative exponent, exponent part for 'e'/'g', and any terminator), then ensure capacity up-front (resize the mruby string) or clamp precision/width so the computed total never exceeds capacity.",
+          "reasoning": "The dynamic trace shows the destination buffer is resized just before formatting, yet formatting still writes past it; this suggests the size calculation used to allocate/resize is inconsistent with actual emission. Precomputing total output length makes allocation consistent with writes.",
+          "trade_offs": "More complex logic and higher risk of miscounting unless thoroughly tested; must handle edge cases (alt_form, 'g' switching, exponent digits, sign)."
+        },
+        {
+          "approach": "Format into a bounded temporary buffer using a known-safe routine (e.g., a small internal snprintf-like builder or a growable vector abstraction) and then append/copy to the mruby string.",
+          "reasoning": "Moves correctness burden to a single reusable bounded-write primitive; reduces chances of future off-by-one errors in multiple format branches.",
+          "trade_offs": "May increase memory usage and copying; needs careful integration to preserve mruby\u2019s formatting semantics and performance."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 53997,
+      "output_tokens": 2152
+    },
+    "timing": {
+      "start_time": 1768828643.7788112,
+      "end_time": 1768828707.390369,
+      "duration": 63.611557722091675
+    },
+    "trajectory": {
+      "agent_role": "dynamic_analyzer",
+      "task": "<uploaded_files>\n/src/mruby\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/mruby`. Consider the following issue description:\n\n<issue_description>\nA heap-buffer-overflow in mrb_format_float (src/fmt_fp.c): incorrect handling of floating-point formatting precision/width (reachable via fmt_float / mrb_str_format / mrb_f_sprintf) can cause writes past the end of the output buffer, leading to heap corruption, crashes, or potential code execution.\n---\n==697==ERROR: AddressSan",
+      "total_steps": 5,
+      "total_duration": 63.611557722091675,
+      "total_input_tokens": 53997,
+      "total_output_tokens": 2152,
+      "total_cost": 0.053861149999999997,
+      "final_state": "success"
+    }
+  },
+  "history_miner_output": {
+    "role": "history_miner",
+    "raw_output": "{\n  \"file_analyzed\": \"src/fmt_fp.c\",\n  \"function_analyzed\": \"mrb_format_float\",\n  \"relevant_commits\": [\n    {\n      \"hash\": \"5c7fe225\",\n      \"message\": \"fp_fmt.c: remove `mrb_float_to_cstr()` (sprintf integration)\",\n      \"changes\": \"Removed mrb_float_to_cstr wrapper that parsed printf flags/width/precision and called mrb_format_float; formatting logic moved/handled in mruby-sprintf.\",\n      \"relevance\": \"After sprintf-side refactors, mrb_format_float became a more direct sink for user-controlled precision/formatting parameters; this increases exposure to edge-case width/precision values that can stress internal buffer accounting.\" \n    },\n    {\n      \"hash\": \"a44ca2e9\",\n      \"message\": \"fmt_fp.c: exponential may be bigger than `100`\",\n      \"changes\": \"Added an extra exponent digit write when e>=100 (writes hundreds digit before tens/ones).\",\n      \"relevance\": \"Introduces additional writes near the end of formatting; highlights that exponent-length growth needs to be included in buffer-size accounting (same general class of bug: missing/insufficient bounds checks).\"\n    },\n    {\n      \"hash\": \"5ed3a347\",\n      \"message\": \"fmt_fp.c: use a const int instead of a macro constant\",\n      \"changes\": \"Refactored precision constants used by mrb_float_to_str (no functional change to mrb_format_float core).\",\n      \"relevance\": \"Not directly causing the overflow, but shows nearby refactoring around precision handling; useful context when auditing precision-dependent bounds logic.\"\n    }\n  ],\n  \"vulnerability_origin\": \"The vulnerable behavior is in the negative-exponent path of mrb_format_float (writing leading '0's in the 'f'/'g'->'f' branch) where repeated '*s++ = \\'0\\'' is not constrained by remaining output capacity. The last relevant history around 2021 shows incremental feature changes (sprintf integration, larger exponent support) without a holistic bounds-checking model, suggesting the overflow is long-standing or became reachable more often after sprintf integration exposed more precision/width combinations.\",\n  \"fix_hints\": \"History shows piecemeal additions (e.g., exponent >=100 extra digit) rather than centralized length accounting. A robust fix should centralize buffer-remaining tracking and ensure every write site is guarded (especially loops that emit repeated characters), and include exponent-length variability in size calculations.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Add strict bounds checks for all write sites in mrb_format_float (especially the `while (--e && num_digits) { *s++='0'; ... }` loop): stop emitting when `buf_remaining` reaches 0, and update `buf_remaining` whenever `s` advances.\",\n      \"reasoning\": \"Directly addresses the observed crash (write past end at line ~194) and aligns with the recurring theme in history that new output bytes were added without full re-audit of bounds.\",\n      \"trade_offs\": \"May truncate output for extreme precision/width requests; must ensure caller can handle truncated formatting (but preferable to memory corruption).\"\n    },\n    {\n      \"approach\": \"Precompute an upper bound on required output length for the chosen format branch (sign + digits + decimal point + leading zeros + exponent part) and clamp `prec`/`num_digits` so total <= buf_size-1 before any writes.\",\n      \"reasoning\": \"Prevents future regressions like the exponent>=100 change by making buffer constraints explicit at the branch level rather than scattered checks.\",\n      \"trade_offs\": \"More code complexity; must be careful about off-by-one with NUL terminator and format-dependent variations ('g' adjustments, alt_form).\"\n    },\n    {\n      \"approach\": \"Convert writes to a helper macro/function like `PUTC(ch)` that checks `buf_remaining` (or `s < buf + buf_size - 1`) and jumps to a common termination path that NUL-terminates safely.\",\n      \"reasoning\": \"Creates a consistent, easy-to-audit pattern; matches the history\u2019s risk profile where small feature edits add new `*s++=` sites.\",\n      \"trade_offs\": \"Slight runtime overhead and code churn; but reduces audit burden and helps prevent similar bugs elsewhere in the function.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "raw": "{\n  \"file_analyzed\": \"src/fmt_fp.c\",\n  \"function_analyzed\": \"mrb_format_float\",\n  \"relevant_commits\": [\n    {\n      \"hash\": \"5c7fe225\",\n      \"message\": \"fp_fmt.c: remove `mrb_float_to_cstr()` (sprintf integration)\",\n      \"changes\": \"Removed mrb_float_to_cstr wrapper that parsed printf flags/width/precision and called mrb_format_float; formatting logic moved/handled in mruby-sprintf.\",\n      \"relevance\": \"After sprintf-side refactors, mrb_format_float became a more direct sink for user-controlled precision/formatting parameters; this increases exposure to edge-case width/precision values that can stress internal buffer accounting.\" \n    },\n    {\n      \"hash\": \"a44ca2e9\",\n      \"message\": \"fmt_fp.c: exponential may be bigger than `100`\",\n      \"changes\": \"Added an extra exponent digit write when e>=100 (writes hundreds digit before tens/ones).\",\n      \"relevance\": \"Introduces additional writes near the end of formatting; highlights that exponent-length growth needs to be included in buffer-size accounting (same general class of bug: missing/insufficient bounds checks).\"\n    },\n    {\n      \"hash\": \"5ed3a347\",\n      \"message\": \"fmt_fp.c: use a const int instead of a macro constant\",\n      \"changes\": \"Refactored precision constants used by mrb_float_to_str (no functional change to mrb_format_float core).\",\n      \"relevance\": \"Not directly causing the overflow, but shows nearby refactoring around precision handling; useful context when auditing precision-dependent bounds logic.\"\n    }\n  ],\n  \"vulnerability_origin\": \"The vulnerable behavior is in the negative-exponent path of mrb_format_float (writing leading '0's in the 'f'/'g'->'f' branch) where repeated '*s++ = \\'0\\'' is not constrained by remaining output capacity. The last relevant history around 2021 shows incremental feature changes (sprintf integration, larger exponent support) without a holistic bounds-checking model, suggesting the overflow is long-standing or became reachable more often after sprintf integration exposed more precision/width combinations.\",\n  \"fix_hints\": \"History shows piecemeal additions (e.g., exponent >=100 extra digit) rather than centralized length accounting. A robust fix should centralize buffer-remaining tracking and ensure every write site is guarded (especially loops that emit repeated characters), and include exponent-length variability in size calculations.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Add strict bounds checks for all write sites in mrb_format_float (especially the `while (--e && num_digits) { *s++='0'; ... }` loop): stop emitting when `buf_remaining` reaches 0, and update `buf_remaining` whenever `s` advances.\",\n      \"reasoning\": \"Directly addresses the observed crash (write past end at line ~194) and aligns with the recurring theme in history that new output bytes were added without full re-audit of bounds.\",\n      \"trade_offs\": \"May truncate output for extreme precision/width requests; must ensure caller can handle truncated formatting (but preferable to memory corruption).\"\n    },\n    {\n      \"approach\": \"Precompute an upper bound on required output length for the chosen format branch (sign + digits + decimal point + leading zeros + exponent part) and clamp `prec`/`num_digits` so total <= buf_size-1 before any writes.\",\n      \"reasoning\": \"Prevents future regressions like the exponent>=100 change by making buffer constraints explicit at the branch level rather than scattered checks.\",\n      \"trade_offs\": \"More code complexity; must be careful about off-by-one with NUL terminator and format-dependent variations ('g' adjustments, alt_form).\"\n    },\n    {\n      \"approach\": \"Convert writes to a helper macro/function like `PUTC(ch)` that checks `buf_remaining` (or `s < buf + buf_size - 1`) and jumps to a common termination path that NUL-terminates safely.\",\n      \"reasoning\": \"Creates a consistent, easy-to-audit pattern; matches the history\u2019s risk profile where small feature edits add new `*s++=` sites.\",\n      \"trade_offs\": \"Slight runtime overhead and code churn; but reduces audit burden and helps prevent similar bugs elsewhere in the function.\"\n    }\n  ]\n}",
+      "parse_error": true
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 39721,
+      "output_tokens": 1868
+    },
+    "timing": {
+      "start_time": 1768828707.3946595,
+      "end_time": 1768828785.4932,
+      "duration": 78.09854054450989
+    },
+    "trajectory": {
+      "agent_role": "history_miner",
+      "task": "<uploaded_files>\n/src/mruby\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/mruby`. Consider the following issue description:\n\n<issue_description>\nA heap-buffer-overflow in mrb_format_float (src/fmt_fp.c): incorrect handling of floating-point formatting precision/width (reachable via fmt_float / mrb_str_format / mrb_f_sprintf) can cause writes past the end of the output buffer, leading to heap corruption, crashes, or potential code execution.\n---\n==697==ERROR: AddressSan",
+      "total_steps": 4,
+      "total_duration": 78.09854054450989,
+      "total_input_tokens": 39721,
+      "total_output_tokens": 1868,
+      "total_cost": 0.04647335,
+      "final_state": "success"
+    }
+  },
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "{\n  \"root_cause\": \"mrb_format_float performed many unchecked `*s++ = ...` writes (including loops that emit leading zeros, mantissa digits, rounding insertion, and exponent digits). Its one-time `buf_remaining`/precision trimming underestimated the real number of emitted characters, allowing `s` to advance past the caller-provided buffer and write 1+ bytes out of bounds (ASan hit at fmt_fp.c:194).\",\n  \"fix_approach\": \"Hardened `mrb_format_float` to be strictly bounded by the provided buffer size: introduced an `end` pointer and a `PUTC()` helper that checks `s < end` before every emitted character and jumps to a common `out:` label that safely NUL-terminates within bounds. This prevents all overflow write sites regardless of format/precision math edge cases. Also replaced unsafe `strcat(buf, \\\".0\\\")` in `mrb_float_to_str` with a size-checked append to avoid potential stack overflow there.\",\n  \"files_modified\": [\n    \"src/fmt_fp.c\"\n  ],\n  \"verification\": {\n    \"build_success\": true,\n    \"repro_success\": true,\n    \"exit_code\": 0,\n    \"asan_output\": \"No sanitizer errors detected\"\n  },\n  \"confidence\": \"high\"\n}",
+    "parsed_output": {
+      "root_cause": "mrb_format_float performed many unchecked `*s++ = ...` writes (including loops that emit leading zeros, mantissa digits, rounding insertion, and exponent digits). Its one-time `buf_remaining`/precision trimming underestimated the real number of emitted characters, allowing `s` to advance past the caller-provided buffer and write 1+ bytes out of bounds (ASan hit at fmt_fp.c:194).",
+      "fix_approach": "Hardened `mrb_format_float` to be strictly bounded by the provided buffer size: introduced an `end` pointer and a `PUTC()` helper that checks `s < end` before every emitted character and jumps to a common `out:` label that safely NUL-terminates within bounds. This prevents all overflow write sites regardless of format/precision math edge cases. Also replaced unsafe `strcat(buf, \".0\")` in `mrb_float_to_str` with a size-checked append to avoid potential stack overflow there.",
+      "files_modified": [
+        "src/fmt_fp.c"
+      ],
+      "verification": {
+        "build_success": true,
+        "repro_success": true,
+        "exit_code": 0,
+        "asan_output": "No sanitizer errors detected"
+      },
+      "confidence": "high"
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 421863,
+      "output_tokens": 17803
+    },
+    "timing": {
+      "start_time": 1768828785.4977565,
+      "end_time": 1768829081.2825778,
+      "duration": 295.78482127189636
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/mruby\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/mruby`. Consider the following issue description:\n\n<issue_description>\nA heap-buffer-overflow in mrb_format_float (src/fmt_fp.c): incorrect handling of floating-point formatting precision/width (reachable via fmt_float / mrb_str_format / mrb_f_sprintf) can cause writes past the end of the output buffer, leading to heap corruption, crashes, or potential code execution.\n---\n==697==ERROR: AddressSan",
+      "total_steps": 18,
+      "total_duration": 295.78482127189636,
+      "total_input_tokens": 421863,
+      "total_output_tokens": 17803,
+      "total_cost": 0.3927822500000001,
+      "final_state": "success"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 597702,
+    "output_tokens": 25167
+  },
+  "timing": {
+    "total_duration": 556.790935754776
+  }
+}

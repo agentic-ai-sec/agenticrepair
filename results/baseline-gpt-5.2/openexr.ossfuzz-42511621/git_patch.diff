@@ -1,0 +1,82 @@
+diff --git a/src/lib/OpenEXRCore/unpack.c b/src/lib/OpenEXRCore/unpack.c
+index 606d7c3e..3bc79255 100644
+--- a/src/lib/OpenEXRCore/unpack.c
++++ b/src/lib/OpenEXRCore/unpack.c
+@@ -10,6 +10,7 @@
+ 
+ #include <stdbool.h>
+ #include <string.h>
++#include <limits.h>
+ 
+ #if defined(__x86_64__) || defined(_M_X64)
+ #    ifndef _WIN32
+@@ -1126,9 +1127,20 @@ static exr_result_t
+ generic_unpack (exr_decode_pipeline_t* decode)
+ {
+     const uint8_t* srcbuffer = decode->unpacked_buffer;
++    const uint8_t* sbend;
+     uint8_t*       cdata;
+     int            w, bpc, ubpc;
+ 
++    /*
++     * Defensive bounds checking: avoid reading beyond the chunk unpack buffer
++     * when decoding malformed/crafted files.
++     */
++    if (!srcbuffer) return EXR_ERR_INVALID_ARGUMENT;
++    if (decode->chunk.unpacked_size > (uint64_t) SIZE_MAX)
++        return EXR_ERR_CORRUPT_CHUNK;
++
++    sbend = srcbuffer + (size_t) decode->chunk.unpacked_size;
++
+     for (int y = 0; y < decode->chunk.height; ++y)
+     {
+         int cury = y + decode->chunk.start_y;
+@@ -1136,12 +1148,17 @@ generic_unpack (exr_decode_pipeline_t* decode)
+         for (int c = 0; c < decode->channel_count; ++c)
+         {
+             exr_coding_channel_info_t* decc = (decode->channels + c);
++            uint64_t                   rowbytes;
+ 
+             cdata = decc->decode_to_ptr;
+             w     = decc->width;
+             bpc   = decc->bytes_per_element;
+             ubpc  = decc->user_pixel_stride;
+ 
++            if (w < 0 || bpc < 0) return EXR_ERR_CORRUPT_CHUNK;
++
++            rowbytes = ((uint64_t) w) * ((uint64_t) bpc);
++
+             if (decc->y_samples > 1)
+             {
+                 if ((cury % decc->y_samples) != 0) continue;
+@@ -1151,7 +1168,9 @@ generic_unpack (exr_decode_pipeline_t* decode)
+                          (uint64_t) decc->user_line_stride);
+                 else
+                 {
+-                    srcbuffer += w * bpc;
++                    if (rowbytes > (uint64_t) (sbend - srcbuffer))
++                        return EXR_ERR_CORRUPT_CHUNK;
++                    srcbuffer += (size_t) rowbytes;
+                     continue;
+                 }
+             }
+@@ -1161,12 +1180,17 @@ generic_unpack (exr_decode_pipeline_t* decode)
+             }
+             else
+             {
+-                srcbuffer += w * bpc;
++                if (rowbytes > (uint64_t) (sbend - srcbuffer))
++                    return EXR_ERR_CORRUPT_CHUNK;
++                srcbuffer += (size_t) rowbytes;
+                 continue;
+             }
+ 
++            if (rowbytes > (uint64_t) (sbend - srcbuffer))
++                return EXR_ERR_CORRUPT_CHUNK;
++
+             UNPACK_SAMPLES (w)
+-            srcbuffer += w * bpc;
++            srcbuffer += (size_t) rowbytes;
+         }
+     }
+     return EXR_ERR_SUCCESS;

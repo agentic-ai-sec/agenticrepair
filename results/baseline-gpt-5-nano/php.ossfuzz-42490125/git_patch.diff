@@ -1,0 +1,139 @@
+diff --git a/Zend/zend_hash.c b/Zend/zend_hash.c
+index 6d065cd03ea..9f3f2af5ef1 100644
+--- a/Zend/zend_hash.c
++++ b/Zend/zend_hash.c
+@@ -638,6 +638,11 @@ ZEND_API void ZEND_FASTCALL zend_hash_iterators_advance(HashTable *ht, HashPosit
+ 
+ static zend_always_inline Bucket *zend_hash_find_bucket(const HashTable *ht, zend_string *key, zend_bool known_hash)
+ {
++{
++	if (ht == NULL || key == NULL || ht->arData == NULL) {
++		return NULL;
++	}
++
+ 	zend_ulong h;
+ 	uint32_t nIndex;
+ 	uint32_t idx;
+@@ -656,22 +661,35 @@ static zend_always_inline Bucket *zend_hash_find_bucket(const HashTable *ht, zen
+ 		return NULL;
+ 	}
+ 	p = HT_HASH_TO_BUCKET_EX(arData, idx);
+-	if (EXPECTED(p->key == key)) { /* check for the same interned string */
++	if (p == NULL) { return NULL; }
++	if (p == NULL) {
++		return NULL;
++	}
++	if (p == NULL) { return NULL; }
++	if (p == NULL) {
++		return NULL;
++	}
++	if (p && p->key == key) { /* check for the same interned string */
+ 		return p;
+ 	}
+ 
+ 	while (1) {
+-		if (p->h == ZSTR_H(key) &&
++		if (p != NULL && p->h == ZSTR_H(key) &&
+ 		    EXPECTED(p->key) &&
+ 		    zend_string_equal_content(p->key, key)) {
+ 			return p;
+ 		}
+-		idx = Z_NEXT(p->val);
++		idx = (p != NULL) ? Z_NEXT(p->val) : HT_INVALID_IDX;
+ 		if (idx == HT_INVALID_IDX) {
+ 			return NULL;
+ 		}
++		if (p == NULL) {
++	if (p == NULL) { return NULL; }
++			return NULL;
++		}
+ 		p = HT_HASH_TO_BUCKET_EX(arData, idx);
+-		if (p->key == key) { /* check for the same interned string */
++	if (p == NULL) { return NULL; }
++		if (p && p->key == key) { /* check for the same interned string */
+ 			return p;
+ 		}
+ 	}
+@@ -687,15 +705,17 @@ static zend_always_inline Bucket *zend_hash_str_find_bucket(const HashTable *ht,
+ 	nIndex = h | ht->nTableMask;
+ 	idx = HT_HASH_EX(arData, nIndex);
+ 	while (idx != HT_INVALID_IDX) {
++	if (p == NULL) { return NULL; }
+ 		ZEND_ASSERT(idx < HT_IDX_TO_HASH(ht->nTableSize));
+ 		p = HT_HASH_TO_BUCKET_EX(arData, idx);
+-		if ((p->h == h)
++
++	if (p == NULL) { return NULL; }		if ((p->h == h)
+ 			 && p->key
+ 			 && (ZSTR_LEN(p->key) == len)
+ 			 && !memcmp(ZSTR_VAL(p->key), str, len)) {
+ 			return p;
+ 		}
+-		idx = Z_NEXT(p->val);
++		idx = (p != NULL) ? Z_NEXT(p->val) : HT_INVALID_IDX;
+ 	}
+ 	return NULL;
+ }
+@@ -709,13 +729,15 @@ static zend_always_inline Bucket *zend_hash_index_find_bucket(const HashTable *h
+ 	arData = ht->arData;
+ 	nIndex = h | ht->nTableMask;
+ 	idx = HT_HASH_EX(arData, nIndex);
++	if (p == NULL) { return NULL; }
+ 	while (idx != HT_INVALID_IDX) {
+ 		ZEND_ASSERT(idx < HT_IDX_TO_HASH(ht->nTableSize));
+-		p = HT_HASH_TO_BUCKET_EX(arData, idx);
++
++	if (p == NULL) { return NULL; }		p = HT_HASH_TO_BUCKET_EX(arData, idx);
+ 		if (p->h == h && !p->key) {
+ 			return p;
+ 		}
+-		idx = Z_NEXT(p->val);
++		idx = (p != NULL) ? Z_NEXT(p->val) : HT_INVALID_IDX;
+ 	}
+ 	return NULL;
+ }
+@@ -1385,7 +1407,7 @@ ZEND_API zend_result ZEND_FASTCALL zend_hash_del(HashTable *ht, zend_string *key
+ 			return SUCCESS;
+ 		}
+ 		prev = p;
+-		idx = Z_NEXT(p->val);
++		idx = (p != NULL) ? Z_NEXT(p->val) : HT_INVALID_IDX;
+ 	}
+ 	return FAILURE;
+ }
+@@ -1433,7 +1455,7 @@ ZEND_API zend_result ZEND_FASTCALL zend_hash_del_ind(HashTable *ht, zend_string
+ 			return SUCCESS;
+ 		}
+ 		prev = p;
+-		idx = Z_NEXT(p->val);
++		idx = (p != NULL) ? Z_NEXT(p->val) : HT_INVALID_IDX;
+ 	}
+ 	return FAILURE;
+ }
+@@ -1477,7 +1499,7 @@ ZEND_API zend_result ZEND_FASTCALL zend_hash_str_del_ind(HashTable *ht, const ch
+ 			return SUCCESS;
+ 		}
+ 		prev = p;
+-		idx = Z_NEXT(p->val);
++		idx = (p != NULL) ? Z_NEXT(p->val) : HT_INVALID_IDX;
+ 	}
+ 	return FAILURE;
+ }
+@@ -1507,7 +1529,7 @@ ZEND_API zend_result ZEND_FASTCALL zend_hash_str_del(HashTable *ht, const char *
+ 			return SUCCESS;
+ 		}
+ 		prev = p;
+-		idx = Z_NEXT(p->val);
++		idx = (p != NULL) ? Z_NEXT(p->val) : HT_INVALID_IDX;
+ 	}
+ 	return FAILURE;
+ }
+@@ -1542,7 +1564,7 @@ ZEND_API zend_result ZEND_FASTCALL zend_hash_index_del(HashTable *ht, zend_ulong
+ 			return SUCCESS;
+ 		}
+ 		prev = p;
+-		idx = Z_NEXT(p->val);
++		idx = (p != NULL) ? Z_NEXT(p->val) : HT_INVALID_IDX;
+ 	}
+ 	return FAILURE;
+ }

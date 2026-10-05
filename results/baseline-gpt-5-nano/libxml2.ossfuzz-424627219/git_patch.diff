@@ -1,0 +1,26 @@
+diff --git a/parser.c b/parser.c
+index 9ca09455..e08c8299 100644
+--- a/parser.c
++++ b/parser.c
+@@ -4369,6 +4369,12 @@ xmlParseSystemLiteral(xmlParserCtxt *ctxt) {
+             int newSize;
+ 
+             newSize = xmlGrowCapacity(size, 1, 1, maxLength);
++    if (newSize <= size) {
++        newSize = size + 1;
++        if (newSize > maxLength) {
++            newSize = maxLength;
++        }
++    }
+             if (newSize < 0) {
+                 xmlFatalErr(ctxt, XML_ERR_NAME_TOO_LONG, "SystemLiteral");
+                 xmlFree(buf);
+@@ -4446,7 +4452,7 @@ xmlParsePubidLiteral(xmlParserCtxt *ctxt) {
+                 xmlFree(buf);
+                 return(NULL);
+             }
+-	    tmp = xmlRealloc(buf, size);
++	    tmp = xmlRealloc(buf, newSize);
+ 	    if (tmp == NULL) {
+ 		xmlErrMemory(ctxt);
+ 		xmlFree(buf);

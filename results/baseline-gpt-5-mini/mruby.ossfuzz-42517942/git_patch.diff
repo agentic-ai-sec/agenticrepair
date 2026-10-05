@@ -1,0 +1,21 @@
+diff --git a/mrbgems/mruby-pack/src/pack.c b/mrbgems/mruby-pack/src/pack.c
+index 08c22b5eb..014d760d6 100644
+--- a/mrbgems/mruby-pack/src/pack.c
++++ b/mrbgems/mruby-pack/src/pack.c
+@@ -814,8 +814,14 @@ unpack_hex(mrb_state *mrb, const void *src, int slen, mrb_value ary, int count,
+ 
+   sptr = (const char *)src;
+ 
+-  if (count == -1)
+-    count = slen * 2;
++  if (count == -1) {
++    /* prevent integer overflow when computing count = slen * 2 */
++    if (slen > (long)MRB_INT_MAX/2) {
++      mrb_raise(mrb, E_RANGE_ERROR, "source too large");
++    }
++    count = (int)(slen * 2);
++  }
++  if (count < 0) count = 0;
+ 
+   dst = mrb_str_new(mrb, NULL, count);
+   dptr = RSTRING_PTR(dst);

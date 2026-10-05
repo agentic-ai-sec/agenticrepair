@@ -1,0 +1,29 @@
+diff --git a/Zend/zend_operators.c b/Zend/zend_operators.c
+index 252b8df1ea0..b390de42850 100644
+--- a/Zend/zend_operators.c
++++ b/Zend/zend_operators.c
+@@ -904,7 +904,23 @@ ZEND_API void ZEND_COLD zend_incompatible_double_to_long_error(double d)
+ }
+ ZEND_API void ZEND_COLD zend_incompatible_string_to_long_error(const zend_string *s)
+ {
+-	zend_error(E_DEPRECATED, "Implicit conversion from float-string \"%s\" to int loses precision", ZSTR_VAL(s));
++	/*
++	 * Avoid passing a raw char* into the printf engine.
++	 *
++	 * User error handlers (or other re-entrant error paths) may modify and
++	 * release the underlying zval/string while the error message is being
++	 * formatted, which can result in xbuf_format_converter performing strlen()
++	 * on freed memory for "%s".
++	 *
++	 * Using "%S" ensures the formatter uses ZSTR_LEN() rather than strlen(),
++	 * and keeping an extra ref here guarantees the zend_string stays alive for
++	 * the duration of zend_error().
++	 */
++	zend_string *str = zend_string_copy((zend_string *) s);
++	zend_error(E_DEPRECATED,
++			"Implicit conversion from float-string \"%S\" to int loses precision",
++			str);
++	zend_string_release(str);
+ }
+ 
+ ZEND_API zend_long ZEND_FASTCALL zval_get_long_func(const zval *op, bool is_strict) /* {{{ */

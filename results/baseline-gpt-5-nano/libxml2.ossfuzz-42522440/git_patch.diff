@@ -1,0 +1,57 @@
+diff --git a/HTMLparser.c b/HTMLparser.c
+index 67c39385..59ca2a22 100644
+--- a/HTMLparser.c
++++ b/HTMLparser.c
+@@ -2755,6 +2755,7 @@ htmlParseHTMLAttribute(htmlParserCtxtPtr ctxt, const xmlChar stop) {
+     }
+     out = buffer;
+ 
++    if (ctxt->input == NULL || ctxt->input->cur == NULL) { htmlErrMemory(ctxt, "empty input"); xmlFree(buffer); return(NULL); }
+     /*
+      * Ok loop until we reach one of the ending chars
+      */
+@@ -2780,7 +2781,7 @@ htmlParseHTMLAttribute(htmlParserCtxtPtr ctxt, const xmlChar stop) {
+ 		    *out++  = ((c >> bits) & 0x3F) | 0x80;
+ 		}
+ 
+-		if (out - buffer > buffer_size - 100) {
++		if (out - buffer >= buffer_size - 100) {
+ 			int indx = out - buffer;
+ 
+ 			growBuffer(buffer);
+@@ -2790,7 +2791,7 @@ htmlParseHTMLAttribute(htmlParserCtxtPtr ctxt, const xmlChar stop) {
+ 		ent = htmlParseEntityRef(ctxt, &name);
+ 		if (name == NULL) {
+ 		    *out++ = '&';
+-		    if (out - buffer > buffer_size - 100) {
++		    if (out - buffer >= buffer_size - 100) {
+ 			int indx = out - buffer;
+ 
+ 			growBuffer(buffer);
+@@ -2800,7 +2801,7 @@ htmlParseHTMLAttribute(htmlParserCtxtPtr ctxt, const xmlChar stop) {
+ 		    *out++ = '&';
+ 		    cur = name;
+ 		    while (*cur != 0) {
+-			if (out - buffer > buffer_size - 100) {
++			if (out - buffer >= buffer_size - 100) {
+ 			    int indx = out - buffer;
+ 
+ 			    growBuffer(buffer);
+@@ -2812,7 +2813,7 @@ htmlParseHTMLAttribute(htmlParserCtxtPtr ctxt, const xmlChar stop) {
+ 		    unsigned int c;
+ 		    int bits;
+ 
+-		    if (out - buffer > buffer_size - 100) {
++		    if (out - buffer >= buffer_size - 100) {
+ 			int indx = out - buffer;
+ 
+ 			growBuffer(buffer);
+@@ -2837,7 +2838,7 @@ htmlParseHTMLAttribute(htmlParserCtxtPtr ctxt, const xmlChar stop) {
+ 	    unsigned int c;
+ 	    int bits, l;
+ 
+-	    if (out - buffer > buffer_size - 100) {
++	    if (out - buffer >= buffer_size - 100) {
+ 		int indx = out - buffer;
+ 
+ 		growBuffer(buffer);

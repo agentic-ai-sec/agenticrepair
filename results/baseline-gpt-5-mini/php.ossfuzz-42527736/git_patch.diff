@@ -1,0 +1,52 @@
+diff --git a/ext/standard/file.c b/ext/standard/file.c
+index edaba57748c..e8a8b6e9db1 100644
+--- a/ext/standard/file.c
++++ b/ext/standard/file.c
+@@ -1995,8 +1995,13 @@ PHPAPI HashTable *php_fgetcsv(php_stream *stream, char delimiter, char enclosure
+ 					case 0:
+ 						switch (state) {
+ 							case 2:
+-								memcpy(tptr, hunk_begin, bptr - hunk_begin - 1);
+-								tptr += (bptr - hunk_begin - 1);
++								{
++	ptrdiff_t copy_len = (ptrdiff_t)(bptr - hunk_begin - 1);
++	if (copy_len > 0) {
++		memcpy(tptr, hunk_begin, (size_t)copy_len);
++		tptr += copy_len;
++	}
++}
+ 								hunk_begin = bptr;
+ 								goto quit_loop_2;
+ 
+@@ -2076,8 +2081,13 @@ PHPAPI HashTable *php_fgetcsv(php_stream *stream, char delimiter, char enclosure
+ 							case 2: /* embedded enclosure ? let's check it */
+ 								if (*bptr != enclosure) {
+ 									/* real enclosure */
+-									memcpy(tptr, hunk_begin, bptr - hunk_begin - 1);
+-									tptr += (bptr - hunk_begin - 1);
++									{
++	ptrdiff_t copy_len = (ptrdiff_t)(bptr - hunk_begin - 1);
++	if (copy_len > 0) {
++		memcpy(tptr, hunk_begin, (size_t)copy_len);
++		tptr += copy_len;
++	}
++}
+ 									hunk_begin = bptr;
+ 									goto quit_loop_2;
+ 								}
+@@ -2102,8 +2112,13 @@ PHPAPI HashTable *php_fgetcsv(php_stream *stream, char delimiter, char enclosure
+ 						switch (state) {
+ 							case 2:
+ 								/* real enclosure */
+-								memcpy(tptr, hunk_begin, bptr - hunk_begin - 1);
+-								tptr += (bptr - hunk_begin - 1);
++								{
++	ptrdiff_t copy_len = (ptrdiff_t)(bptr - hunk_begin - 1);
++	if (copy_len > 0) {
++		memcpy(tptr, hunk_begin, (size_t)copy_len);
++		tptr += copy_len;
++	}
++}
+ 								hunk_begin = bptr;
+ 								goto quit_loop_2;
+ 							case 1:

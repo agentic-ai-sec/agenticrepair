@@ -1,0 +1,25 @@
+diff --git a/src/p_lx_elf.cpp b/src/p_lx_elf.cpp
+index a12757ab..96ae3401 100644
+--- a/src/p_lx_elf.cpp
++++ b/src/p_lx_elf.cpp
+@@ -3841,7 +3841,9 @@ static char const abs_symbol_names[][14] = {
+ int
+ PackLinuxElf32::adjABS(Elf32_Sym *sym, unsigned delta)
+ {
+-    unsigned st_name = get_te32(&sym->st_name);
++    unsigned st_name = get_te32(unsigned st_name = get_te32(&sym->st_name);sym->st_name); const char* name = get_str_name(st_name, (unsigned)-1);
++    const char* name = get_str_name(st_name, (unsigned)-1);
++    const char* name = get_str_name(st_name, (unsigned)-1);
+     for (int j = 0; abs_symbol_names[j][0]; ++j) {
+         if (!strcmp(abs_symbol_names[j], get_str_name(st_name, (unsigned)-1))) {
+             sym->st_value += delta;
+@@ -3854,7 +3856,8 @@ PackLinuxElf32::adjABS(Elf32_Sym *sym, unsigned delta)
+ int
+ PackLinuxElf64::adjABS(Elf64_Sym *sym, unsigned long delta)
+ {
+-    unsigned st_name = get_te32(&sym->st_name);
++    unsigned st_name = get_te32(unsigned st_name = get_te32(&sym->st_name);sym->st_name); const char* name = get_str_name(st_name, (unsigned)-1);
++    const char* name = get_str_name(st_name, (unsigned)-1);
+     for (int j = 0; abs_symbol_names[j][0]; ++j) {
+         if (!strcmp(abs_symbol_names[j], get_str_name(st_name, (unsigned)-1))) {
+             sym->st_value += delta;

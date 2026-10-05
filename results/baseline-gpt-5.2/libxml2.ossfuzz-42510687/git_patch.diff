@@ -1,0 +1,77 @@
+diff --git a/tree.c b/tree.c
+index 07499484..09c57637 100644
+--- a/tree.c
++++ b/tree.c
+@@ -1099,12 +1099,11 @@ xmlCreateIntSubset(xmlDocPtr doc, const xmlChar *name,
+  */
+ void
+ xmlFreeDtd(xmlDtdPtr cur) {
+-    xmlDictPtr dict = NULL;
++    xmlDictPtr dict;
+ 
+     if (cur == NULL) {
+ 	return;
+     }
+-    if (cur->doc != NULL) dict = cur->doc->dict;
+ 
+     if ((__xmlRegisterCallbacks) && (xmlDeregisterNodeDefaultValue))
+ 	xmlDeregisterNodeDefaultValue((xmlNodePtr)cur);
+@@ -2106,6 +2105,7 @@ xmlFreeProp(xmlAttrPtr cur) {
+ 
+     if (cur->doc != NULL) dict = cur->doc->dict;
+ 
++
+     if ((__xmlRegisterCallbacks) && (xmlDeregisterNodeDefaultValue))
+ 	xmlDeregisterNodeDefaultValue((xmlNodePtr)cur);
+ 
+@@ -3699,7 +3699,6 @@ xmlFreeNodeList(xmlNodePtr cur) {
+ 	xmlFreeNsList((xmlNsPtr) cur);
+ 	return;
+     }
+-    if (cur->doc != NULL) dict = cur->doc->dict;
+     while (1) {
+         while ((cur->children != NULL) &&
+                (cur->type != XML_DOCUMENT_NODE) &&
+@@ -3717,6 +3716,22 @@ xmlFreeNodeList(xmlNodePtr cur) {
+             xmlFreeDoc((xmlDocPtr) cur);
+         } else if (cur->type != XML_DTD_NODE) {
+ 
++            /*
++             * Don't cache the dictionary pointer across node frees.
++             *
++             * Also note that some nodes can temporarily have a NULL doc
++             * pointer while still using dictionary-owned strings (e.g. when
++             * unlinked from a document). Try to find a suitable dictionary
++             * via parent or siblings before falling back to NULL.
++             */
++            dict = NULL;
++            if (cur->doc != NULL)
++                dict = cur->doc->dict;
++            else if ((parent != NULL) && (parent->doc != NULL))
++                dict = parent->doc->dict;
++            else if ((next != NULL) && (next->doc != NULL))
++                dict = next->doc->dict;
++
+ 	    if ((__xmlRegisterCallbacks) && (xmlDeregisterNodeDefaultValue))
+ 		xmlDeregisterNodeDefaultValue(cur);
+ 
+@@ -4261,10 +4276,15 @@ xmlStaticCopyNode(xmlNodePtr node, xmlDocPtr doc, xmlNodePtr parent,
+     else if (node->name == xmlStringComment)
+ 	ret->name = xmlStringComment;
+     else if (node->name != NULL) {
+-        if ((doc != NULL) && (doc->dict != NULL))
+-	    ret->name = xmlDictLookup(doc->dict, node->name, -1);
+-	else
+-	    ret->name = xmlStrdup(node->name);
++        /*
++         * Always duplicate the name.
++         *
++         * The copied subtree can be detached from its document or moved
++         * between documents during XInclude processing and error handling.
++         * Using a dictionary-owned string for the node name can then lead to
++         * freeing a pointer into a dictionary pool with the wrong dict.
++         */
++        ret->name = xmlStrdup(node->name);
+     }
+     if ((node->type != XML_ELEMENT_NODE) &&
+ 	(node->content != NULL) &&

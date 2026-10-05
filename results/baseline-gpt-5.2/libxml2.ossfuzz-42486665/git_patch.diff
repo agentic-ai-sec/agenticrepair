@@ -1,0 +1,27 @@
+diff --git a/xinclude.c b/xinclude.c
+index 3c810ca1..c9fd02e0 100644
+--- a/xinclude.c
++++ b/xinclude.c
+@@ -2227,6 +2227,22 @@ xmlXIncludeIncludeNode(xmlXIncludeCtxtPtr ctxt, int nr) {
+ 	    list = list->next;
+ 
+ 	    xmlAddPrevSibling(cur, end);
++
++	    /*
++	     * The inserted nodes can still reference namespace declarations
++	     * originally owned by the XInclude node (e.g. when moving fallback
++	     * content). If the XInclude node gets freed, those namespace
++	     * declarations would be freed as well, leaving dangling pointers
++	     * that can be accessed later by serialization routines.
++	     *
++	     * Reconcile namespaces on the inserted subtree to ensure that it
++	     * doesn't keep pointers to namespaces that might disappear when the
++	     * XInclude node is removed.
++	     */
++#ifdef LIBXML_TREE_ENABLED
++	    if (end->type == XML_ELEMENT_NODE)
++	        xmlReconciliateNs(ctxt->doc, end);
++#endif
+ 	}
+ 	xmlUnlinkNode(cur);
+ 	xmlFreeNode(cur);

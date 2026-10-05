@@ -1,0 +1,58 @@
+diff --git a/source/pdf/pdf-font.c b/source/pdf/pdf-font.c
+index e071e8bd4..9c1b1f3b4 100644
+--- a/source/pdf/pdf-font.c
++++ b/source/pdf/pdf-font.c
+@@ -550,9 +550,11 @@ pdf_extract_cff_subtable(fz_context *ctx, unsigned char *data, size_t size)
+ static void
+ pdf_load_embedded_font(fz_context *ctx, pdf_document *doc, pdf_font_desc *fontdesc, const char *fontname, pdf_obj *stmref)
+ {
+-	fz_buffer *buf;
++	fz_buffer *buf = NULL;
++	fz_var(buf);
+ 	unsigned char *data;
+ 	size_t size;
++	size_t buf_len = 0;
+ 
+ 	buf = pdf_load_stream(ctx, stmref);
+ 
+@@ -572,13 +574,15 @@ pdf_load_embedded_font(fz_context *ctx, pdf_document *doc, pdf_font_desc *fontde
+ 		}
+ 
+ 		fontdesc->font = fz_new_font_from_buffer(ctx, fontname, buf, 0, 1);
++		/* Record the size before the buffer is dropped in the fz_always block. */
++		buf_len = fz_buffer_storage(ctx, buf, NULL);
+ 	}
+ 	fz_always(ctx)
+ 		fz_drop_buffer(ctx, buf);
+ 	fz_catch(ctx)
+ 		fz_rethrow(ctx);
+ 
+-	fontdesc->size += fz_buffer_storage(ctx, buf, NULL);
++	fontdesc->size += buf_len;
+ 	fontdesc->is_embedded = 1;
+ }
+ 
+diff --git a/source/pdf/pdf-interpret.c b/source/pdf/pdf-interpret.c
+index 4e503a37b..34f045053 100644
+--- a/source/pdf/pdf-interpret.c
++++ b/source/pdf/pdf-interpret.c
+@@ -615,12 +615,18 @@ pdf_process_keyword(fz_context *ctx, pdf_processor *proc, pdf_csi *csi, fz_strea
+ 	switch (key)
+ 	{
+ 	default:
++		/*
++		 * Be liberal in what we accept: malformed content streams can contain
++		 * unknown operators (keywords). The PDF specification permits readers
++		 * to ignore unknown operators, and treating them as fatal here can
++		 * cause otherwise-recoverable documents to abort processing.
++		 */
+ 		if (!csi->xbalance)
+ 		{
+ 			if (is_known_bad_word(word))
+-				fz_throw(ctx, FZ_ERROR_MINOR, "unknown keyword: '%s'", word);
++				fz_warn(ctx, "ignoring bad keyword: '%s'", word);
+ 			else
+-				fz_throw(ctx, FZ_ERROR_SYNTAX, "unknown keyword: '%s'", word);
++				fz_warn(ctx, "unknown keyword: '%s'", word);
+ 		}
+ 		break;

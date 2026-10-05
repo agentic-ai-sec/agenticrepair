@@ -1,0 +1,35 @@
+diff --git a/mrbgems/mruby-bigint/core/bigint.c b/mrbgems/mruby-bigint/core/bigint.c
+index b7892ef21..20add2123 100644
+--- a/mrbgems/mruby-bigint/core/bigint.c
++++ b/mrbgems/mruby-bigint/core/bigint.c
+@@ -416,11 +416,30 @@ udiv(mrb_state *mrb, mpz_t *qq, mpz_t *rr, mpz_t *xx, mpz_t *yy)
+ 
+   if (uzero(yy))
+     return;
++
++  /* If |x| < |y|, quotient is 0 and remainder is |x|.
++   * The main division loop assumes xd >= yd; without this guard (xd-yd)
++   * underflows (size_t) and can lead to out-of-bounds accesses.
++   */
++  if (ucmp(xx, yy) < 0) {
++    zero(qq);
++    mpz_set(mrb, rr, xx);
++    rr->sn = uzero(rr) ? 0 : 1;
++    return;
++  }
+   mpz_init(mrb,&q); mpz_init(mrb,&x);mpz_init(mrb,&y);mpz_init(mrb,&r);
+   mpz_realloc(mrb,&x,(size_t)((xx->sz)+1));
+   yd = digits(yy);
+   ns = lzb(yy->p[yd-1]);
+   ulshift(mrb,&x,xx,ns);
++  /*
++   * Ensure there is always one extra limb above the most-significant
++   * normalized limb. The division core performs borrow/carry adjustment at
++   * index (j+yd)/2, which can become exactly digits(&x) when the normalization
++   * shift produces a carry into the top limb. Without this extra space that
++   * adjustment may access x.p[x.sz] out of bounds.
++   */
++  mpz_realloc(mrb, &x, x.sz + 1);
+   ulshift(mrb,&y,yy,ns);
+   xd = digits(&x);
+   mpz_realloc(mrb,&q,(size_t)xd);

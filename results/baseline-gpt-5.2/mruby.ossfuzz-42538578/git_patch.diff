@@ -1,0 +1,25 @@
+diff --git a/src/vm.c b/src/vm.c
+index 40a8a8971..052b10914 100644
+--- a/src/vm.c
++++ b/src/vm.c
+@@ -2669,6 +2669,11 @@ RETRY_TRY_BLOCK:
+ 
+     CASE(OP_ARYCAT, B) {
+       mrb_value splat = mrb_ary_splat(mrb, regs[a+1]);
++      /* mrb_ary_splat() may call into Ruby (e.g. to_ary/to_a), which can
++       * re-enter the VM and grow/realloc the callinfo stack. Refresh `ci`
++       * to avoid using a stale (freed) pointer.
++       */
++      ci = mrb->c->ci;
+       if (mrb_nil_p(regs[a])) {
+         regs[a] = splat;
+       }
+@@ -2690,6 +2695,8 @@ RETRY_TRY_BLOCK:
+ 
+     CASE(OP_ARYSPLAT, B) {
+       mrb_value ary = mrb_ary_splat(mrb, regs[a]);
++      /* See OP_ARYCAT above. */
++      ci = mrb->c->ci;
+       regs[a] = ary;
+       mrb_gc_arena_restore(mrb, ai);
+       NEXT;

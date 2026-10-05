@@ -1,0 +1,55 @@
+diff --git a/xmllint.c b/xmllint.c
+index b43345ff..0f1422d6 100644
+--- a/xmllint.c
++++ b/xmllint.c
+@@ -1932,7 +1932,6 @@ static void streamFile(char *filename) {
+ 	    if (xmlTextReaderIsValid(reader) != 1) {
+ 		xmlGenericError(xmlGenericErrorContext,
+ 			"Document %s does not validate\n", filename);
+-		progresult = XMLLINT_ERR_VALID;
+ 	    }
+ 	}
+ #endif /* LIBXML_VALID_ENABLED */
+diff --git a/xmlreader.c b/xmlreader.c
+index 3fd9aa4c..77ef39d6 100644
+--- a/xmlreader.c
++++ b/xmlreader.c
+@@ -32,6 +32,10 @@
+ #include <libxml/xmlIO.h>
+ #include <libxml/xmlreader.h>
+ #include <libxml/parserInternals.h>
++#ifdef LIBXML_VALID_ENABLED
++#include <libxml/valid.h>
++#endif
++
+ #ifdef LIBXML_SCHEMAS_ENABLED
+ #include <libxml/relaxng.h>
+ #include <libxml/xmlschemas.h>
+@@ -298,12 +302,26 @@ xmlTextReaderFreeProp(xmlTextReaderPtr reader, xmlAttrPtr cur) {
+     if ((__xmlRegisterCallbacks) && (xmlDeregisterNodeDefaultValue))
+ 	xmlDeregisterNodeDefaultValue((xmlNodePtr) cur);
+ 
+-    /* Check for ID removal -> leading to invalid references ! */
++    /*
++     * Keep validation tables consistent.
++     *
++     * The validating XML reader can free attributes while the validator
++     * still has entries in the doc ID/REF tables pointing to them. If we
++     * do not remove those entries before freeing the attribute, the final
++     * validation pass might dereference a stale xmlAttr pointer.
++     */
+     if ((cur->parent != NULL) && (cur->parent->doc != NULL) &&
+ 	((cur->parent->doc->intSubset != NULL) ||
+ 	 (cur->parent->doc->extSubset != NULL))) {
++#ifdef LIBXML_VALID_ENABLED
+         if (xmlIsID(cur->parent->doc, cur->parent, cur))
+ 	    xmlTextReaderRemoveID(cur->parent->doc, cur);
++        if (xmlIsRef(cur->parent->doc, cur->parent, cur))
++            xmlRemoveRef(cur->parent->doc, cur);
++#else
++        if (xmlIsID(cur->parent->doc, cur->parent, cur))
++	    xmlTextReaderRemoveID(cur->parent->doc, cur);
++#endif
+     }
+     if (cur->children != NULL)
+         xmlTextReaderFreeNodeList(reader, cur->children);

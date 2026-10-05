@@ -1,0 +1,208 @@
+{
+  "instance_id": "libxml2.ossfuzz-42525210",
+  "final_status": "success",
+  "static_analyzer_output": {
+    "role": "static_analyzer",
+    "raw_output": "{\n  \"analysis_type\": \"memory\",\n  \"findings\": [\n    {\n      \"file\": \"src/libxml2/HTMLparser.c\",\n      \"line\": 197,\n      \"message\": \"Suspicious array access with potentially unsafe index (nameTab[ctxt->nameNr - 1])\",\n      \"severity\": \"warning\"\n    },\n    {\n      \"file\": \"src/libxml2/HTMLparser.c\",\n      \"line\": 252,\n      \"message\": \"Suspicious array access with potentially unsafe index (nodeInfoTab[ctxt->nodeInfoNr - 1])\",\n      \"severity\": \"warning\"\n    }\n  ],\n  \"dataflow_summary\": \"\",\n  \"key_insight\": \"The crash site (HTMLparser.c:2759) dereferences CUR (i.e., *ctxt->input->cur) in the while-condition without first proving ctxt->input->cur < ctxt->input->end; if the cursor advances to end+1 (e.g., after shrink/grow/tokenization edges), this yields a 1-byte out-of-bounds read into adjacent globals.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Add explicit input-boundary checks before dereferencing CUR/NXT in htmlParseHTMLAttribute and similar loops (e.g., `while (ctxt->input->cur < ctxt->input->end && CUR != 0 && CUR != stop)` and guard `NXT(1)` with `ctxt->input->cur + 1 < ctxt->input->end` or force GROW).\",\n      \"reasoning\": \"The reported OOB read happens at the loop condition when CUR is evaluated; proving cursor < end eliminates the out-of-bounds dereference and aligns with parser invariants.\",\n      \"trade_offs\": \"Adds a few branches in hot parsing loops; must be applied consistently across call sites using CUR/NXT to avoid similar bugs elsewhere.\"\n    },\n    {\n      \"approach\": \"Replace CUR/NXT macros with safe inline helpers that return 0 when at/after end (and optionally trigger GROW) instead of directly indexing/dereferencing pointers.\",\n      \"reasoning\": \"Centralizes safety: any future use of CUR/NXT automatically becomes bounds-aware, reducing the chance of reintroducing this class of bug.\",\n      \"trade_offs\": \"Broader refactor; may subtly change behavior at EOF/streaming boundaries and requires careful regression testing for progressive parsing.\"\n    },\n    {\n      \"approach\": \"Guarantee a sentinel byte (NUL) at input->end (or beyond) for all parser buffers so CUR at end is always safe to read (no end+1 reads), and assert invariants when advancing the cursor.\",\n      \"reasoning\": \"If the underlying buffer always has a valid terminator at end, many legacy pointer-based parsers avoid boundary branches.\",\n      \"trade_offs\": \"More invasive buffer-management change; still doesn\u2019t protect against end+1 (cursor moving past end), so should be paired with assertions/guards.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "analysis_type": "memory",
+      "findings": [
+        {
+          "file": "src/libxml2/HTMLparser.c",
+          "line": 197,
+          "message": "Suspicious array access with potentially unsafe index (nameTab[ctxt->nameNr - 1])",
+          "severity": "warning"
+        },
+        {
+          "file": "src/libxml2/HTMLparser.c",
+          "line": 252,
+          "message": "Suspicious array access with potentially unsafe index (nodeInfoTab[ctxt->nodeInfoNr - 1])",
+          "severity": "warning"
+        }
+      ],
+      "dataflow_summary": "",
+      "key_insight": "The crash site (HTMLparser.c:2759) dereferences CUR (i.e., *ctxt->input->cur) in the while-condition without first proving ctxt->input->cur < ctxt->input->end; if the cursor advances to end+1 (e.g., after shrink/grow/tokenization edges), this yields a 1-byte out-of-bounds read into adjacent globals.",
+      "fix_suggestions": [
+        {
+          "approach": "Add explicit input-boundary checks before dereferencing CUR/NXT in htmlParseHTMLAttribute and similar loops (e.g., `while (ctxt->input->cur < ctxt->input->end && CUR != 0 && CUR != stop)` and guard `NXT(1)` with `ctxt->input->cur + 1 < ctxt->input->end` or force GROW).",
+          "reasoning": "The reported OOB read happens at the loop condition when CUR is evaluated; proving cursor < end eliminates the out-of-bounds dereference and aligns with parser invariants.",
+          "trade_offs": "Adds a few branches in hot parsing loops; must be applied consistently across call sites using CUR/NXT to avoid similar bugs elsewhere."
+        },
+        {
+          "approach": "Replace CUR/NXT macros with safe inline helpers that return 0 when at/after end (and optionally trigger GROW) instead of directly indexing/dereferencing pointers.",
+          "reasoning": "Centralizes safety: any future use of CUR/NXT automatically becomes bounds-aware, reducing the chance of reintroducing this class of bug.",
+          "trade_offs": "Broader refactor; may subtly change behavior at EOF/streaming boundaries and requires careful regression testing for progressive parsing."
+        },
+        {
+          "approach": "Guarantee a sentinel byte (NUL) at input->end (or beyond) for all parser buffers so CUR at end is always safe to read (no end+1 reads), and assert invariants when advancing the cursor.",
+          "reasoning": "If the underlying buffer always has a valid terminator at end, many legacy pointer-based parsers avoid boundary branches.",
+          "trade_offs": "More invasive buffer-management change; still doesn\u2019t protect against end+1 (cursor moving past end), so should be paired with assertions/guards."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 59054,
+      "output_tokens": 4477
+    },
+    "timing": {
+      "start_time": 1768801112.7100205,
+      "end_time": 1768801276.7330804,
+      "duration": 164.0230598449707
+    },
+    "trajectory": {
+      "agent_role": "static_analyzer",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nA global-buffer-overflow exists in htmlParseHTMLAttribute (HTMLparser.c): the parser performs an out\u2011of\u2011bounds read (one byte) past a global string/array into adjacent global data (e.g. xmlIsPubidChar_tab) while parsing attribute text. This out\u2011of\u2011bounds access can cause crashes, undefined behavior, or potential informatio",
+      "total_steps": 6,
+      "total_duration": 164.0230598449707,
+      "total_input_tokens": 59054,
+      "total_output_tokens": 4477,
+      "total_cost": 0.1000993,
+      "final_state": "success"
+    }
+  },
+  "dynamic_analyzer_output": {
+    "role": "dynamic_analyzer",
+    "raw_output": "{\n  \"tools_used\": [\"gdb\", \"ubsan\"],\n  \"crash_info\": {\n    \"address\": \"0x55ce52a0e0e1\",\n    \"type\": \"global-buffer-overflow (1-byte OOB read)\",\n    \"location\": \"HTMLparser.c:2759 (htmlParseHTMLAttribute)\"\n  },\n  \"backtrace\": [\n    \"#0 htmlParseHTMLAttribute (HTMLparser.c:2759)\",\n    \"#1 htmlParseAttValue (HTMLparser.c:2944)\",\n    \"#2 htmlParseAttribute (HTMLparser.c:3777)\",\n    \"#3 htmlParseStartTag (HTMLparser.c:4052)\",\n    \"#4 htmlParseElementInternal (HTMLparser.c:4673)\",\n    \"#5 htmlParseDocument (HTMLparser.c:5043)\",\n    \"#6 htmlReadFile (HTMLparser.c:7014)\",\n    \"#7 parseAndPrintFile (xmllint.c:2188)\",\n    \"#8 main (xmllint.c:3718)\"\n  ],\n  \"memory_state\": \"ASan reports READ of size 1 at 0x55ce52a0e0e1, which is 0 bytes past the end of a 1-byte global string '.str.10' (buf.c, \"\"), and 63 bytes before the next global 'xmlIsPubidChar_tab' (chvalid.c, 256 bytes). This indicates the parser reads one byte beyond a NUL-terminated global/constant buffer while scanning attribute text.\",\n  \"root_cause_hint\": \"Runtime evidence (ASan) shows htmlParseHTMLAttribute dereferences a pointer/character accessor when positioned at the end of a 1-byte global string (just the NUL terminator), causing a 1-byte out-of-bounds read into the global redzone. This is consistent with a loop/peek in attribute parsing that checks the current character after advancing without first ensuring the input pointer is still within the valid buffer (i.e., missing end-of-buffer/end-of-string guard before reading).\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Add a strict end-of-input guard before every character dereference/peek in htmlParseHTMLAttribute\u2019s attribute-text scanning loop (e.g., check for NUL/EOF and/or input-end pointer before evaluating CUR/RAW/(*cur)).\",\n      \"reasoning\": \"The ASan report shows a 1-byte read exactly at \"\" + 1 (past NUL). Preventing dereference when at end-of-buffer directly eliminates the observed OOB read.\",\n      \"trade_offs\": \"Very low risk, but requires careful auditing of the local parsing loop/macros so that guards are applied consistently and do not change intended acceptance of certain malformed HTML edge cases.\"\n    },\n    {\n      \"approach\": \"Refactor the loop to use length-bounded accessors (carry an explicit remaining-length/end pointer) rather than relying on NUL-termination; stop parsing when remaining length is 0.\",\n      \"reasoning\": \"The crash is caused by a read past a terminator/global boundary; explicit bounds tracking prevents any read beyond the provided input, regardless of termination or encoding quirks.\",\n      \"trade_offs\": \"More invasive change; may require updating helper macros/functions and multiple call sites, with higher regression risk.\"\n    },\n    {\n      \"approach\": \"Ensure the input buffer always has at least one safe sentinel byte beyond the last valid character (e.g., allocate/copy with an extra '\\\\0' and ensure parser never points at the redzone), and adjust pointer advancement so it never lands on an invalid sentinel-only buffer.\",\n      \"reasoning\": \"If the parser expects to safely peek ahead by 1 byte, guaranteeing a valid sentinel avoids OOB reads.\",\n      \"trade_offs\": \"Can mask logic bugs if not paired with proper bounds checks; may increase memory use slightly and is less robust than explicit bounds checks.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "raw": "{\n  \"tools_used\": [\"gdb\", \"ubsan\"],\n  \"crash_info\": {\n    \"address\": \"0x55ce52a0e0e1\",\n    \"type\": \"global-buffer-overflow (1-byte OOB read)\",\n    \"location\": \"HTMLparser.c:2759 (htmlParseHTMLAttribute)\"\n  },\n  \"backtrace\": [\n    \"#0 htmlParseHTMLAttribute (HTMLparser.c:2759)\",\n    \"#1 htmlParseAttValue (HTMLparser.c:2944)\",\n    \"#2 htmlParseAttribute (HTMLparser.c:3777)\",\n    \"#3 htmlParseStartTag (HTMLparser.c:4052)\",\n    \"#4 htmlParseElementInternal (HTMLparser.c:4673)\",\n    \"#5 htmlParseDocument (HTMLparser.c:5043)\",\n    \"#6 htmlReadFile (HTMLparser.c:7014)\",\n    \"#7 parseAndPrintFile (xmllint.c:2188)\",\n    \"#8 main (xmllint.c:3718)\"\n  ],\n  \"memory_state\": \"ASan reports READ of size 1 at 0x55ce52a0e0e1, which is 0 bytes past the end of a 1-byte global string '.str.10' (buf.c, \"\"), and 63 bytes before the next global 'xmlIsPubidChar_tab' (chvalid.c, 256 bytes). This indicates the parser reads one byte beyond a NUL-terminated global/constant buffer while scanning attribute text.\",\n  \"root_cause_hint\": \"Runtime evidence (ASan) shows htmlParseHTMLAttribute dereferences a pointer/character accessor when positioned at the end of a 1-byte global string (just the NUL terminator), causing a 1-byte out-of-bounds read into the global redzone. This is consistent with a loop/peek in attribute parsing that checks the current character after advancing without first ensuring the input pointer is still within the valid buffer (i.e., missing end-of-buffer/end-of-string guard before reading).\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Add a strict end-of-input guard before every character dereference/peek in htmlParseHTMLAttribute\u2019s attribute-text scanning loop (e.g., check for NUL/EOF and/or input-end pointer before evaluating CUR/RAW/(*cur)).\",\n      \"reasoning\": \"The ASan report shows a 1-byte read exactly at \"\" + 1 (past NUL). Preventing dereference when at end-of-buffer directly eliminates the observed OOB read.\",\n      \"trade_offs\": \"Very low risk, but requires careful auditing of the local parsing loop/macros so that guards are applied consistently and do not change intended acceptance of certain malformed HTML edge cases.\"\n    },\n    {\n      \"approach\": \"Refactor the loop to use length-bounded accessors (carry an explicit remaining-length/end pointer) rather than relying on NUL-termination; stop parsing when remaining length is 0.\",\n      \"reasoning\": \"The crash is caused by a read past a terminator/global boundary; explicit bounds tracking prevents any read beyond the provided input, regardless of termination or encoding quirks.\",\n      \"trade_offs\": \"More invasive change; may require updating helper macros/functions and multiple call sites, with higher regression risk.\"\n    },\n    {\n      \"approach\": \"Ensure the input buffer always has at least one safe sentinel byte beyond the last valid character (e.g., allocate/copy with an extra '\\\\0' and ensure parser never points at the redzone), and adjust pointer advancement so it never lands on an invalid sentinel-only buffer.\",\n      \"reasoning\": \"If the parser expects to safely peek ahead by 1 byte, guaranteeing a valid sentinel avoids OOB reads.\",\n      \"trade_offs\": \"Can mask logic bugs if not paired with proper bounds checks; may increase memory use slightly and is less robust than explicit bounds checks.\"\n    }\n  ]\n}",
+      "parse_error": true
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 38461,
+      "output_tokens": 2118
+    },
+    "timing": {
+      "start_time": 1768801276.7380931,
+      "end_time": 1768801347.4712763,
+      "duration": 70.73318314552307
+    },
+    "trajectory": {
+      "agent_role": "dynamic_analyzer",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nA global-buffer-overflow exists in htmlParseHTMLAttribute (HTMLparser.c): the parser performs an out\u2011of\u2011bounds read (one byte) past a global string/array into adjacent global data (e.g. xmlIsPubidChar_tab) while parsing attribute text. This out\u2011of\u2011bounds access can cause crashes, undefined behavior, or potential informatio",
+      "total_steps": 4,
+      "total_duration": 70.73318314552307,
+      "total_input_tokens": 38461,
+      "total_output_tokens": 2118,
+      "total_cost": 0.04776835,
+      "final_state": "success"
+    }
+  },
+  "history_miner_output": {
+    "role": "history_miner",
+    "raw_output": "{\n  \"file_analyzed\": \"HTMLparser.c\",\n  \"function_analyzed\": \"htmlParseHTMLAttribute\",\n  \"relevant_commits\": [\n    {\n      \"hash\": \"bd63d730\",\n      \"message\": \"html: Impose some length limits\",\n      \"changes\": \"Added maxLength tracking and a hard limit check in htmlParseHTMLAttribute (and other HTML parsing routines).\",\n      \"relevance\": \"Shows recent refactoring of htmlParseHTMLAttribute; introduced additional bounds/limit logic but did not address safe input-byte access (still uses CUR in loop condition).\"\n    },\n    {\n      \"hash\": \"14c62e0d\",\n      \"message\": \"html: Use NEXTL in htmlParseHTMLAttribute\",\n      \"changes\": \"Replaced NEXT with NEXTL(l) in the main attribute parsing loop.\",\n      \"relevance\": \"Highlights the function\u2019s dependence on character-length handling (CUR_CHAR/NEXTL) yet the loop condition still dereferences CUR directly, which is the crash site.\"\n    },\n    {\n      \"hash\": \"62f199ed\",\n      \"message\": \"malloc-fail: Add error check in htmlParseHTMLAttribute\",\n      \"changes\": \"Added early return/free when ctxt->instate becomes XML_PARSER_EOF after CUR_CHAR(l).\",\n      \"relevance\": \"Shows prior fuzz-driven hardening for EOF/error paths in this function; suggests the intended pattern is to bail out cleanly on parser EOF/errors, but the top-level `while ((CUR != 0) ...)` remains unguarded.\"\n    }\n  ],\n  \"vulnerability_origin\": \"The unsafe pattern (top-level loop condition reading `CUR` directly) predates the base commit, but the issue is likely triggered by the base commit 20f5c734 (\u2018Recover more input from encoding errors\u2019) changing grow/error behavior so parsing can continue with input edge states; `CUR` can then dereference at/after the end of an empty/global buffer, producing a 1-byte global OOB read.\",\n  \"fix_hints\": \"History shows maintainers add explicit EOF checks and free/return paths (62f199ed). Apply the same philosophy at the loop condition: don\u2019t dereference `CUR` unless you\u2019ve ensured `ctxt->input->cur < ctxt->input->end` or have obtained a character via htmlCurrentChar/CUR_CHAR.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Replace the `while ((CUR != 0) && (CUR != stop))` loop condition with a safe fetch using htmlCurrentChar/CUR_CHAR (and break/return on EOF/len==0), then compare that fetched char to stop/0.\",\n      \"reasoning\": \"Consistent with recent changes in this function that already use CUR_CHAR(l) + NEXTL(l) (14c62e0d) and explicit EOF checks (62f199ed); eliminates raw deref of `CUR` at the crash line.\",\n      \"trade_offs\": \"Slightly more overhead per iteration; needs careful handling so behavior matches existing parsing semantics (especially stop==0 and blanks/'>').\"\n    },\n    {\n      \"approach\": \"Add a guard before using CUR: if `ctxt->input->cur >= ctxt->input->end`, call xmlParserGrow(ctxt) and if still at end or EOF then break/return NULL.\",\n      \"reasoning\": \"Local, minimal change; directly prevents dereferencing one-past-end even when grow/error recovery changed in the base commit.\",\n      \"trade_offs\": \"Must ensure the guard is correct for both memory and streaming inputs; may subtly alter how much the HTML parser tries to recover.\" \n    },\n    {\n      \"approach\": \"Tighten the post-20f5c734 error-recovery semantics for HTML parsing: on grow/buffer error, force EOF/stop parsing rather than continuing with potentially empty/sentinel buffers.\",\n      \"reasoning\": \"The base commit intentionally stopped halting on grow errors; if that change leaves contexts in states where `CUR` is unsafe, adjusting EOF/error signaling can prevent similar issues across other HTML/XML tokenization loops.\",\n      \"trade_offs\": \"May reduce recovery from malformed/encoded inputs; broader behavior change than a local fix.\" \n    }\n  ]\n}",
+    "parsed_output": {
+      "file_analyzed": "HTMLparser.c",
+      "function_analyzed": "htmlParseHTMLAttribute",
+      "relevant_commits": [
+        {
+          "hash": "bd63d730",
+          "message": "html: Impose some length limits",
+          "changes": "Added maxLength tracking and a hard limit check in htmlParseHTMLAttribute (and other HTML parsing routines).",
+          "relevance": "Shows recent refactoring of htmlParseHTMLAttribute; introduced additional bounds/limit logic but did not address safe input-byte access (still uses CUR in loop condition)."
+        },
+        {
+          "hash": "14c62e0d",
+          "message": "html: Use NEXTL in htmlParseHTMLAttribute",
+          "changes": "Replaced NEXT with NEXTL(l) in the main attribute parsing loop.",
+          "relevance": "Highlights the function\u2019s dependence on character-length handling (CUR_CHAR/NEXTL) yet the loop condition still dereferences CUR directly, which is the crash site."
+        },
+        {
+          "hash": "62f199ed",
+          "message": "malloc-fail: Add error check in htmlParseHTMLAttribute",
+          "changes": "Added early return/free when ctxt->instate becomes XML_PARSER_EOF after CUR_CHAR(l).",
+          "relevance": "Shows prior fuzz-driven hardening for EOF/error paths in this function; suggests the intended pattern is to bail out cleanly on parser EOF/errors, but the top-level `while ((CUR != 0) ...)` remains unguarded."
+        }
+      ],
+      "vulnerability_origin": "The unsafe pattern (top-level loop condition reading `CUR` directly) predates the base commit, but the issue is likely triggered by the base commit 20f5c734 (\u2018Recover more input from encoding errors\u2019) changing grow/error behavior so parsing can continue with input edge states; `CUR` can then dereference at/after the end of an empty/global buffer, producing a 1-byte global OOB read.",
+      "fix_hints": "History shows maintainers add explicit EOF checks and free/return paths (62f199ed). Apply the same philosophy at the loop condition: don\u2019t dereference `CUR` unless you\u2019ve ensured `ctxt->input->cur < ctxt->input->end` or have obtained a character via htmlCurrentChar/CUR_CHAR.",
+      "fix_suggestions": [
+        {
+          "approach": "Replace the `while ((CUR != 0) && (CUR != stop))` loop condition with a safe fetch using htmlCurrentChar/CUR_CHAR (and break/return on EOF/len==0), then compare that fetched char to stop/0.",
+          "reasoning": "Consistent with recent changes in this function that already use CUR_CHAR(l) + NEXTL(l) (14c62e0d) and explicit EOF checks (62f199ed); eliminates raw deref of `CUR` at the crash line.",
+          "trade_offs": "Slightly more overhead per iteration; needs careful handling so behavior matches existing parsing semantics (especially stop==0 and blanks/'>')."
+        },
+        {
+          "approach": "Add a guard before using CUR: if `ctxt->input->cur >= ctxt->input->end`, call xmlParserGrow(ctxt) and if still at end or EOF then break/return NULL.",
+          "reasoning": "Local, minimal change; directly prevents dereferencing one-past-end even when grow/error recovery changed in the base commit.",
+          "trade_offs": "Must ensure the guard is correct for both memory and streaming inputs; may subtly alter how much the HTML parser tries to recover."
+        },
+        {
+          "approach": "Tighten the post-20f5c734 error-recovery semantics for HTML parsing: on grow/buffer error, force EOF/stop parsing rather than continuing with potentially empty/sentinel buffers.",
+          "reasoning": "The base commit intentionally stopped halting on grow errors; if that change leaves contexts in states where `CUR` is unsafe, adjusting EOF/error signaling can prevent similar issues across other HTML/XML tokenization loops.",
+          "trade_offs": "May reduce recovery from malformed/encoded inputs; broader behavior change than a local fix."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 103435,
+      "output_tokens": 6958
+    },
+    "timing": {
+      "start_time": 1768801347.475032,
+      "end_time": 1768802428.420242,
+      "duration": 1080.945209980011
+    },
+    "trajectory": {
+      "agent_role": "history_miner",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nA global-buffer-overflow exists in htmlParseHTMLAttribute (HTMLparser.c): the parser performs an out\u2011of\u2011bounds read (one byte) past a global string/array into adjacent global data (e.g. xmlIsPubidChar_tab) while parsing attribute text. This out\u2011of\u2011bounds access can cause crashes, undefined behavior, or potential informatio",
+      "total_steps": 10,
+      "total_duration": 1080.945209980011,
+      "total_input_tokens": 103435,
+      "total_output_tokens": 6958,
+      "total_cost": 0.13690005,
+      "final_state": "success"
+    }
+  },
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "{\n  \"root_cause\": \"htmlParseHTMLAttribute (and its caller htmlParseAttValue) dereferenced the CUR/NXT macros without first ensuring ctxt->input->cur was still within the valid input buffer. When the input buffer was empty/at EOF (or after error recovery/buffer growth failures), CUR evaluated *(ctxt->input->cur) one byte past the end of a 1-byte global string, triggering a 1-byte global out-of-bounds read.\",\n  \"fix_approach\": \"Make CUR/NXT uses in the vulnerable attribute parsing path bounds-aware with minimal local guards: (1) tighten htmlParseHTMLAttribute\u2019s main loop condition to require a valid input pointer and ctxt->input->cur < ctxt->input->end before evaluating CUR, and guard the NXT(1) lookahead with an explicit (cur+1 < end) check; (2) add early safety checks in htmlParseAttValue to ensure input pointers are valid and not at/after end before using CUR, and after parsing quoted attributes, GROW and check cur<end before reading CUR to test for the closing quote. This prevents the one-byte OOB read while preserving existing parsing behavior.\",\n  \"files_modified\": [\n    \"HTMLparser.c\"\n  ],\n  \"verification\": {\n    \"build_success\": true,\n    \"repro_success\": true,\n    \"exit_code\": 0,\n    \"asan_output\": \"No sanitizer errors detected\"\n  },\n  \"confidence\": \"high\"\n}",
+    "parsed_output": {
+      "root_cause": "htmlParseHTMLAttribute (and its caller htmlParseAttValue) dereferenced the CUR/NXT macros without first ensuring ctxt->input->cur was still within the valid input buffer. When the input buffer was empty/at EOF (or after error recovery/buffer growth failures), CUR evaluated *(ctxt->input->cur) one byte past the end of a 1-byte global string, triggering a 1-byte global out-of-bounds read.",
+      "fix_approach": "Make CUR/NXT uses in the vulnerable attribute parsing path bounds-aware with minimal local guards: (1) tighten htmlParseHTMLAttribute\u2019s main loop condition to require a valid input pointer and ctxt->input->cur < ctxt->input->end before evaluating CUR, and guard the NXT(1) lookahead with an explicit (cur+1 < end) check; (2) add early safety checks in htmlParseAttValue to ensure input pointers are valid and not at/after end before using CUR, and after parsing quoted attributes, GROW and check cur<end before reading CUR to test for the closing quote. This prevents the one-byte OOB read while preserving existing parsing behavior.",
+      "files_modified": [
+        "HTMLparser.c"
+      ],
+      "verification": {
+        "build_success": true,
+        "repro_success": true,
+        "exit_code": 0,
+        "asan_output": "No sanitizer errors detected"
+      },
+      "confidence": "high"
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 649939,
+      "output_tokens": 18843
+    },
+    "timing": {
+      "start_time": 1768802428.4256957,
+      "end_time": 1768803632.035273,
+      "duration": 1203.6095774173737
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nA global-buffer-overflow exists in htmlParseHTMLAttribute (HTMLparser.c): the parser performs an out\u2011of\u2011bounds read (one byte) past a global string/array into adjacent global data (e.g. xmlIsPubidChar_tab) while parsing attribute text. This out\u2011of\u2011bounds access can cause crashes, undefined behavior, or potential informatio",
+      "total_steps": 28,
+      "total_duration": 1203.6095774173737,
+      "total_input_tokens": 649939,
+      "total_output_tokens": 18843,
+      "total_cost": 0.45044965,
+      "final_state": "success"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 850889,
+    "output_tokens": 32396
+  },
+  "timing": {
+    "total_duration": 2519.3341121673584
+  }
+}

@@ -1,0 +1,131 @@
+diff --git a/include/libxml/xinclude.h b/include/libxml/xinclude.h
+index 863ab25a..03862d0b 100644
+--- a/include/libxml/xinclude.h
++++ b/include/libxml/xinclude.h
+@@ -86,40 +86,45 @@ extern "C" {
+ typedef struct _xmlXIncludeCtxt xmlXIncludeCtxt;
+ typedef xmlXIncludeCtxt *xmlXIncludeCtxtPtr;
+ 
++/* Clear any reference in the xinclude context pointing to the node */
++XMLPUBFUN void XMLCALL
++        xmlXIncludeClearRef (xmlXIncludeCtxtPtr ctxt, xmlNodePtr node);
++
+ /*
+  * standalone processing
+  */
+ XMLPUBFUN int XMLCALL
+-		xmlXIncludeProcess	(xmlDocPtr doc);
++        xmlXIncludeProcess    (xmlDocPtr doc);
+ XMLPUBFUN int XMLCALL
+-		xmlXIncludeProcessFlags	(xmlDocPtr doc,
+-					 int flags);
++        xmlXIncludeProcessFlags (xmlDocPtr doc,
++                     int flags);
+ XMLPUBFUN int XMLCALL
+-		xmlXIncludeProcessFlagsData(xmlDocPtr doc,
+-					 int flags,
+-					 void *data);
++        xmlXIncludeProcessFlagsData(xmlDocPtr doc,
++                     int flags,
++                     void *data);
+ XMLPUBFUN int XMLCALL
+-                xmlXIncludeProcessTreeFlagsData(xmlNodePtr tree,
++        xmlXIncludeProcessTreeFlagsData(xmlNodePtr tree,
+                                          int flags,
+                                          void *data);
+ XMLPUBFUN int XMLCALL
+-		xmlXIncludeProcessTree	(xmlNodePtr tree);
++        xmlXIncludeProcessTree (xmlNodePtr tree);
+ XMLPUBFUN int XMLCALL
+-		xmlXIncludeProcessTreeFlags(xmlNodePtr tree,
+-					 int flags);
++        xmlXIncludeProcessTreeFlags(xmlNodePtr tree,
++                     int flags);
+ /*
+  * contextual processing
+  */
+ XMLPUBFUN xmlXIncludeCtxtPtr XMLCALL
+-		xmlXIncludeNewContext	(xmlDocPtr doc);
++        xmlXIncludeNewContext   (xmlDocPtr doc);
+ XMLPUBFUN int XMLCALL
+-		xmlXIncludeSetFlags	(xmlXIncludeCtxtPtr ctxt,
+-					 int flags);
++        xmlXIncludeSetFlags (xmlXIncludeCtxtPtr ctxt,
++                     int flags);
+ XMLPUBFUN void XMLCALL
+-		xmlXIncludeFreeContext	(xmlXIncludeCtxtPtr ctxt);
++        xmlXIncludeFreeContext  (xmlXIncludeCtxtPtr ctxt);
+ XMLPUBFUN int XMLCALL
+-		xmlXIncludeProcessNode	(xmlXIncludeCtxtPtr ctxt,
+-					 xmlNodePtr tree);
++        xmlXIncludeProcessNode  (xmlXIncludeCtxtPtr ctxt,
++                     xmlNodePtr tree);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/xinclude.c b/xinclude.c
+index c92b32bc..b21fdbf5 100644
+--- a/xinclude.c
++++ b/xinclude.c
+@@ -90,6 +90,20 @@ struct _xmlXIncludeCtxt {
+     unsigned long    incTotal; /* total number of processed inclusions */
+ };
+ 
++
++XMLPUBFUN void XMLCALL
++xmlXIncludeClearRef(xmlXIncludeCtxtPtr ctxt, xmlNodePtr node) {
++    int j;
++
++    if ((ctxt == NULL) || (node == NULL))
++        return;
++
++    for (j = 0; j < ctxt->incNr; j++) {
++        if ((ctxt->incTab[j] != NULL) && (ctxt->incTab[j]->ref == node))
++            ctxt->incTab[j]->ref = NULL;
++    }
++}
++
+ static int
+ xmlXIncludeDoProcess(xmlXIncludeCtxtPtr ctxt, xmlDocPtr doc, xmlNodePtr tree,
+                      int skipRoot);
+diff --git a/xmlreader.c b/xmlreader.c
+index 6ae6e922..1716796b 100644
+--- a/xmlreader.c
++++ b/xmlreader.c
+@@ -364,6 +364,11 @@ xmlTextReaderFreeProp(xmlTextReaderPtr reader, xmlAttrPtr cur) {
+         xmlTextReaderFreeNodeList(reader, cur->children);
+ 
+     DICT_FREE(cur->name);
++#ifdef LIBXML_XINCLUDE_ENABLED
++    if ((reader != NULL) && (reader->xincctxt != NULL)) {
++        xmlXIncludeClearRef(reader->xincctxt, (xmlNodePtr) cur);
++    }
++#endif
+     if ((reader != NULL) && (reader->ctxt != NULL) &&
+         (reader->ctxt->freeAttrsNr < 100)) {
+         cur->next = reader->ctxt->freeAttrs;
+@@ -463,6 +468,11 @@ xmlTextReaderFreeNodeList(xmlTextReaderPtr reader, xmlNodePtr cur) {
+ 	    if ((cur->type != XML_TEXT_NODE) &&
+ 		(cur->type != XML_COMMENT_NODE))
+ 		DICT_FREE(cur->name);
++#ifdef LIBXML_XINCLUDE_ENABLED
++    if ((reader != NULL) && (reader->xincctxt != NULL)) {
++        xmlXIncludeClearRef(reader->xincctxt, (xmlNodePtr) cur);
++    }
++#endif
+ 	    if (((cur->type == XML_ELEMENT_NODE) ||
+ 		 (cur->type == XML_TEXT_NODE)) &&
+ 	        (reader != NULL) && (reader->ctxt != NULL) &&
+@@ -550,6 +560,11 @@ xmlTextReaderFreeNode(xmlTextReaderPtr reader, xmlNodePtr cur) {
+     if ((cur->type != XML_TEXT_NODE) &&
+         (cur->type != XML_COMMENT_NODE))
+ 	DICT_FREE(cur->name);
++#ifdef LIBXML_XINCLUDE_ENABLED
++    if ((reader != NULL) && (reader->xincctxt != NULL)) {
++        xmlXIncludeClearRef(reader->xincctxt, (xmlNodePtr) cur);
++    }
++#endif
+ 
+     if (((cur->type == XML_ELEMENT_NODE) ||
+ 	 (cur->type == XML_TEXT_NODE)) &&

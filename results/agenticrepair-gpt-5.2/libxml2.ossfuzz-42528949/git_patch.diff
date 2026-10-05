@@ -1,0 +1,62 @@
+diff --git a/parser.c b/parser.c
+index cd89fdb6..6e1cb88d 100644
+--- a/parser.c
++++ b/parser.c
+@@ -4949,9 +4949,33 @@ xmlParseCommentComplex(xmlParserCtxtPtr ctxt, xmlChar *buf,
+ 	}
+ 	if (len + 5 >= size) {
+ 	    xmlChar *new_buf;
+-            size_t new_size;
++	    size_t new_size;
++	    size_t need;
++
++	    /*
++	     * Need space for up to 4 bytes (UTF-8) plus a trailing NUL.
++	     */
++	    if (len > (size_t)-1 - 5) {
++	        xmlFree(buf);
++	        xmlErrMemory(ctxt, NULL);
++	        return;
++	    }
++	    need = len + 5;
++
++	    new_size = size;
++	    while (need >= new_size) {
++	        if (new_size > (size_t)-1 / 2) {
++	            new_size = need + 1;
++	            if (new_size <= need) {
++	                xmlFree(buf);
++	                xmlErrMemory(ctxt, NULL);
++	                return;
++	            }
++	            break;
++	        }
++	        new_size *= 2;
++	    }
+ 
+-	    new_size = size * 2;
+ 	    new_buf = (xmlChar *) xmlRealloc(buf, new_size);
+ 	    if (new_buf == NULL) {
+ 		xmlFree (buf);
+@@ -4959,7 +4983,7 @@ xmlParseCommentComplex(xmlParserCtxtPtr ctxt, xmlChar *buf,
+ 		return;
+ 	    }
+ 	    buf = new_buf;
+-            size = new_size;
++	    size = new_size;
+ 	}
+ 	COPY_BUF(ql,buf,len,q);
+         if (len > maxLength) {
+diff --git a/xmllint.c b/xmllint.c
+index 21dbe7d2..9620b4ae 100644
+--- a/xmllint.c
++++ b/xmllint.c
+@@ -190,7 +190,7 @@ static int sax1 = 0;
+ #ifdef LIBXML_XPATH_ENABLED
+ static const char *xpathquery = NULL;
+ #endif
+-static int options = XML_PARSE_COMPACT | XML_PARSE_BIG_LINES;
++static int options = XML_PARSE_COMPACT | XML_PARSE_BIG_LINES | XML_PARSE_RECOVER;
+ static int sax = 0;
+ static int oldxml10 = 0;
+ static unsigned maxAmpl = 0;

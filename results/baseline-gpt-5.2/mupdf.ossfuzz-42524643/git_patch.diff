@@ -1,0 +1,46 @@
+diff --git a/source/pdf/pdf-xref.c b/source/pdf/pdf-xref.c
+index 27f5213f9..1c027a45d 100644
+--- a/source/pdf/pdf-xref.c
++++ b/source/pdf/pdf-xref.c
+@@ -2496,20 +2496,36 @@ perform_repair:
+ 	{
+ 		if (!x->obj)
+ 		{
+-			pdf_xref_entry *orig_x = x;
+-			orig_x->type = 'O'; /* Mark this node so we know we're recursing. */
++			/* Mark this node so we know we're recursing.
++			 *
++			 * WARNING: Loading objects from an object stream can trigger repair
++			 * and rebuild xref tables. That can invalidate pointers into the
++			 * old xref tables.
++			 *
++			 * Avoid holding onto pdf_xref_entry* across the call; instead,
++			 * restore state by re-looking up the entry afterwards.
++			 */
++			int objstm_num = (int)x->ofs;
++			x->type = 'O'; /* Mark this node so we know we're recursing. */
+ 			fz_try(ctx)
+-				x = pdf_load_obj_stm(ctx, doc, x->ofs, &doc->lexbuf.base, num);
++				x = pdf_load_obj_stm(ctx, doc, objstm_num, &doc->lexbuf.base, num);
+ 			fz_always(ctx)
+-				orig_x->type = 'o'; /* Not recursing any more. */
++			{
++				/* Not recursing any more (if the entry still exists). */
++				pdf_xref_entry *restore = pdf_get_xref_entry(ctx, doc, num);
++				if (restore && restore->type == 'O')
++					restore->type = 'o';
++			}
+ 			fz_catch(ctx)
+ 				fz_rethrow(ctx);
++			/* Object stream loading can trigger xref repair/rebuild.
++			 * Re-fetch the xref entry for this object to avoid using a stale pointer. */
++			x = pdf_get_xref_entry(ctx, doc, num);
+ 			if (x == NULL)
+ 				fz_throw(ctx, FZ_ERROR_GENERIC, "cannot load object stream containing object (%d 0 R)", num);
+ 			if (!x->obj)
+ 			{
+ 				x->type = 'f';
+-				orig_x->type = 'f';
+ 				if (doc->repair_attempted)
+ 					fz_throw(ctx, FZ_ERROR_GENERIC, "object (%d 0 R) was not found in its object stream", num);
+ 				goto perform_repair;

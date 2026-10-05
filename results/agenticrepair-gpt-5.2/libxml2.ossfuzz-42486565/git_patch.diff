@@ -1,0 +1,36 @@
+diff --git a/xinclude.c b/xinclude.c
+index 41ff4e5f..5e5cf341 100644
+--- a/xinclude.c
++++ b/xinclude.c
+@@ -1984,8 +1984,6 @@ xmlXIncludeLoadFallback(xmlXIncludeCtxtPtr ctxt, xmlNodePtr fallback, int nr) {
+         (ctxt == NULL))
+ 	return(-1);
+     if (fallback->children != NULL) {
+-        xmlNodePtr child, next;
+-
+ 	/*
+ 	 * It's possible that the fallback also has 'includes'
+ 	 * (Bug 129969), so we re-process the fallback just in case
+@@ -1997,11 +1995,17 @@ xmlXIncludeLoadFallback(xmlXIncludeCtxtPtr ctxt, xmlNodePtr fallback, int nr) {
+ 	newctxt->base = xmlStrdup(ctxt->base);	/* Inherit the base from the existing context */
+ 	xmlXIncludeSetFlags(newctxt, ctxt->parseFlags);
+         newctxt->incTotal = ctxt->incTotal;
+-        for (child = fallback->children; child != NULL; child = next) {
+-            next = child->next;
+-	    if (xmlXIncludeDoProcess(newctxt, ctxt->doc, child) < 0)
+-                ret = -1;
+-        }
++	/*
++	 * Process the whole fallback subtree in a single pass.
++	 *
++	 * xmlXIncludeDoProcess() performs the full three-phase processing
++	 * (collect/load/include) and may free xi:include nodes when
++	 * XML_PARSE_NOXINCNODE is set. Calling it once per child would cause
++	 * previously processed xi:include entries in newctxt->incTab to be
++	 * re-visited in subsequent calls, leading to use-after-free.
++	 */
++	if (xmlXIncludeDoProcess(newctxt, ctxt->doc, fallback) < 0)
++	    ret = -1;
+         ctxt->incTotal = newctxt->incTotal;
+ 	if (ctxt->nbErrors > oldNbErrors)
+ 	    ret = -1;

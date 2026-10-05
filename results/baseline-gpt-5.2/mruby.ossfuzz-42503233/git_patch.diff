@@ -1,0 +1,24 @@
+diff --git a/src/vm.c b/src/vm.c
+index 1c59d4406..15b87e008 100644
+--- a/src/vm.c
++++ b/src/vm.c
+@@ -478,7 +478,19 @@ mrb_funcall_with_block(mrb_state *mrb, mrb_value self, mrb_sym mid, mrb_int argc
+     }
+     c = mrb_class(mrb, self);
+     m = mrb_method_search_vm(mrb, &c, mid);
+-    mrb_stack_extend(mrb, argc + 3);
++    /*
++     * Ensure enough stack space for:
++     *  - temporary slots in the current frame (e.g. ci->stack[n+1])
++     *  - the new call frame that cipush() will place at (ci->stack + n)
++     *
++     * The previous reservation (argc+3) was relative to the *current* frame
++     * base and did not account for the (n) slots skipped by cipush().
++     * That could lead to out-of-bounds writes during nested funcalls.
++     */
++    {
++      mrb_int frame_need = (MRB_METHOD_UNDEF_P(m) || argc >= 15) ? 3 : (argc + 2);
++      mrb_stack_extend(mrb, n + frame_need);
++    }
+     if (MRB_METHOD_UNDEF_P(m) || argc >= 15) {
+       mrb_value args = mrb_ary_new_from_values(mrb, argc, argv);

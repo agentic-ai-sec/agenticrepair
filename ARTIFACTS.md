@@ -5,7 +5,7 @@ alongside the implementation itself. There are two artifact trees:
 
 - **`results/`** — one directory per run, holding the per-instance agent trajectories and
   generated patches, plus that run's scored reports. This is the complete record.
-- **`reports/`** — the same run-level report files under readable names, without the
+- **`reports/`** — the same run-level report files, under the same directory names, without the
   per-instance trajectories. Convenient when you only want the verdicts.
 
 Every file in `reports/` is a byte-identical copy of the corresponding file in `results/`, so
@@ -16,19 +16,19 @@ nothing is lost by ignoring `reports/` entirely.
 Instances resolved, by evaluation mode. The `split` column matters: `cve` is the 200 CVE
 instances, `eval` is those 200 plus 100 OSS-Fuzz instances.
 
-| `results/` run | Configuration | Model | Split | strict | medium | generous | `reports/` alias |
+| Directory | Configuration | Model | Split | strict | medium | generous | In `reports/` |
 |---|---|---|---|---|---|---|---|
-| `20260101_190935-gpt-5.2-agenticrepair-full-run` | AgenticRepair, all four agents | GPT-5.2 | eval (300) | 266 | 276 | 276 | — |
-| `20251229_003254_gpt-5-mini-agenticrepair-full-run` | AgenticRepair, all four agents | GPT-5-mini | cve (200) | 118 | 154 | 156 | `gpt-5-mini-agentmem` |
-| `agenticrepair_gpt_5_nano_results/20260126_145051_agentmem_gp5-5-nano_cve` | AgenticRepair, all four agents | GPT-5-nano | cve (200) | 22 | 41 | 42 | nested, see below |
-| `20251231_145937-baseline-smolagents-gpt-5.2` | Single-agent baseline | GPT-5.2 | eval (300) | 146 | 251 | 256 | `baseline-gpt-5.2` |
-| `20251218_143241-baseline-smolagents-gpt-5-mini` | Single-agent baseline | GPT-5-mini | eval (300) | 116 | 212 | 219 | `baseline-gpt-5-mini` |
-| `20260110_225319-baseline-smolagents-gpt-5-nano` | Single-agent baseline | GPT-5-nano | eval (300) | 41 | 67 | 68 | `baseline-gpt-5-nano` |
-| `20260111_002133-gpt-5.2-ablation-no-static-analysis` | Static analyzer disabled | GPT-5.2 | cve (200) | 170 | 178 | 179 | `gpt-5.2-agentmem-no-static-analysis` |
-| `20260115_212000_gpt-5.2_ablation_no_program_execution` | Dynamic analyzer disabled | GPT-5.2 | cve (200) | 167 | 174 | 174 | — |
-| `20260104_235345-gpt-5.2-ablation-no-commit-history` | History miner disabled | GPT-5.2 | cve (200) | 165 | 174 | 176 | `gpt-5.2-agentmem-no-history-miner` |
-| `20260108_153605-gpt-5.2-ablation-no-program-analysis-full-run` | Static and dynamic analyzers both disabled | GPT-5.2 | cve (200) | 165 | 175 | 175 | `gpt-5.2-agentmem-no-program-analysis` |
-| `20260115_193239_ablation_single_agent_scaffold_full_run` | Single-agent scaffold | GPT-5.2 | cve (200) | 70 | 129 | 131 | `gpt-5.2-agentmem-single-agent-scaffold` |
+| `agenticrepair-gpt-5.2` | AgenticRepair, all four agents | GPT-5.2 | eval (300) | 266 | 276 | 276 | yes |
+| `agenticrepair-gpt-5-mini` | AgenticRepair, all four agents | GPT-5-mini | cve (200) | 118 | 154 | 156 | yes |
+| `agenticrepair-gpt-5-nano` | AgenticRepair, all four agents | GPT-5-nano | cve (200) | 22 | 41 | 42 | yes |
+| `baseline-gpt-5.2` | Single-agent baseline | GPT-5.2 | eval (300) | 146 | 251 | 256 | yes |
+| `baseline-gpt-5-mini` | Single-agent baseline | GPT-5-mini | eval (300) | 116 | 212 | 219 | yes |
+| `baseline-gpt-5-nano` | Single-agent baseline | GPT-5-nano | eval (300) | 41 | 67 | 68 | yes |
+| `agenticrepair-gpt-5.2-no-static-analysis` | Static analyzer disabled | GPT-5.2 | cve (200) | 170 | 178 | 179 | yes |
+| `agenticrepair-gpt-5.2-no-dynamic-analysis` | Dynamic analyzer disabled | GPT-5.2 | cve (200) | 167 | 174 | 174 | no |
+| `agenticrepair-gpt-5.2-no-history-miner` | History miner disabled | GPT-5.2 | cve (200) | 165 | 174 | 176 | yes |
+| `agenticrepair-gpt-5.2-no-program-analysis` | Static and dynamic analyzers both disabled | GPT-5.2 | cve (200) | 165 | 175 | 175 | yes |
+| `agenticrepair-gpt-5.2-single-agent-scaffold` | Single-agent scaffold | GPT-5.2 | cve (200) | 70 | 129 | 131 | yes |
 
 The configuration column is not inferred from directory names; it reflects which analyzer
 trajectories each run actually contains and which prompt its fixer agent received.
@@ -100,7 +100,7 @@ the run directory, then point `--input-dir` at that copy:
 
 ```bash
 python -m secb.evaluator.eval_instances \
-    --input-dir ./results/20260101_190935-gpt-5.2-agenticrepair-full-run \
+    --input-dir ./results/agenticrepair-gpt-5.2 \
     --type patch \
     --split eval \
     --agent smolagent \
@@ -110,14 +110,5 @@ python -m secb.evaluator.eval_instances \
 
 Use `--split eval` for the 300-instance runs and `--split cve` for the 200-instance runs.
 
-## Two irregularities worth knowing
-
-`results/agenticrepair_gpt_5_nano_results/` is nested one level deeper than the other runs and
-contains two directories: the run itself,
-`20260126_145051_agentmem_gp5-5-nano_cve`, and `gpt-5-nano-agentmem`, which is that run's
-report files duplicated under a readable name. The duplicate is byte-identical and plays the role
-that a `reports/` entry plays for the other runs.
-
-`reports/` covers 8 of the 11 runs. The main GPT-5.2 run, the no-dynamic-analyzer ablation, and
-the GPT-5-nano AgenticRepair run have no `reports/` alias; read their report files from
-`results/` directly.
+`results/` and `reports/` use the same directory name for a run. `reports/` has every run except
+`agenticrepair-gpt-5.2-no-dynamic-analysis`; that run's report files are only under `results/`.

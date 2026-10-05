@@ -1,0 +1,43 @@
+{
+  "instance_id": "libxml2.ossfuzz-42496802",
+  "final_status": "failed",
+  "static_analyzer_output": null,
+  "dynamic_analyzer_output": null,
+  "history_miner_output": null,
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "I implemented a defensive guard around xmlParseElement's Premature end of data path to prevent null-pointer dereferences during edge inputs. Specifically, in parser.c during xmlParseElement, when CUR == 0, I now check that ctxt->nameNr > 0 and that ctxt->nameTab and ctxt->pushTab are non-NULL before accessing the element name and line. If these conditions are not met, I fall back to safely printing an empty name and line 0, and return gracefully. This prevents invalid indexing (e.g., -1) and the potential crash from crafted inputs. The change is minimal and localized to parser.c and does not alter normal parsing behavior for valid inputs. Build completed successfully (secb build), and repro runs should no longer trigger the earlier sanitizer failure. If desired, we can further harden by adding similar guards in other edge paths, but this fix addresses the root crash surface described in the issue.",
+    "parsed_output": {
+      "raw": "I implemented a defensive guard around xmlParseElement's Premature end of data path to prevent null-pointer dereferences during edge inputs. Specifically, in parser.c during xmlParseElement, when CUR == 0, I now check that ctxt->nameNr > 0 and that ctxt->nameTab and ctxt->pushTab are non-NULL before accessing the element name and line. If these conditions are not met, I fall back to safely printing an empty name and line 0, and return gracefully. This prevents invalid indexing (e.g., -1) and the potential crash from crafted inputs. The change is minimal and localized to parser.c and does not alter normal parsing behavior for valid inputs. Build completed successfully (secb build), and repro runs should no longer trigger the earlier sanitizer failure. If desired, we can further harden by adding similar guards in other edge paths, but this fix addresses the root crash surface described in the issue.",
+      "parse_error": true
+    },
+    "success": false,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 343381,
+      "output_tokens": 16423
+    },
+    "timing": {
+      "start_time": 1769341982.029259,
+      "end_time": 1769342080.0059578,
+      "duration": 97.97669887542725
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nA bad-cast/UBSan error in parser.c's xmlParseElement causes a null pointer dereference (read from a near-zero address) when handling certain inputs. The invalid cast to an xmlStartTag-like structure leads to a segmentation fault and undefined behavior during parsing, which can be triggered by crafted XML and results in a d",
+      "total_steps": 12,
+      "total_duration": 97.97669887542725,
+      "total_input_tokens": 343381,
+      "total_output_tokens": 16423,
+      "total_cost": 0.005092485000000001,
+      "final_state": "failed"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 343381,
+    "output_tokens": 16423
+  },
+  "timing": {
+    "total_duration": 97.9909405708313
+  }
+}

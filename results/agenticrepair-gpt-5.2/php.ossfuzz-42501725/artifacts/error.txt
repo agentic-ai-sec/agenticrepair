@@ -1,0 +1,2 @@
+Error: Container is not running (status: exited)
+Container was likely stopped due to timeout or other error.

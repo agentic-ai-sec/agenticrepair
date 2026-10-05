@@ -1,0 +1,34 @@
+diff --git a/ext/hash/hash_xxhash.c b/ext/hash/hash_xxhash.c
+index 3edcdfc9636..6f92f6ef871 100644
+--- a/ext/hash/hash_xxhash.c
++++ b/ext/hash/hash_xxhash.c
+@@ -58,6 +58,16 @@ PHP_HASH_API void PHP_XXH32Init(PHP_XXH32_CTX *ctx, HashTable *args)
+ 
+ PHP_HASH_API void PHP_XXH32Update(PHP_XXH32_CTX *ctx, const unsigned char *in, size_t len)
+ {
++	/*
++	 * XXH32_update() assumes ctx->s.memsize is within [0,15].
++	 * Corrupted/attacker-controlled serialized HashContext data can violate this
++	 * invariant and trigger size_t underflow in xxhash (e.g. 16 - memsize),
++	 * leading to huge/overlapping copies.
++	 */
++	if (UNEXPECTED(ctx->s.memsize >= 16)) {
++		/* Reset to a known-good state to avoid undefined behavior. */
++		XXH32_reset(&ctx->s, 0);
++	}
+ 	XXH32_update(&ctx->s, in, len);
+ }
+ 	
+diff --git a/ext/hash/xxhash/xxhash.h b/ext/hash/xxhash/xxhash.h
+index 2d56d23c5d0..ea85f4d5b71 100644
+--- a/ext/hash/xxhash/xxhash.h
++++ b/ext/hash/xxhash/xxhash.h
+@@ -913,7 +913,7 @@ static void XXH_free(void* p) { free(p); }
+ #include <string.h>
+ static void* XXH_memcpy(void* dest, const void* src, size_t size)
+ {
+-    return memcpy(dest,src,size);
++    return memmove(dest,src,size);
+ }
+ 
+ #include <limits.h>   /* ULLONG_MAX */

@@ -1,0 +1,26 @@
+diff --git a/Zend/zend_closures.c b/Zend/zend_closures.c
+index ceeac23531c..742c1e475ed 100644
+--- a/Zend/zend_closures.c
++++ b/Zend/zend_closures.c
+@@ -273,7 +273,12 @@ static ZEND_NAMED_FUNCTION(zend_closure_call_magic) /* {{{ */ {
+ 	fci.named_params = NULL;
+ 	fci.params = params;
+ 	fci.param_count = 2;
+-	ZVAL_STR(&fci.params[0], EX(func)->common.function_name);
++	/* Copy the function name into the argument zval.
++	 * zend_call_function will addref/delref arguments as part of call frame setup/teardown.
++	 * Using a non-refcounted assignment here may lead to the closure-owned function_name
++	 * being released during the call, resulting in use-after-free during closure teardown.
++	 */
++	ZVAL_STR_COPY(&fci.params[0], EX(func)->common.function_name);
+ 	if (ZEND_NUM_ARGS()) {
+ 		array_init_size(&fci.params[1], ZEND_NUM_ARGS());
+ 		zend_copy_parameters_array(ZEND_NUM_ARGS(), &fci.params[1]);
+@@ -286,6 +291,7 @@ static ZEND_NAMED_FUNCTION(zend_closure_call_magic) /* {{{ */ {
+ 
+ 	zend_call_function(&fci, &fcc);
+ 
++	zval_ptr_dtor(&fci.params[0]);
+ 	zval_ptr_dtor(&fci.params[1]);
+ }
+ /* }}} */

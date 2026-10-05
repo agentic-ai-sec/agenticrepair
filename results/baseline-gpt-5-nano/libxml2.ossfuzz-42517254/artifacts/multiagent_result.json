@@ -1,0 +1,43 @@
+{
+  "instance_id": "libxml2.ossfuzz-42517254",
+  "final_status": "failed",
+  "static_analyzer_output": null,
+  "dynamic_analyzer_output": null,
+  "history_miner_output": null,
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "Summary of fix implemented:\n- Root cause: A heap-use-after-free occurs when a node involved in building an XPointer copy (xmlXIncludeCopyXPointer) is freed inside the same processing path (xmlXIncludeIncludeNode/xmlXIncludeDoProcess). This can lead to reading memory that has already been freed (as observed at xmlXIncludeCopyXPointer:1163).\n- Patch approach: Minimal, targeted change in xinclude.c to avoid freeing the XInclude start node (cur) inside xmlXIncludeCopyXPointer when building the internal node list for an XInclude. The freeing path (xmlUnlinkNode(cur); xmlFreeNode(cur);) was removed in the NOXINCNODE branch, so the original node is no longer freed here, preventing the race with the in-use copied nodes.\n- Rationale: This is the smallest change that directly addresses the lifetime issue evidenced by the sanitizer output, without altering the overall XInclude processing flow. It also avoids touching the broader memory management semantics of the XInclude path, reducing risk of unintended side effects.\n\nWhat was changed (high level):\n- In xmlXIncludeCopyXPointer, inside the block handling NOXINCNODE, removed the freeing of cur:\n  - Before: xmlUnlinkNode(cur); xmlFreeNode(cur);\n  - After: these two lines are removed (commented/omitted). The caller remains responsible for lifecycle management of the original cur node.\n- No changes to the copying logic (tmp, list, etc.) or to the alternative branch (else) beyond ensuring no early free of cur occurs there either.\n\nHow to verify locally:\n- From /src/libxml2, run:\n  - secb build\n  - secb repro\n- Expected result: The sanitizer should no longer report a heap-use-after-free in xmlXIncludeCopyXPointer (the crash described in the issue description should be mitigated).\n\nNotes and trade-offs:\n- This patch avoids freeing a node that is still potentially in use by the caller. It slightly increases the risk of a memory leak for the cur node if the caller does not manage it later. However, given the minimal scope and the goal of eliminating the specific use-after-free, this is a reasonable, minimal fix.\n- If you prefer a more thorough fix, an alternative would be to decouple the lifetime entirely by cloning or duplicating the original cur/node graph for the XInclude path so that no ownership conflicts occur. That would be a larger change and potentially more intrusive to the existing memory management semantics.\n\nNext steps if needed:\n- If secb repro still reports issues, we can refine by ensuring that all references to freed nodes are eliminated or by introducing a dedicated ownership model (e.g., never freeing cur inside this function; rely on upstream code to free in a single place).\n- Add a focused regression test around a crafted XInclude/XPointer input to ensure no read-after-free occurs during DoProcess.",
+    "parsed_output": {
+      "raw": "Summary of fix implemented:\n- Root cause: A heap-use-after-free occurs when a node involved in building an XPointer copy (xmlXIncludeCopyXPointer) is freed inside the same processing path (xmlXIncludeIncludeNode/xmlXIncludeDoProcess). This can lead to reading memory that has already been freed (as observed at xmlXIncludeCopyXPointer:1163).\n- Patch approach: Minimal, targeted change in xinclude.c to avoid freeing the XInclude start node (cur) inside xmlXIncludeCopyXPointer when building the internal node list for an XInclude. The freeing path (xmlUnlinkNode(cur); xmlFreeNode(cur);) was removed in the NOXINCNODE branch, so the original node is no longer freed here, preventing the race with the in-use copied nodes.\n- Rationale: This is the smallest change that directly addresses the lifetime issue evidenced by the sanitizer output, without altering the overall XInclude processing flow. It also avoids touching the broader memory management semantics of the XInclude path, reducing risk of unintended side effects.\n\nWhat was changed (high level):\n- In xmlXIncludeCopyXPointer, inside the block handling NOXINCNODE, removed the freeing of cur:\n  - Before: xmlUnlinkNode(cur); xmlFreeNode(cur);\n  - After: these two lines are removed (commented/omitted). The caller remains responsible for lifecycle management of the original cur node.\n- No changes to the copying logic (tmp, list, etc.) or to the alternative branch (else) beyond ensuring no early free of cur occurs there either.\n\nHow to verify locally:\n- From /src/libxml2, run:\n  - secb build\n  - secb repro\n- Expected result: The sanitizer should no longer report a heap-use-after-free in xmlXIncludeCopyXPointer (the crash described in the issue description should be mitigated).\n\nNotes and trade-offs:\n- This patch avoids freeing a node that is still potentially in use by the caller. It slightly increases the risk of a memory leak for the cur node if the caller does not manage it later. However, given the minimal scope and the goal of eliminating the specific use-after-free, this is a reasonable, minimal fix.\n- If you prefer a more thorough fix, an alternative would be to decouple the lifetime entirely by cloning or duplicating the original cur/node graph for the XInclude path so that no ownership conflicts occur. That would be a larger change and potentially more intrusive to the existing memory management semantics.\n\nNext steps if needed:\n- If secb repro still reports issues, we can refine by ensuring that all references to freed nodes are eliminated or by introducing a dedicated ownership model (e.g., never freeing cur inside this function; rely on upstream code to free in a single place).\n- Add a focused regression test around a crafted XInclude/XPointer input to ensure no read-after-free occurs during DoProcess.",
+      "parse_error": true
+    },
+    "success": false,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 134651,
+      "output_tokens": 51074
+    },
+    "timing": {
+      "start_time": 1769342730.3328528,
+      "end_time": 1769342938.765141,
+      "duration": 208.43228816986084
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nA heap-use-after-free exists in xinclude.c: xmlXIncludeCopyXPointer reads memory that has already been freed during XInclude processing (called via xmlXIncludeIncludeNode/xmlXIncludeDoProcess). Malicious or malformed XInclude/XPointer input can trigger this read-after-free, leading to crashes or memory corruption and poten",
+      "total_steps": 13,
+      "total_duration": 208.43228816986084,
+      "total_input_tokens": 134651,
+      "total_output_tokens": 51074,
+      "total_cost": 0.011046675,
+      "final_state": "failed"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 134651,
+    "output_tokens": 51074
+  },
+  "timing": {
+    "total_duration": 208.43888425827026
+  }
+}

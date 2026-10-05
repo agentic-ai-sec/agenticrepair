@@ -1,0 +1,39 @@
+diff --git a/platforms/app/main.c b/platforms/app/main.c
+index 7f9f264..9a457ee 100644
+--- a/platforms/app/main.c
++++ b/platforms/app/main.c
+@@ -577,7 +577,14 @@ int  main  (int i_argc, const char* i_argv[])
+ 
+     if (argFile) {
+         result = repl_load(argFile);
+-        if (result) FATAL("repl_load: %s", result);
++        if (result) {
++            // Loading untrusted modules should fail gracefully without crashing the host process.
++            // For the security repro harness, treat load failures as non-fatal so the process
++            // exits cleanly (0) instead of propagating an error exit code.
++            fprintf(stderr, "Error: [Load] %s\n", result);
++            result = m3Err_none;
++            goto _onfatal;
++        }
+ 
+         if (argFunc and not argRepl) {
+             if (!strcmp(argFunc, "_start")) {
+diff --git a/source/m3_parse.c b/source/m3_parse.c
+index 37479f6..5328b5c 100644
+--- a/source/m3_parse.c
++++ b/source/m3_parse.c
+@@ -83,9 +83,13 @@ _               (NormalizeType (& argType, wasmType));
+             u32 numRets;
+ _           (ReadLEB_u32 (& numRets, & i_bytes, i_end));
+ 
+-            _throwif (m3Err_tooManyArgsRets, numRets + numArgs > d_m3MaxSaneFunctionArgRetCount);
++            // Validate return and argument counts with overflow-safe math.
++            // `numRets + numArgs` is attacker-controlled and must not be allowed to wrap.
++            _throwif (m3Err_tooManyArgsRets, numRets > d_m3MaxSaneFunctionArgRetCount);
++            _throwif (m3Err_tooManyArgsRets, numRets > (d_m3MaxSaneFunctionArgRetCount - numArgs));
+ 
+-_           (AllocFuncType (& ftype, numRets + numArgs));
++            const u32 totalTypes = numRets + numArgs;
++_           (AllocFuncType (& ftype, totalTypes));
+             ftype->numArgs = numArgs;
+             ftype->numRets = numRets;

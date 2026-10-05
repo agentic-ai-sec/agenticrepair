@@ -1,0 +1,31 @@
+diff --git a/src/njs_regexp.c b/src/njs_regexp.c
+--- a/src/njs_regexp.c
++++ b/src/njs_regexp.c
+@@ -1771,10 +1771,24 @@
+                 return NJS_ERROR;
+             }
+ 
+-            (void) njs_string_prop(vm, &sv, retval);
++            /*
++             * RegExp exec result capture groups may be undefined for
++             * non-participating groups.  Also, a user-supplied exec() may
++             * return non-string values.
++             *
++             * For built-in exec results, capture strings are freed by
++             * njs_regexp_exec_result_free(), so string captures must be copied
++             * out before freeing the exec result.
++             */
++            if (njs_is_string(retval)) {
++                (void) njs_string_prop(vm, &sv, retval);
+ 
+-            ret = njs_array_string_add(vm, array, sv.start, sv.size,
+-                                       sv.length);
++                ret = njs_array_string_add(vm, array, sv.start, sv.size,
++                                           sv.length);
++
++            } else {
++                ret = njs_array_add(vm, array, retval);
++            }
+             if (njs_slow_path(ret != NJS_OK)) {
+                 return ret;
+             }

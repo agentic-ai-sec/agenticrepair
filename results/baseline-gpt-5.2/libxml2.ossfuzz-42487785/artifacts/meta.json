@@ -1,0 +1,14 @@
+{
+  "model": "gpt-5.2-2025-12-11",
+  "agent": "ToolCallingAgent",
+  "tools": [
+    "cmd",
+    "final_answer",
+    "python_interpreter"
+  ],
+  "steps": 31,
+  "cost": 1.0613641499999997,
+  "input_tokens": 818001,
+  "output_tokens": 32616,
+  "docker_image": "hwiwonlee/secb.eval.x86_64.libxml2.ossfuzz-42487785:patch"
+}

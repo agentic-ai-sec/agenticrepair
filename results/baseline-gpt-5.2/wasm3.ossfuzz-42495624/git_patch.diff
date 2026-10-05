@@ -1,0 +1,45 @@
+diff --git a/source/m3_compile.c b/source/m3_compile.c
+index a895c49..b679987 100644
+--- a/source/m3_compile.c
++++ b/source/m3_compile.c
+@@ -998,7 +998,10 @@ _   (Read_u8 (& opcode, & o->wasm, o->wasmEnd));             m3log (compile, d_i
+ 
+     //printf("Extended opcode: 0x%x\n", i_opcode);
+ 
+-    M3Compiler compiler = GetOpInfo (i_opcode)->compiler;
++    const M3OpInfo * opInfo = GetOpInfo (i_opcode);
++    _throwif (m3Err_unknownOpcode, opInfo == NULL);
++
++    M3Compiler compiler = opInfo->compiler;
+     _throwifnull (m3Err_noCompiler, compiler);
+ 
+ _   ((* compiler) (o, i_opcode));
+diff --git a/source/m3_compile.h b/source/m3_compile.h
+index ece7ad6..be0089b 100644
+--- a/source/m3_compile.h
++++ b/source/m3_compile.h
+@@ -141,11 +141,23 @@ typedef const M3OpInfo *    IM3OpInfo;
+ extern const M3OpInfo c_operations [];
+ extern const M3OpInfo c_operationsFC [];
+ 
++// Currently only the non-prefixed 0xFC opcode range ("trunc_sat") is supported.
++// Ensure that an invalid sub-opcode cannot index past c_operationsFC.
++#ifdef DEBUG
++    // DEBUG builds include an extra termination entry used by find_operation_info.
++    #define d_m3NumOperationsFC 9
++#else
++    #define d_m3NumOperationsFC 8
++#endif
++
+ static inline
+ const M3OpInfo* GetOpInfo(m3opcode_t opcode) {
+     switch (opcode >> 8) {
+     case 0x00: return &c_operations[opcode];
+-    case 0xFC: return &c_operationsFC[opcode & 0xFF];
++    case 0xFC: {
++        const u32 opIndex = (u32) (opcode & 0xFF);
++        return (opIndex < d_m3NumOperationsFC) ? &c_operationsFC[opIndex] : NULL;
++    }
+     default:   return NULL;
+     }
+ }

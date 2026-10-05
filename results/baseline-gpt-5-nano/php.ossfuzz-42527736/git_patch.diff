@@ -1,0 +1,47 @@
+diff --git a/ext/standard/file.c b/ext/standard/file.c
+index edaba57748c..5610192ea0b 100644
+--- a/ext/standard/file.c
++++ b/ext/standard/file.c
+@@ -1949,7 +1949,9 @@ PHPAPI HashTable *php_fgetcsv(php_stream *stream, char delimiter, char enclosure
+ 	/* Strip trailing space from buf, saving end of line in case required for enclosure field */
+ 
+ 	bptr = buf;
+-	line_end = limit = (char *)php_fgetcsv_lookup_trailing_spaces(buf, buf_len);
++	limit = (char *)php_fgetcsv_lookup_trailing_spaces(buf, buf_len);
++		if (limit < buf) limit = buf;
++		line_end = limit;
+ 	line_end_len = buf_len - (size_t)(limit - buf);
+ 
+ 	/* reserve workspace for building each individual field */
+@@ -2053,7 +2055,9 @@ PHPAPI HashTable *php_fgetcsv(php_stream *stream, char delimiter, char enclosure
+ 								bptr = buf = new_buf;
+ 								hunk_begin = buf;
+ 
+-								line_end = limit = (char *)php_fgetcsv_lookup_trailing_spaces(buf, buf_len);
++								limit = (char *)php_fgetcsv_lookup_trailing_spaces(buf, buf_len);
++		if (limit < buf) limit = buf;
++		line_end = limit;
+ 								line_end_len = buf_len - (size_t)(limit - buf);
+ 
+ 								state = 0;
+@@ -2147,8 +2151,10 @@ PHPAPI HashTable *php_fgetcsv(php_stream *stream, char delimiter, char enclosure
+ 			}
+ 
+ 		quit_loop_3:
+-			memcpy(tptr, hunk_begin, bptr - hunk_begin);
+-			tptr += (bptr - hunk_begin);
++			size_t _copy_len = (size_t)(bptr - hunk_begin);
++			if ((ptrdiff_t)(bptr - hunk_begin) < 0) { _copy_len = 0; }
++			memcpy(tptr, hunk_begin, _copy_len);
++			tptr += _copy_len;
+ 			bptr += inc_len;
+ 			comp_end = tptr;
+ 		} else {
+@@ -2181,6 +2187,7 @@ PHPAPI HashTable *php_fgetcsv(php_stream *stream, char delimiter, char enclosure
+ 			tptr += (bptr - hunk_begin);
+ 
+ 			comp_end = (char *)php_fgetcsv_lookup_trailing_spaces(temp, tptr - temp);
++		if (comp_end < temp) comp_end = temp;
+ 			if (*bptr == delimiter) {
+ 				bptr++;
+ 			}

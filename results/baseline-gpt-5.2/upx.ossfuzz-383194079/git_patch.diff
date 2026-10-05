@@ -1,0 +1,47 @@
+diff --git a/src/p_mach.cpp b/src/p_mach.cpp
+index a97d2aff..1c649f27 100644
+--- a/src/p_mach.cpp
++++ b/src/p_mach.cpp
+@@ -1539,6 +1539,11 @@ void PackMachBase<T>::unpack(OutputFile *fo)
+     unsigned char const *ptr = (unsigned char const *)(1+mhdr);
+     unsigned headway = mhdr_buf.getSize() - sizeof(*mhdr);
+     for (unsigned j= 0; j < ncmds; ++j) {
++        if (headway < sizeof(Mach_command)) {
++            char msg[64]; snprintf(msg, sizeof(msg),
++                "truncated packed Mach load_command @%#x", ptr_udiff_bytes(ptr, mhdr));
++            throwCantUnpack(msg);
++        }
+         unsigned cmdsize = ((Mach_command const *)ptr)->cmdsize;
+         if (is_bad_linker_command( ((Mach_command const *)ptr)->cmd, cmdsize,
+                 headway, lc_seg, sizeof(Addr))) {
+@@ -1675,12 +1680,18 @@ tribool PackMachBase<T>::canUnpack()
+     off_t offLINK = 0;
+     unsigned pos_next = 0;
+     unsigned nseg = 0;
+-    Mach_command const *ptr = (Mach_command const *)rawmseg;
+-    for (unsigned j= 0; j < ncmds;
+-            ptr = (Mach_command const *)(ptr->cmdsize + (char const *)ptr), ++j) {
++    unsigned char const *cmdp = (unsigned char const *)rawmseg;
++    for (unsigned j = 0; j < ncmds; ++j) {
++        if (headway < (int)sizeof(Mach_command)) {
++            opt->info_mode += 1;
++            infoWarning("Mach_command[%u] truncated: headway=%d", j, headway);
++            opt->info_mode -= 1;
++            throwCantUnpack("file corrupted");
++        }
++        Mach_command const *const ptr = (Mach_command const *)cmdp;
+         unsigned const cmd = ptr->cmd;
+         unsigned const cmdsize = ptr->cmdsize;
+-        if (is_bad_linker_command(cmd, cmdsize, headway, lc_seg, sizeof(Addr))) {
++        if (is_bad_linker_command(cmd, cmdsize, (unsigned)headway, lc_seg, sizeof(Addr))) {
+                 opt->info_mode += 1;
+                 infoWarning("bad Mach_command[%u]{@0x%zx,+0x%x}=0x%x: file_size=0x%lx  cmdsize=0x%lx",
+                     j, (sizeof(mhdri) + ((char const *)ptr - (char const *)rawmseg)), headway,
+@@ -1734,6 +1745,7 @@ tribool PackMachBase<T>::canUnpack()
+         else if (Mach_command::LC_UNIXTHREAD==ptr->cmd) {
+             rip = entryVMA = threadc_getPC(ptr);
+         }
++        cmdp += cmdsize;
+     }
+     if (3==nseg && 395 != style) { // __PAGEZERO, __TEXT, __LINKEDIT;  no __XHDR, no UPX_DATA
+         style = 392;

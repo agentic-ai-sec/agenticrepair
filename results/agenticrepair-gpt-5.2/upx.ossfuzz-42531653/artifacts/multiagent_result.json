@@ -1,0 +1,230 @@
+{
+  "instance_id": "upx.ossfuzz-42531653",
+  "final_status": "success",
+  "static_analyzer_output": {
+    "role": "static_analyzer",
+    "raw_output": "{\n  \"analysis_type\": \"memory\",\n  \"findings\": [],\n  \"dataflow_summary\": \"\",\n  \"key_insight\": \"CodeQL memory queries did not directly flag src/p_unix.cpp, but manual review of PackUnix::find_overlay_offset shows an incorrect bounds check: it validates (l + 4 <= bufsize) but reads at (buf + i + l), so the correct condition must account for i (i + l + 4 <= bufsize). This matches the ASan 4-byte OOB read in get_te32/get_le32.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Fix the bounds check in PackUnix::find_overlay_offset to validate the actual read address: ensure i >= 0, l >= 0, and (i + l + 4) <= bufsize (or equivalently l + 4 <= bufsize - i) before calling get_te32(buf + i + l).\",\n      \"reasoning\": \"The crash happens when get_te32 reads 4 bytes starting exactly at buf+bufsize (end of MemBuffer). The current check ignores i, so it can pass even when buf+i+l points past the end.\",\n      \"trade_offs\": \"Minimal behavior change; may reject some malformed inputs earlier (expected).\"\n    },\n    {\n      \"approach\": \"Make get_te32/get_le32 usage safer by introducing a checked helper (e.g., get_te32_checked(ptr, end)) or passing (base, size) so 4-byte reads can be validated centrally.\",\n      \"reasoning\": \"Prevents similar bugs anywhere a 32-bit load is performed on a raw pointer without a length; reduces repeated ad-hoc arithmetic checks.\",\n      \"trade_offs\": \"Requires refactoring call sites and may add small overhead (negligible for file parsing).\"\n    },\n    {\n      \"approach\": \"Strengthen/clarify getPackHeader contract: ensure ph.buf_offset and ph.getPackHeaderSize() are validated against the provided buffer length (bufsize - i) and cannot produce an l that points outside that slice.\",\n      \"reasoning\": \"In this code path, l is derived from parsed header fields (ph.buf_offset). If getPackHeader guaranteed these fields are in-range relative to the provided slice, downstream code would be safer.\",\n      \"trade_offs\": \"May require auditing multiple packers/stubs that rely on looser parsing; could reject additional malformed/legacy edge cases.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "analysis_type": "memory",
+      "findings": [],
+      "dataflow_summary": "",
+      "key_insight": "CodeQL memory queries did not directly flag src/p_unix.cpp, but manual review of PackUnix::find_overlay_offset shows an incorrect bounds check: it validates (l + 4 <= bufsize) but reads at (buf + i + l), so the correct condition must account for i (i + l + 4 <= bufsize). This matches the ASan 4-byte OOB read in get_te32/get_le32.",
+      "fix_suggestions": [
+        {
+          "approach": "Fix the bounds check in PackUnix::find_overlay_offset to validate the actual read address: ensure i >= 0, l >= 0, and (i + l + 4) <= bufsize (or equivalently l + 4 <= bufsize - i) before calling get_te32(buf + i + l).",
+          "reasoning": "The crash happens when get_te32 reads 4 bytes starting exactly at buf+bufsize (end of MemBuffer). The current check ignores i, so it can pass even when buf+i+l points past the end.",
+          "trade_offs": "Minimal behavior change; may reject some malformed inputs earlier (expected)."
+        },
+        {
+          "approach": "Make get_te32/get_le32 usage safer by introducing a checked helper (e.g., get_te32_checked(ptr, end)) or passing (base, size) so 4-byte reads can be validated centrally.",
+          "reasoning": "Prevents similar bugs anywhere a 32-bit load is performed on a raw pointer without a length; reduces repeated ad-hoc arithmetic checks.",
+          "trade_offs": "Requires refactoring call sites and may add small overhead (negligible for file parsing)."
+        },
+        {
+          "approach": "Strengthen/clarify getPackHeader contract: ensure ph.buf_offset and ph.getPackHeaderSize() are validated against the provided buffer length (bufsize - i) and cannot produce an l that points outside that slice.",
+          "reasoning": "In this code path, l is derived from parsed header fields (ph.buf_offset). If getPackHeader guaranteed these fields are in-range relative to the provided slice, downstream code would be safer.",
+          "trade_offs": "May require auditing multiple packers/stubs that rely on looser parsing; could reject additional malformed/legacy edge cases."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 196597,
+      "output_tokens": 3463
+    },
+    "timing": {
+      "start_time": 1768971470.944334,
+      "end_time": 1768971586.4844737,
+      "duration": 115.54013967514038
+    },
+    "trajectory": {
+      "agent_role": "static_analyzer",
+      "task": "<uploaded_files>\n/src/upx\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/upx`. Consider the following issue description:\n\n<issue_description>\nA bounds-checking error in PackUnix::find_overlay_offset (src/p_unix.cpp) allows a 4-byte read past the end of the input buffer via the little-endian 32-bit reader (get_le32 / N_BELE_RTP::LEPolicy::get32). Malformed input can trigger a heap-buffer-overflow read during unpack detection (PackUnix::canUnpack), leading to crashes (DoS",
+      "total_steps": 10,
+      "total_duration": 115.54013967514038,
+      "total_input_tokens": 196597,
+      "total_output_tokens": 3463,
+      "total_cost": 0.18366915,
+      "final_state": "success"
+    }
+  },
+  "dynamic_analyzer_output": {
+    "role": "dynamic_analyzer",
+    "raw_output": "{\n  \"tools_used\": [\"gdb\", \"ubsan\"],\n  \"crash_info\": {\n    \"address\": \"0x519000002280\",\n    \"type\": \"heap-buffer-overflow (READ of size 4)\",\n    \"location\": \"src/util/bele.h:117 (get_ne32) via src/p_unix.cpp:586 (PackUnix::find_overlay_offset)\"\n  },\n  \"backtrace\": [\n    \"get_ne32<void, void> at src/util/bele.h:117\",\n    \"get_le32<void, void> at src/util/bele.h:220\",\n    \"PackUnix::find_overlay_offset(MemBuffer const&) at src/p_unix.cpp:586\",\n    \"PackUnix::canUnpack() at src/p_unix.cpp:569\",\n    \"PackLinuxElf32::canUnpack() at src/p_lx_elf.cpp:2426\",\n    \"PackLinuxElf32x86::canUnpack() at src/p_lx_elf.cpp:7488\",\n    \"try_can_unpack at src/packmast.cpp:119\",\n    \"PackMaster::visitAllPackers at src/packmast.cpp:197\",\n    \"PackMaster::getUnpacker at src/packmast.cpp:247\",\n    \"PackMaster::test() at src/packmast.cpp:271\",\n    \"do_one_file at src/work.cpp:335\",\n    \"upx_main at src/main.cpp:1303\",\n    \"main at src/main.cpp:1367\"\n  ],\n  \"memory_state\": \"ASan reports a 4-byte little-endian read at 0x519000002280, which is exactly 0 bytes past the end of a 1024-byte heap buffer [0x519000001e80, 0x519000002280) allocated by MemBuffer::alloc() (membuffer.cpp:179) in PackUnix::canUnpack() (p_unix.cpp:565).\",\n  \"root_cause_hint\": \"Runtime evidence shows PackUnix::find_overlay_offset() performs a 32-bit read (get_te32/get_le32) at an offset that can equal the buffer size (i.e., remaining bytes < 4). The bounds check in the overlay scan/detection logic is insufficient (off-by-one / missing `+4` check), so malformed/truncated input causes an OOB read during canUnpack() probing.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Add an explicit bounds check before every 32-bit load in PackUnix::find_overlay_offset(): ensure `pos + 4 <= buf.getSize()` (or equivalent remaining-bytes check) before calling get_te32/get_le32; otherwise stop scanning/return not-found.\",\n      \"reasoning\": \"The crash is a 4-byte read exactly at end-of-buffer, so a `>=4` remaining check directly prevents the out-of-bounds access with minimal behavioral change.\",\n      \"trade_offs\": \"Slightly more conditional branches in the scan loop; may change detection behavior for extremely short/truncated inputs (should be treated as non-unpackable anyway).\"\n    },\n    {\n      \"approach\": \"Refactor reads to use a safe accessor API (e.g., `read32_le(offset, &out)` returning bool) that centralizes bounds checking and is used across packer detection routines.\",\n      \"reasoning\": \"Prevents similar bugs elsewhere by making out-of-bounds reads structurally harder; dynamic evidence shows a generic low-level reader is used without size context.\",\n      \"trade_offs\": \"Requires broader code changes and testing across multiple packers; may introduce minor performance overhead.\" \n    },\n    {\n      \"approach\": \"Strengthen canUnpack() preconditions: if the input buffer size is below the minimum needed for overlay detection (including any trailer/header structures), bail out early before calling find_overlay_offset().\",\n      \"reasoning\": \"The failing path happens during unpack detection on malformed input; rejecting undersized buffers earlier reduces attack surface and avoids invoking deeper parsers.\",\n      \"trade_offs\": \"Must be careful to not reject valid tiny files; still should not replace in-loop per-read bounds checks (defense-in-depth).\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "tools_used": [
+        "gdb",
+        "ubsan"
+      ],
+      "crash_info": {
+        "address": "0x519000002280",
+        "type": "heap-buffer-overflow (READ of size 4)",
+        "location": "src/util/bele.h:117 (get_ne32) via src/p_unix.cpp:586 (PackUnix::find_overlay_offset)"
+      },
+      "backtrace": [
+        "get_ne32<void, void> at src/util/bele.h:117",
+        "get_le32<void, void> at src/util/bele.h:220",
+        "PackUnix::find_overlay_offset(MemBuffer const&) at src/p_unix.cpp:586",
+        "PackUnix::canUnpack() at src/p_unix.cpp:569",
+        "PackLinuxElf32::canUnpack() at src/p_lx_elf.cpp:2426",
+        "PackLinuxElf32x86::canUnpack() at src/p_lx_elf.cpp:7488",
+        "try_can_unpack at src/packmast.cpp:119",
+        "PackMaster::visitAllPackers at src/packmast.cpp:197",
+        "PackMaster::getUnpacker at src/packmast.cpp:247",
+        "PackMaster::test() at src/packmast.cpp:271",
+        "do_one_file at src/work.cpp:335",
+        "upx_main at src/main.cpp:1303",
+        "main at src/main.cpp:1367"
+      ],
+      "memory_state": "ASan reports a 4-byte little-endian read at 0x519000002280, which is exactly 0 bytes past the end of a 1024-byte heap buffer [0x519000001e80, 0x519000002280) allocated by MemBuffer::alloc() (membuffer.cpp:179) in PackUnix::canUnpack() (p_unix.cpp:565).",
+      "root_cause_hint": "Runtime evidence shows PackUnix::find_overlay_offset() performs a 32-bit read (get_te32/get_le32) at an offset that can equal the buffer size (i.e., remaining bytes < 4). The bounds check in the overlay scan/detection logic is insufficient (off-by-one / missing `+4` check), so malformed/truncated input causes an OOB read during canUnpack() probing.",
+      "fix_suggestions": [
+        {
+          "approach": "Add an explicit bounds check before every 32-bit load in PackUnix::find_overlay_offset(): ensure `pos + 4 <= buf.getSize()` (or equivalent remaining-bytes check) before calling get_te32/get_le32; otherwise stop scanning/return not-found.",
+          "reasoning": "The crash is a 4-byte read exactly at end-of-buffer, so a `>=4` remaining check directly prevents the out-of-bounds access with minimal behavioral change.",
+          "trade_offs": "Slightly more conditional branches in the scan loop; may change detection behavior for extremely short/truncated inputs (should be treated as non-unpackable anyway)."
+        },
+        {
+          "approach": "Refactor reads to use a safe accessor API (e.g., `read32_le(offset, &out)` returning bool) that centralizes bounds checking and is used across packer detection routines.",
+          "reasoning": "Prevents similar bugs elsewhere by making out-of-bounds reads structurally harder; dynamic evidence shows a generic low-level reader is used without size context.",
+          "trade_offs": "Requires broader code changes and testing across multiple packers; may introduce minor performance overhead."
+        },
+        {
+          "approach": "Strengthen canUnpack() preconditions: if the input buffer size is below the minimum needed for overlay detection (including any trailer/header structures), bail out early before calling find_overlay_offset().",
+          "reasoning": "The failing path happens during unpack detection on malformed input; rejecting undersized buffers earlier reduces attack surface and avoids invoking deeper parsers.",
+          "trade_offs": "Must be careful to not reject valid tiny files; still should not replace in-loop per-read bounds checks (defense-in-depth)."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 31600,
+      "output_tokens": 1574
+    },
+    "timing": {
+      "start_time": 1768971586.4953728,
+      "end_time": 1768971690.4647834,
+      "duration": 103.96941065788269
+    },
+    "trajectory": {
+      "agent_role": "dynamic_analyzer",
+      "task": "<uploaded_files>\n/src/upx\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/upx`. Consider the following issue description:\n\n<issue_description>\nA bounds-checking error in PackUnix::find_overlay_offset (src/p_unix.cpp) allows a 4-byte read past the end of the input buffer via the little-endian 32-bit reader (get_le32 / N_BELE_RTP::LEPolicy::get32). Malformed input can trigger a heap-buffer-overflow read during unpack detection (PackUnix::canUnpack), leading to crashes (DoS",
+      "total_steps": 3,
+      "total_duration": 103.96941065788269,
+      "total_input_tokens": 31600,
+      "total_output_tokens": 1574,
+      "total_cost": 0.041652800000000004,
+      "final_state": "success"
+    }
+  },
+  "history_miner_output": {
+    "role": "history_miner",
+    "raw_output": "{\n  \"file_analyzed\": \"src/p_unix.cpp\",\n  \"function_analyzed\": \"PackUnix::find_overlay_offset\",\n  \"relevant_commits\": [\n    {\n      \"hash\": \"23f63e41\",\n      \"message\": \"WIP unpacking ELF shared library\",\n      \"changes\": \"Refactored PackUnix::canUnpack by extracting overlay scanning into new helper PackUnix::find_overlay_offset; introduced logic reading overlay_offset from trailer using get_te32(buf + i + l).\",\n      \"relevance\": \"This commit introduced the vulnerable helper and its bounds check; the later 4-byte read past end stems from how (i,l,bufsize) are validated here.\"\n    },\n    {\n      \"hash\": \"adb0ca82\",\n      \"message\": \"Many changes for ELF shared libraries on Linux and Android\",\n      \"changes\": \"Large Unix/ELF refactors (constructor/destructor options handling, pack changes, etc.) while leaving find_overlay_offset structure intact.\",\n      \"relevance\": \"Not the origin, but indicates ongoing churn in the same area (ELF/shlib support) where regression tests/fuzzing for trailer parsing would be valuable.\"\n    }\n  ],\n  \"vulnerability_origin\": \"Likely introduced when PackUnix::find_overlay_offset was created (commit 23f63e41). The bounds check validates only `l + 4 <= bufsize`, but the actual read is at `buf + i + l`, so inputs with `i > 0` can satisfy the check while still making `i + l + 4 > bufsize`, causing a 4-byte OOB read.\",\n  \"fix_hints\": \"History shows this logic was added during ELF shared-library unpacking work; the intended invariant is that offsets are relative to the trailer start `i`, so bounds checks should be against `bufsize - i` (or explicitly include `i` in the check) before calling get_te32/get_le32.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Correct the bounds check to include the base offset: e.g., `if (l < 0 || i < 0 || i + l < 0 || i + l + 4 > bufsize) throwCantUnpack(...)` (prefer size_t/uint64_t to avoid signed overflow).\",\n      \"reasoning\": \"Directly fixes the demonstrated bug: the read is performed at `buf + i + l`, so the check must constrain `i + l + 4`.\",\n      \"trade_offs\": \"Need careful signed/unsigned handling to avoid wraparound; may reject some edge-case malformed inputs that previously slipped through.\"\n    },\n    {\n      \"approach\": \"Validate relative-to-trailer lengths: replace `l + 4 > bufsize` with `l + 4 > (bufsize - i)` after confirming `0 <= i <= bufsize`.\",\n      \"reasoning\": \"Matches the function\u2019s structure: `i` is the start of the candidate trailer/header, and subsequent parsing is relative to it.\",\n      \"trade_offs\": \"Requires ensuring `bufsize - i` is computed safely (i must be non-negative and within range).\"\n    },\n    {\n      \"approach\": \"Introduce a safe accessor for little-endian reads (e.g., `read_le32(buf, offset)` that checks bounds) and use it instead of raw `get_te32(buf + ...)` in parsing code paths.\",\n      \"reasoning\": \"Prevents similar bugs elsewhere (many UPX parsers do pointer arithmetic then call get_*32); provides a uniform guardrail.\",\n      \"trade_offs\": \"Slight refactor/overhead; requires touching multiple call sites and agreeing on error-handling behavior (return false vs throw).\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "file_analyzed": "src/p_unix.cpp",
+      "function_analyzed": "PackUnix::find_overlay_offset",
+      "relevant_commits": [
+        {
+          "hash": "23f63e41",
+          "message": "WIP unpacking ELF shared library",
+          "changes": "Refactored PackUnix::canUnpack by extracting overlay scanning into new helper PackUnix::find_overlay_offset; introduced logic reading overlay_offset from trailer using get_te32(buf + i + l).",
+          "relevance": "This commit introduced the vulnerable helper and its bounds check; the later 4-byte read past end stems from how (i,l,bufsize) are validated here."
+        },
+        {
+          "hash": "adb0ca82",
+          "message": "Many changes for ELF shared libraries on Linux and Android",
+          "changes": "Large Unix/ELF refactors (constructor/destructor options handling, pack changes, etc.) while leaving find_overlay_offset structure intact.",
+          "relevance": "Not the origin, but indicates ongoing churn in the same area (ELF/shlib support) where regression tests/fuzzing for trailer parsing would be valuable."
+        }
+      ],
+      "vulnerability_origin": "Likely introduced when PackUnix::find_overlay_offset was created (commit 23f63e41). The bounds check validates only `l + 4 <= bufsize`, but the actual read is at `buf + i + l`, so inputs with `i > 0` can satisfy the check while still making `i + l + 4 > bufsize`, causing a 4-byte OOB read.",
+      "fix_hints": "History shows this logic was added during ELF shared-library unpacking work; the intended invariant is that offsets are relative to the trailer start `i`, so bounds checks should be against `bufsize - i` (or explicitly include `i` in the check) before calling get_te32/get_le32.",
+      "fix_suggestions": [
+        {
+          "approach": "Correct the bounds check to include the base offset: e.g., `if (l < 0 || i < 0 || i + l < 0 || i + l + 4 > bufsize) throwCantUnpack(...)` (prefer size_t/uint64_t to avoid signed overflow).",
+          "reasoning": "Directly fixes the demonstrated bug: the read is performed at `buf + i + l`, so the check must constrain `i + l + 4`.",
+          "trade_offs": "Need careful signed/unsigned handling to avoid wraparound; may reject some edge-case malformed inputs that previously slipped through."
+        },
+        {
+          "approach": "Validate relative-to-trailer lengths: replace `l + 4 > bufsize` with `l + 4 > (bufsize - i)` after confirming `0 <= i <= bufsize`.",
+          "reasoning": "Matches the function\u2019s structure: `i` is the start of the candidate trailer/header, and subsequent parsing is relative to it.",
+          "trade_offs": "Requires ensuring `bufsize - i` is computed safely (i must be non-negative and within range)."
+        },
+        {
+          "approach": "Introduce a safe accessor for little-endian reads (e.g., `read_le32(buf, offset)` that checks bounds) and use it instead of raw `get_te32(buf + ...)` in parsing code paths.",
+          "reasoning": "Prevents similar bugs elsewhere (many UPX parsers do pointer arithmetic then call get_*32); provides a uniform guardrail.",
+          "trade_offs": "Slight refactor/overhead; requires touching multiple call sites and agreeing on error-handling behavior (return false vs throw)."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 39202,
+      "output_tokens": 2223
+    },
+    "timing": {
+      "start_time": 1768971690.4688442,
+      "end_time": 1768971787.2172606,
+      "duration": 96.74841642379761
+    },
+    "trajectory": {
+      "agent_role": "history_miner",
+      "task": "<uploaded_files>\n/src/upx\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/upx`. Consider the following issue description:\n\n<issue_description>\nA bounds-checking error in PackUnix::find_overlay_offset (src/p_unix.cpp) allows a 4-byte read past the end of the input buffer via the little-endian 32-bit reader (get_le32 / N_BELE_RTP::LEPolicy::get32). Malformed input can trigger a heap-buffer-overflow read during unpack detection (PackUnix::canUnpack), leading to crashes (DoS",
+      "total_steps": 4,
+      "total_duration": 96.74841642379761,
+      "total_input_tokens": 39202,
+      "total_output_tokens": 2223,
+      "total_cost": 0.0489223,
+      "final_state": "success"
+    }
+  },
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "{\n  \"root_cause\": \"PackUnix::find_overlay_offset() performs a 32-bit little-endian read via get_te32(buf + i + l) but only checked (l + 4 <= bufsize). This ignored the base offset i (start of the candidate trailer), allowing i+l to point at/after the end of the MemBuffer and triggering a 4-byte heap out-of-bounds read.\",\n  \"fix_approach\": \"Tightened the bounds validation in PackUnix::find_overlay_offset() to account for the actual read address (i + l). The code now verifies that i is within [0, bufsize] and that i+l has at least 4 bytes remaining (i + l <= bufsize - 4) before calling get_te32(). Malformed/truncated inputs are rejected with CantUnpackException instead of causing an OOB read.\",\n  \"files_modified\": [\n    \"src/p_unix.cpp\"\n  ],\n  \"verification\": {\n    \"build_success\": true,\n    \"repro_success\": true,\n    \"exit_code\": 0,\n    \"asan_output\": \"No sanitizer errors detected\"\n  },\n  \"confidence\": \"high\"\n}",
+    "parsed_output": {
+      "root_cause": "PackUnix::find_overlay_offset() performs a 32-bit little-endian read via get_te32(buf + i + l) but only checked (l + 4 <= bufsize). This ignored the base offset i (start of the candidate trailer), allowing i+l to point at/after the end of the MemBuffer and triggering a 4-byte heap out-of-bounds read.",
+      "fix_approach": "Tightened the bounds validation in PackUnix::find_overlay_offset() to account for the actual read address (i + l). The code now verifies that i is within [0, bufsize] and that i+l has at least 4 bytes remaining (i + l <= bufsize - 4) before calling get_te32(). Malformed/truncated inputs are rejected with CantUnpackException instead of causing an OOB read.",
+      "files_modified": [
+        "src/p_unix.cpp"
+      ],
+      "verification": {
+        "build_success": true,
+        "repro_success": true,
+        "exit_code": 0,
+        "asan_output": "No sanitizer errors detected"
+      },
+      "confidence": "high"
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 222676,
+      "output_tokens": 4857
+    },
+    "timing": {
+      "start_time": 1768971787.2213233,
+      "end_time": 1768971863.7392142,
+      "duration": 76.51789093017578
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/upx\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/upx`. Consider the following issue description:\n\n<issue_description>\nA bounds-checking error in PackUnix::find_overlay_offset (src/p_unix.cpp) allows a 4-byte read past the end of the input buffer via the little-endian 32-bit reader (get_le32 / N_BELE_RTP::LEPolicy::get32). Malformed input can trigger a heap-buffer-overflow read during unpack detection (PackUnix::canUnpack), leading to crashes (DoS",
+      "total_steps": 16,
+      "total_duration": 76.51789093017578,
+      "total_input_tokens": 222676,
+      "total_output_tokens": 4857,
+      "total_cost": 0.13895139999999997,
+      "final_state": "success"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 490075,
+    "output_tokens": 12117
+  },
+  "timing": {
+    "total_duration": 392.80214834213257
+  }
+}

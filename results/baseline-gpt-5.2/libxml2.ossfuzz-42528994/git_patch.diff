@@ -1,0 +1,46 @@
+diff --git a/parser.c b/parser.c
+index cd89fdb6..de36ba19 100644
+--- a/parser.c
++++ b/parser.c
+@@ -4951,7 +4951,18 @@ xmlParseCommentComplex(xmlParserCtxtPtr ctxt, xmlChar *buf,
+ 	    xmlChar *new_buf;
+             size_t new_size;
+ 
++            /* Ensure enough room for up to 4 UTF-8 bytes plus NUL */
++            if (len > (size_t)-6) {
++                xmlFree(buf);
++                xmlErrMemory(ctxt, NULL);
++                return;
++            }
++
+ 	    new_size = size * 2;
++            if (new_size < size)
++                new_size = (size_t)-1;
++            if (new_size < len + 6)
++                new_size = len + 6;
+ 	    new_buf = (xmlChar *) xmlRealloc(buf, new_size);
+ 	    if (new_buf == NULL) {
+ 		xmlFree (buf);
+@@ -5376,7 +5387,21 @@ xmlParsePI(xmlParserCtxtPtr ctxt) {
+ 		   ((cur != '?') || (NXT(1) != '>'))) {
+ 		if (len + 5 >= size) {
+ 		    xmlChar *tmp;
+-                    size_t new_size = size * 2;
++                    size_t new_size;
++
++                    /* Ensure enough room for up to 4 UTF-8 bytes plus NUL */
++                    if (len > (size_t)-6) {
++                        xmlErrMemory(ctxt, NULL);
++                        xmlFree(buf);
++                        ctxt->instate = state;
++                        return;
++                    }
++
++                    new_size = size * 2;
++                    if (new_size < size)
++                        new_size = (size_t)-1;
++                    if (new_size < len + 6)
++                        new_size = len + 6;
+ 		    tmp = (xmlChar *) xmlRealloc(buf, new_size);
+ 		    if (tmp == NULL) {
+ 			xmlErrMemory(ctxt, NULL);

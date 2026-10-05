@@ -1,0 +1,31 @@
+diff --git a/source/pdf/pdf-font.c b/source/pdf/pdf-font.c
+index e071e8bd4..5e0e281e0 100644
+--- a/source/pdf/pdf-font.c
++++ b/source/pdf/pdf-font.c
+@@ -553,6 +553,9 @@ pdf_load_embedded_font(fz_context *ctx, pdf_document *doc, pdf_font_desc *fontde
+ 	fz_buffer *buf;
+ 	unsigned char *data;
+ 	size_t size;
++	size_t embedded_size = 0;
++
++	fz_var(buf);
+ 
+ 	buf = pdf_load_stream(ctx, stmref);
+ 
+@@ -571,6 +574,8 @@ pdf_load_embedded_font(fz_context *ctx, pdf_document *doc, pdf_font_desc *fontde
+ 			}
+ 		}
+ 
++		/* Record buffer size before we drop it in the fz_always block below. */
++		embedded_size = fz_buffer_storage(ctx, buf, NULL);
+ 		fontdesc->font = fz_new_font_from_buffer(ctx, fontname, buf, 0, 1);
+ 	}
+ 	fz_always(ctx)
+@@ -578,7 +583,7 @@ pdf_load_embedded_font(fz_context *ctx, pdf_document *doc, pdf_font_desc *fontde
+ 	fz_catch(ctx)
+ 		fz_rethrow(ctx);
+ 
+-	fontdesc->size += fz_buffer_storage(ctx, buf, NULL);
++	fontdesc->size += embedded_size;
+ 	fontdesc->is_embedded = 1;
+ }

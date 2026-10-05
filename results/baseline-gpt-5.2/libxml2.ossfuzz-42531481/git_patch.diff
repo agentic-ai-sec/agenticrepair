@@ -1,0 +1,84 @@
+diff --git a/xmlreader.c b/xmlreader.c
+index d96a2ebc..c72198c6 100644
+--- a/xmlreader.c
++++ b/xmlreader.c
+@@ -27,6 +27,7 @@
+ #include <libxml/xmlIO.h>
+ #include <libxml/xmlreader.h>
+ #include <libxml/parserInternals.h>
++#include "private/tree.h"
+ #ifdef LIBXML_SCHEMAS_ENABLED
+ #include <libxml/relaxng.h>
+ #include <libxml/xmlschemas.h>
+@@ -310,11 +311,34 @@ xmlTextReaderFreeNodeList(xmlTextReaderPtr reader, xmlNodePtr cur) {
+ 		(cur->type != XML_ENTITY_REF_NODE)) {
+ 		DICT_FREE(cur->content);
+ 	    }
+-	    if (((cur->type == XML_ELEMENT_NODE) ||
+-	         (cur->type == XML_XINCLUDE_START) ||
+-		 (cur->type == XML_XINCLUDE_END)) &&
+-		(cur->nsDef != NULL))
+-		xmlFreeNsList(cur->nsDef);
++    if (((cur->type == XML_ELEMENT_NODE) ||
++	 (cur->type == XML_XINCLUDE_START) ||
++	 (cur->type == XML_XINCLUDE_END)) &&
++	(cur->nsDef != NULL)) {
++	/*
++	 * The reader frees nodes aggressively while streaming.
++	 *
++	 * Entity expansion (xmlParseReference) can temporarily keep nodes
++	 * which still reference namespace declarations from earlier parts of
++	 * the tree. If we free those namespace declarations here, later node
++	 * copies might dereference freed ns structs (use-after-free).
++	 *
++	 * To avoid this, move namespace declarations to the document's
++	 * doc->oldNs storage which is freed with the document.
++	 */
++	if (cur->doc != NULL) {
++	    xmlNsPtr head = xmlTreeEnsureXMLDecl(cur->doc);
++	    if (head != NULL) {
++	        xmlNsPtr tail = head;
++	        while (tail->next != NULL)
++	            tail = tail->next;
++	        tail->next = cur->nsDef;
++	        cur->nsDef = NULL;
++	    }
++	}
++	if (cur->nsDef != NULL)
++	    xmlFreeNsList(cur->nsDef);
++    }
+ 
+ 	    /*
+ 	     * we don't free element names here they are interned now
+@@ -398,10 +422,27 @@ xmlTextReaderFreeNode(xmlTextReaderPtr reader, xmlNodePtr cur) {
+ 	DICT_FREE(cur->content);
+     }
+     if (((cur->type == XML_ELEMENT_NODE) ||
+-	 (cur->type == XML_XINCLUDE_START) ||
+-	 (cur->type == XML_XINCLUDE_END)) &&
+-	(cur->nsDef != NULL))
+-	xmlFreeNsList(cur->nsDef);
++         (cur->type == XML_XINCLUDE_START) ||
++         (cur->type == XML_XINCLUDE_END)) &&
++        (cur->nsDef != NULL)) {
++        /*
++         * See comment in xmlTextReaderFreeDoc: keep namespace
++         * declarations alive for possible later node copies during
++         * entity expansion.
++         */
++        if (cur->doc != NULL) {
++            xmlNsPtr head = xmlTreeEnsureXMLDecl(cur->doc);
++            if (head != NULL) {
++                xmlNsPtr tail = head;
++                while (tail->next != NULL)
++                    tail = tail->next;
++                tail->next = cur->nsDef;
++                cur->nsDef = NULL;
++            }
++        }
++        if (cur->nsDef != NULL)
++            xmlFreeNsList(cur->nsDef);
++    }
+ 
+     /*
+      * we don't free names here they are interned now

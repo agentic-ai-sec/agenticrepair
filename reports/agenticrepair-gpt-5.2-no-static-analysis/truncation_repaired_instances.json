@@ -1,0 +1,125 @@
+{
+  "defect": "trailing blank context lines removed by .strip() during patch collection",
+  "repaired": [
+    {
+      "instance_id": "exiv2.cve-2017-14859",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "faad2.cve-2018-20194",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "faad2.cve-2018-20196",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "faad2.cve-2018-20198",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "faad2.cve-2018-20357",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "gpac.cve-2021-40575",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "gpac.cve-2023-0760",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "gpac.cve-2023-3291",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "gpac.cve-2023-4681",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "gpac.cve-2023-46928",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "gpac.cve-2023-5586",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "imagemagick.cve-2017-11539",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "libarchive.cve-2019-11463",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "libiec61850.cve-2023-27772",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "libjpeg-turbo.cve-2020-13790",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "libredwg.cve-2020-6612",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "libsndfile.cve-2018-19432",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "mruby.cve-2022-0326",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "mruby.cve-2022-0630",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "mruby.cve-2022-1212",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "mruby.cve-2022-1286",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "njs.cve-2022-29780",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "njs.cve-2022-32414",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "njs.cve-2022-43284",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "njs.cve-2023-27728",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "njs.cve-2023-27730",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "openjpeg.cve-2017-14041",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "readstat.cve-2018-5698",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "yaml-cpp.cve-2018-20574",
+      "context_lines_restored": 1
+    },
+    {
+      "instance_id": "yara.cve-2017-5924",
+      "context_lines_restored": 1
+    }
+  ]
+}

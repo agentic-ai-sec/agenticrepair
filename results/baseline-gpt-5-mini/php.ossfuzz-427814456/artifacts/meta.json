@@ -1,0 +1,14 @@
+{
+  "model": "gpt-5-mini-2025-08-07",
+  "agent": "ToolCallingAgent",
+  "tools": [
+    "cmd",
+    "final_answer",
+    "python_interpreter"
+  ],
+  "steps": 19,
+  "cost": 0.041905025,
+  "input_tokens": 882861,
+  "output_tokens": 15341,
+  "docker_image": "hwiwonlee/secb.eval.x86_64.php.ossfuzz-427814456:patch"
+}

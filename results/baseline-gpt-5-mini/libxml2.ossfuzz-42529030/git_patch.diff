@@ -1,0 +1,50 @@
+diff --git a/error.c b/error.c
+index 1b4fe767..a4dfad1c 100644
+--- a/error.c
++++ b/error.c
+@@ -173,16 +173,41 @@ xmlParserPrintFileInfo(xmlParserInputPtr input) {
+ static void
+ xmlParserPrintFileContextInternal(xmlParserInputPtr input ,
+ 		xmlGenericErrorFunc channel, void *data ) {
+-    const xmlChar *cur, *base, *start;
+-    unsigned int n, col;	/* GCC warns if signed, because compared with sizeof() */
++    const xmlChar *cur, *base, *start, *end_local;
++    unsigned int n, col;    /* GCC warns if signed, because compared with sizeof() */
+     xmlChar  content[81]; /* space for 80 chars + line terminator */
+     xmlChar *ctnt;
+ 
+     if ((input == NULL) || (input->cur == NULL))
+         return;
+ 
+-    cur = input->cur;
+-    base = input->base;
++    /* Try to recover pointers if the input buffer was reallocated: map
++     * input->cur relative to input->base onto the current xmlBuf content.
++     * This avoids reading potentially freed memory when the underlying
++     * buffer was resized and moved. */
++    if (input->buf != NULL && input->buf->buffer != NULL &&
++        input->base != NULL && input->cur != NULL && input->end != NULL &&
++        input->cur >= input->base && input->end >= input->base) {
++        ptrdiff_t off = input->cur - input->base;
++        xmlChar *bufstart = xmlBufContent(input->buf->buffer);
++        size_t buflen = xmlBufUse(input->buf->buffer);
++        if (bufstart != NULL && off >= 0 && (size_t)off <= buflen) {
++            base = bufstart;
++            cur = bufstart + off;
++            end_local = bufstart + buflen;
++            if (cur > end_local)
++                cur = end_local;
++        } else {
++            base = input->base;
++            cur = input->cur;
++            end_local = input->end;
++        }
++    } else {
++        base = input->base;
++        cur = input->cur;
++        end_local = input->end;
++    }
++
+     /* skip backwards over any end-of-lines */
+     while ((cur > base) && ((*(cur) == '\n') || (*(cur) == '\r'))) {
+ 	cur--;

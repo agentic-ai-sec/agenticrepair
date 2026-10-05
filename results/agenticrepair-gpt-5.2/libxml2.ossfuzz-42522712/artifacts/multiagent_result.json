@@ -1,0 +1,245 @@
+{
+  "instance_id": "libxml2.ossfuzz-42522712",
+  "final_status": "success",
+  "static_analyzer_output": {
+    "role": "static_analyzer",
+    "raw_output": "{\n  \"analysis_type\": \"memory\",\n  \"findings\": [\n    {\n      \"file\": \"src/libxml2/HTMLparser.c\",\n      \"line\": 3015,\n      \"message\": \"htmlParseSystemLiteral duplicates a substring with xmlStrndup(BASE_PTR+startPosition, len) where len is derived from pointer-walking and is not validated against input->end; potential OOB read if offsets/length become inconsistent.\",\n      \"severity\": \"error\"\n    },\n    {\n      \"file\": \"src/libxml2/HTMLparser.c\",\n      \"line\": 3070,\n      \"message\": \"htmlParsePubidLiteral duplicates a substring with xmlStrndup(BASE_PTR+startPosition, len) without checking that (BASE_PTR+startPosition)+len <= ctxt->input->end.\",\n      \"severity\": \"error\"\n    },\n    {\n      \"file\": \"src/libxml2/xmlstring.c\",\n      \"line\": 53,\n      \"message\": \"xmlStrndup does memcpy(ret, cur, len) with no source-bound validation; relies entirely on callers to provide correct cur/len.\",\n      \"severity\": \"note\"\n    }\n  ],\n  \"dataflow_summary\": \"N/A (memory-focused). Length `len` is computed in HTMLparser.c while scanning literals (CUR/NEXT loop) and then passed to xmlStrndup as the memcpy size; if BASE_PTR/CUR_PTR/end become inconsistent (e.g., buffer growth, entity boundaries, or malformed input), len can exceed the remaining bytes in the current input buffer, causing an out-of-bounds read in xmlStrndup.\",\n  \"key_insight\": \"The HTML DOCTYPE external-id parsing builds a substring using BASE_PTR + startPosition and a computed `len`, but never clamps/validates `len` against `ctxt->input->end - (BASE_PTR+startPosition)`. Since xmlStrndup blindly memcpy\u2019s `len` bytes, any miscomputed len/startPosition becomes a global/heap OOB read.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Add explicit bounds checks in htmlParseSystemLiteral and htmlParsePubidLiteral before calling xmlStrndup: compute `const xmlChar *start = BASE_PTR + startPosition; size_t avail = ctxt->input->end - start;` and reject or clamp if `len > avail` (also handle underflow/overflow safely).\",\n      \"reasoning\": \"Static analysis shows these are the direct callers feeding xmlStrndup from parser pointer arithmetic; validating at the call site prevents the reported crash path.\",\n      \"trade_offs\": \"May change behavior on malformed documents (return NULL / raise parse error instead of continuing). Minimal performance impact (one subtraction/compare).\"\n    },\n    {\n      \"approach\": \"Strengthen xmlStrndup to be safer-by-default when used with parser inputs: add an internal maximum length guard (e.g., reject absurdly large `len`, and/or use size_t with overflow checks).\",\n      \"reasoning\": \"The crash shows extremely large copy sizes; a defensive cap in xmlStrndup reduces blast radius across the codebase even if another caller miscomputes lengths.\",\n      \"trade_offs\": \"Requires choosing a sane cap (could break legitimate huge-doc use cases unless conditioned on parser options like XML_PARSE_HUGE).\"\n    },\n    {\n      \"approach\": \"Refactor literal extraction to avoid BASE_PTR/startPosition arithmetic: record `const xmlChar *start = CUR_PTR` immediately after consuming the opening quote and later compute `len = CUR_PTR - start` at the end, with checks that both pointers belong to the same current input buffer.\",\n      \"reasoning\": \"The current code stores offsets relative to BASE_PTR; keeping direct pointers reduces the chance of offset becoming invalid if BASE_PTR changes due to buffer growth/compaction.\",\n      \"trade_offs\": \"More invasive change; must ensure pointer stability across NEXT/grow operations or explicitly forbid growth during the scan.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "analysis_type": "memory",
+      "findings": [
+        {
+          "file": "src/libxml2/HTMLparser.c",
+          "line": 3015,
+          "message": "htmlParseSystemLiteral duplicates a substring with xmlStrndup(BASE_PTR+startPosition, len) where len is derived from pointer-walking and is not validated against input->end; potential OOB read if offsets/length become inconsistent.",
+          "severity": "error"
+        },
+        {
+          "file": "src/libxml2/HTMLparser.c",
+          "line": 3070,
+          "message": "htmlParsePubidLiteral duplicates a substring with xmlStrndup(BASE_PTR+startPosition, len) without checking that (BASE_PTR+startPosition)+len <= ctxt->input->end.",
+          "severity": "error"
+        },
+        {
+          "file": "src/libxml2/xmlstring.c",
+          "line": 53,
+          "message": "xmlStrndup does memcpy(ret, cur, len) with no source-bound validation; relies entirely on callers to provide correct cur/len.",
+          "severity": "note"
+        }
+      ],
+      "dataflow_summary": "N/A (memory-focused). Length `len` is computed in HTMLparser.c while scanning literals (CUR/NEXT loop) and then passed to xmlStrndup as the memcpy size; if BASE_PTR/CUR_PTR/end become inconsistent (e.g., buffer growth, entity boundaries, or malformed input), len can exceed the remaining bytes in the current input buffer, causing an out-of-bounds read in xmlStrndup.",
+      "key_insight": "The HTML DOCTYPE external-id parsing builds a substring using BASE_PTR + startPosition and a computed `len`, but never clamps/validates `len` against `ctxt->input->end - (BASE_PTR+startPosition)`. Since xmlStrndup blindly memcpy\u2019s `len` bytes, any miscomputed len/startPosition becomes a global/heap OOB read.",
+      "fix_suggestions": [
+        {
+          "approach": "Add explicit bounds checks in htmlParseSystemLiteral and htmlParsePubidLiteral before calling xmlStrndup: compute `const xmlChar *start = BASE_PTR + startPosition; size_t avail = ctxt->input->end - start;` and reject or clamp if `len > avail` (also handle underflow/overflow safely).",
+          "reasoning": "Static analysis shows these are the direct callers feeding xmlStrndup from parser pointer arithmetic; validating at the call site prevents the reported crash path.",
+          "trade_offs": "May change behavior on malformed documents (return NULL / raise parse error instead of continuing). Minimal performance impact (one subtraction/compare)."
+        },
+        {
+          "approach": "Strengthen xmlStrndup to be safer-by-default when used with parser inputs: add an internal maximum length guard (e.g., reject absurdly large `len`, and/or use size_t with overflow checks).",
+          "reasoning": "The crash shows extremely large copy sizes; a defensive cap in xmlStrndup reduces blast radius across the codebase even if another caller miscomputes lengths.",
+          "trade_offs": "Requires choosing a sane cap (could break legitimate huge-doc use cases unless conditioned on parser options like XML_PARSE_HUGE)."
+        },
+        {
+          "approach": "Refactor literal extraction to avoid BASE_PTR/startPosition arithmetic: record `const xmlChar *start = CUR_PTR` immediately after consuming the opening quote and later compute `len = CUR_PTR - start` at the end, with checks that both pointers belong to the same current input buffer.",
+          "reasoning": "The current code stores offsets relative to BASE_PTR; keeping direct pointers reduces the chance of offset becoming invalid if BASE_PTR changes due to buffer growth/compaction.",
+          "trade_offs": "More invasive change; must ensure pointer stability across NEXT/grow operations or explicitly forbid growth during the scan."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 273400,
+      "output_tokens": 7116
+    },
+    "timing": {
+      "start_time": 1768795834.7433975,
+      "end_time": 1768796127.4197288,
+      "duration": 292.676331281662
+    },
+    "trajectory": {
+      "agent_role": "static_analyzer",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nA global-buffer-overflow (out-of-bounds read) occurs in xmlStrndup (xmlstring.c) when invoked from the HTML parser (HTMLparser.c) during DOCTYPE/system/public literal parsing (e.g., htmlParseSystemLiteral/htmlParseDocTypeDecl). The parser can supply an incorrect length/offset to xmlStrndup, causing it to read past the end ",
+      "total_steps": 19,
+      "total_duration": 292.676331281662,
+      "total_input_tokens": 273400,
+      "total_output_tokens": 7116,
+      "total_cost": 0.1994692,
+      "final_state": "success"
+    }
+  },
+  "dynamic_analyzer_output": {
+    "role": "dynamic_analyzer",
+    "raw_output": "{\n  \"tools_used\": [\"gdb\", \"ubsan\"],\n  \"crash_info\": {\n    \"address\": \"0x559d607924b7 (ASan report); earlier report example: 0x55f0f22ac537\",\n    \"type\": \"global-buffer-overflow (out-of-bounds read) leading to SEGV in memmove/memcpy\",\n    \"location\": \"/src/libxml2/xmlstring.c:53 (xmlStrndup)\"\n  },\n  \"backtrace\": [\n    \"__asan_memcpy/memmove-vec-unaligned-erms.S:535\",\n    \"xmlStrndup (/src/libxml2/xmlstring.c:53)\",\n    \"htmlParseExternalID (/src/libxml2/HTMLparser.c:3305)\"\n  ],\n  \"memory_state\": \"ASan shows a very large read (example from issue: READ of size 10001024) during memcpy inside xmlStrndup. The source pointer points into/near global .rodata (redzone) around parserInternals.c strings (e.g., 'Huge input lookup'), indicating the caller supplied an incorrect pointer/offset and/or a length that overflows to a huge size, causing memcpy to run off the end of the available buffer into adjacent global memory and then segfault in memmove.\",\n  \"root_cause_hint\": \"Dynamic traces (ASan fallback in gdb, plus UBSan run) consistently crash in xmlStrndup called from htmlParseExternalID while parsing external identifiers in a DOCTYPE. The failing operation is the memcpy/memmove of 'len' bytes; the observed gigantic copy size implies htmlParseExternalID (or its system/public literal parsing) computed a length from parser cursor arithmetic that becomes negative or otherwise invalid and is then converted to an unsigned size passed to xmlStrndup, or it uses a cursor beyond the current input buffer. xmlStrndup trusts the provided length and blindly memcpy\u2019s, triggering a global-buffer-overflow.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Fix at the caller: in htmlParseExternalID/htmlParseSystemLiteral/htmlParsePubidLiteral, compute the substring length using validated pointer bounds (end >= start), clamp to the available input buffer, and reject/abort if the literal is not properly terminated before buffer end. Ensure any ptrdiff_t/int length is checked for <0 and for exceeding a reasonable maximum before casting to size_t and calling xmlStrndup.\",\n      \"reasoning\": \"Runtime evidence shows the bad length originates from HTML external ID parsing and manifests as an enormous memcpy size in xmlStrndup; preventing invalid/negative/overflowing lengths at the source stops the OOB read reliably.\",\n      \"trade_offs\": \"Adds a few conditional checks and may cause previously-accepted malformed DOCTYPE literals to produce errors instead of best-effort parsing; this is typically desirable for safety.\"\n    },\n    {\n      \"approach\": \"Add defensive hardening in xmlStrndup: reject absurd lengths (e.g., > XML_MAX_TEXT_LENGTH / configured limit) and handle integer overflow in allocation size calculations. Optionally return NULL on overflow/limit violation.\",\n      \"reasoning\": \"Even if a caller bug reappears, a length sanity check can prevent huge memcpy attempts that crash or leak data.\",\n      \"trade_offs\": \"xmlStrndup cannot know the true source buffer size, so this cannot fully guarantee no OOB read if a caller passes a smaller-but-still-wrong length; it is defense-in-depth, not a complete fix.\"\n    },\n    {\n      \"approach\": \"Use bounded scanning instead of raw length arithmetic for literals: locate the closing quote with a function that respects the parser input boundaries (and entity expansion rules), and only duplicate the validated span.\",\n      \"reasoning\": \"The crash happens during literal parsing; finding the terminator within bounds avoids relying on potentially-corrupted cursor/offset math.\",\n      \"trade_offs\": \"May require more refactoring and careful consideration of performance and existing HTML parser behavior on broken input.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "tools_used": [
+        "gdb",
+        "ubsan"
+      ],
+      "crash_info": {
+        "address": "0x559d607924b7 (ASan report); earlier report example: 0x55f0f22ac537",
+        "type": "global-buffer-overflow (out-of-bounds read) leading to SEGV in memmove/memcpy",
+        "location": "/src/libxml2/xmlstring.c:53 (xmlStrndup)"
+      },
+      "backtrace": [
+        "__asan_memcpy/memmove-vec-unaligned-erms.S:535",
+        "xmlStrndup (/src/libxml2/xmlstring.c:53)",
+        "htmlParseExternalID (/src/libxml2/HTMLparser.c:3305)"
+      ],
+      "memory_state": "ASan shows a very large read (example from issue: READ of size 10001024) during memcpy inside xmlStrndup. The source pointer points into/near global .rodata (redzone) around parserInternals.c strings (e.g., 'Huge input lookup'), indicating the caller supplied an incorrect pointer/offset and/or a length that overflows to a huge size, causing memcpy to run off the end of the available buffer into adjacent global memory and then segfault in memmove.",
+      "root_cause_hint": "Dynamic traces (ASan fallback in gdb, plus UBSan run) consistently crash in xmlStrndup called from htmlParseExternalID while parsing external identifiers in a DOCTYPE. The failing operation is the memcpy/memmove of 'len' bytes; the observed gigantic copy size implies htmlParseExternalID (or its system/public literal parsing) computed a length from parser cursor arithmetic that becomes negative or otherwise invalid and is then converted to an unsigned size passed to xmlStrndup, or it uses a cursor beyond the current input buffer. xmlStrndup trusts the provided length and blindly memcpy\u2019s, triggering a global-buffer-overflow.",
+      "fix_suggestions": [
+        {
+          "approach": "Fix at the caller: in htmlParseExternalID/htmlParseSystemLiteral/htmlParsePubidLiteral, compute the substring length using validated pointer bounds (end >= start), clamp to the available input buffer, and reject/abort if the literal is not properly terminated before buffer end. Ensure any ptrdiff_t/int length is checked for <0 and for exceeding a reasonable maximum before casting to size_t and calling xmlStrndup.",
+          "reasoning": "Runtime evidence shows the bad length originates from HTML external ID parsing and manifests as an enormous memcpy size in xmlStrndup; preventing invalid/negative/overflowing lengths at the source stops the OOB read reliably.",
+          "trade_offs": "Adds a few conditional checks and may cause previously-accepted malformed DOCTYPE literals to produce errors instead of best-effort parsing; this is typically desirable for safety."
+        },
+        {
+          "approach": "Add defensive hardening in xmlStrndup: reject absurd lengths (e.g., > XML_MAX_TEXT_LENGTH / configured limit) and handle integer overflow in allocation size calculations. Optionally return NULL on overflow/limit violation.",
+          "reasoning": "Even if a caller bug reappears, a length sanity check can prevent huge memcpy attempts that crash or leak data.",
+          "trade_offs": "xmlStrndup cannot know the true source buffer size, so this cannot fully guarantee no OOB read if a caller passes a smaller-but-still-wrong length; it is defense-in-depth, not a complete fix."
+        },
+        {
+          "approach": "Use bounded scanning instead of raw length arithmetic for literals: locate the closing quote with a function that respects the parser input boundaries (and entity expansion rules), and only duplicate the validated span.",
+          "reasoning": "The crash happens during literal parsing; finding the terminator within bounds avoids relying on potentially-corrupted cursor/offset math.",
+          "trade_offs": "May require more refactoring and careful consideration of performance and existing HTML parser behavior on broken input."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 28300,
+      "output_tokens": 1578
+    },
+    "timing": {
+      "start_time": 1768796127.4273398,
+      "end_time": 1768796203.4451742,
+      "duration": 76.01783442497253
+    },
+    "trajectory": {
+      "agent_role": "dynamic_analyzer",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nA global-buffer-overflow (out-of-bounds read) occurs in xmlStrndup (xmlstring.c) when invoked from the HTML parser (HTMLparser.c) during DOCTYPE/system/public literal parsing (e.g., htmlParseSystemLiteral/htmlParseDocTypeDecl). The parser can supply an incorrect length/offset to xmlStrndup, causing it to read past the end ",
+      "total_steps": 3,
+      "total_duration": 76.01783442497253,
+      "total_input_tokens": 28300,
+      "total_output_tokens": 1578,
+      "total_cost": 0.0375466,
+      "final_state": "success"
+    }
+  },
+  "history_miner_output": {
+    "role": "history_miner",
+    "raw_output": "{\n  \"file_analyzed\": \"xmlstring.c\",\n  \"function_analyzed\": \"xmlStrndup\",\n  \"relevant_commits\": [\n    {\n      \"hash\": \"11ed4a7a\",\n      \"message\": \"Heap use-after-free in htmlParsePubidLiteral and htmlParseSystemiteral\",\n      \"changes\": \"Reworked HTML system/public literal parsing to store startPosition+len (BASE_PTR-relative) instead of a direct pointer while iterating.\",\n      \"relevance\": \"Introduces the offset/length scheme that can become inconsistent if the HTML input buffer is shrunk/moved, potentially producing a wrong pointer/len pair passed to xmlStrndup.\"\n    },\n    {\n      \"hash\": \"93ce33c2\",\n      \"message\": \"Fix several quadratic runtime issues in HTML push parser\",\n      \"changes\": \"Refactored htmlParseSystemLiteral logic (quote handling, invalid-char handling, EOF checks) while still using BASE_PTR+startPosition and a separately accumulated len.\",\n      \"relevance\": \"Confirms the offset/len approach persisted and became more complex; if buffer movement occurs during scanning, the computed substring may no longer match current buffer boundaries.\"\n    },\n    {\n      \"hash\": \"2cac6269\",\n      \"message\": \"Don't use sizeof(xmlChar) or sizeof(char)\",\n      \"changes\": \"Changed xmlStrndup to memcpy(ret, cur, len) and allocate (size_t)len+1 (treating xmlChar as bytes).\",\n      \"relevance\": \"Makes xmlStrndup perform a raw byte copy of exactly len bytes from cur; any wrong len/cur from the HTML parser becomes an immediate out-of-bounds read.\"\n    }\n  ],\n  \"vulnerability_origin\": \"Most likely originated when HTMLparser.c switched from using a direct pointer to storing (BASE_PTR-relative) startPosition plus a separately accumulated length (11ed4a7a, 2016). If the input buffer base/contents shift during parsing (e.g., via shrink/move), startPosition can become stale and later xmlStrndup(BASE_PTR+startPosition, len) can read past the intended buffer.\",\n  \"fix_hints\": \"History suggests this area is sensitive to input-buffer relocation (the original fix was specifically about stale pointers). A robust fix should avoid relying on BASE_PTR-relative offsets across operations that can move the buffer, and should add explicit bounds checks before calling xmlStrndup.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"In htmlParseSystemLiteral/htmlParsePubidLiteral, build the literal into a temporary growable buffer while scanning (append chars), instead of copying later via (BASE_PTR+startPosition, len).\",\n      \"reasoning\": \"Avoids all reliance on the parser input buffer address/offset stability; aligns with the motivation of 11ed4a7a (avoid stale pointers) but without offset fragility.\",\n      \"trade_offs\": \"Slight extra allocation/copy work; must enforce a reasonable max length (or reuse existing libxml2 limits).\"\n    },\n    {\n      \"approach\": \"Before calling xmlStrndup, validate that startPosition and len are within the current input buffer: ensure BASE_PTR+startPosition >= BASE_PTR and (BASE_PTR+startPosition)+len <= ctxt->input->end (and cap len to INT_MAX).\",\n      \"reasoning\": \"Directly prevents the out-of-bounds read even if offset/len become inconsistent; complements the offset-based design.\",\n      \"trade_offs\": \"May truncate or reject malformed inputs; must decide error-recovery behavior consistent with HTML parsing mode.\"\n    },\n    {\n      \"approach\": \"Track an absolute stream position (e.g., consumed+offset-at-start) and re-derive the current pointer at the end, or update startPosition when the buffer is shrunk/moved.\",\n      \"reasoning\": \"Keeps the \u2018don\u2019t hold raw pointers\u2019 goal from 11ed4a7a while making offsets robust to buffer moves.\",\n      \"trade_offs\": \"More complex and easier to get wrong; requires careful integration with libxml2\u2019s input buffering/shrinking semantics.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "file_analyzed": "xmlstring.c",
+      "function_analyzed": "xmlStrndup",
+      "relevant_commits": [
+        {
+          "hash": "11ed4a7a",
+          "message": "Heap use-after-free in htmlParsePubidLiteral and htmlParseSystemiteral",
+          "changes": "Reworked HTML system/public literal parsing to store startPosition+len (BASE_PTR-relative) instead of a direct pointer while iterating.",
+          "relevance": "Introduces the offset/length scheme that can become inconsistent if the HTML input buffer is shrunk/moved, potentially producing a wrong pointer/len pair passed to xmlStrndup."
+        },
+        {
+          "hash": "93ce33c2",
+          "message": "Fix several quadratic runtime issues in HTML push parser",
+          "changes": "Refactored htmlParseSystemLiteral logic (quote handling, invalid-char handling, EOF checks) while still using BASE_PTR+startPosition and a separately accumulated len.",
+          "relevance": "Confirms the offset/len approach persisted and became more complex; if buffer movement occurs during scanning, the computed substring may no longer match current buffer boundaries."
+        },
+        {
+          "hash": "2cac6269",
+          "message": "Don't use sizeof(xmlChar) or sizeof(char)",
+          "changes": "Changed xmlStrndup to memcpy(ret, cur, len) and allocate (size_t)len+1 (treating xmlChar as bytes).",
+          "relevance": "Makes xmlStrndup perform a raw byte copy of exactly len bytes from cur; any wrong len/cur from the HTML parser becomes an immediate out-of-bounds read."
+        }
+      ],
+      "vulnerability_origin": "Most likely originated when HTMLparser.c switched from using a direct pointer to storing (BASE_PTR-relative) startPosition plus a separately accumulated length (11ed4a7a, 2016). If the input buffer base/contents shift during parsing (e.g., via shrink/move), startPosition can become stale and later xmlStrndup(BASE_PTR+startPosition, len) can read past the intended buffer.",
+      "fix_hints": "History suggests this area is sensitive to input-buffer relocation (the original fix was specifically about stale pointers). A robust fix should avoid relying on BASE_PTR-relative offsets across operations that can move the buffer, and should add explicit bounds checks before calling xmlStrndup.",
+      "fix_suggestions": [
+        {
+          "approach": "In htmlParseSystemLiteral/htmlParsePubidLiteral, build the literal into a temporary growable buffer while scanning (append chars), instead of copying later via (BASE_PTR+startPosition, len).",
+          "reasoning": "Avoids all reliance on the parser input buffer address/offset stability; aligns with the motivation of 11ed4a7a (avoid stale pointers) but without offset fragility.",
+          "trade_offs": "Slight extra allocation/copy work; must enforce a reasonable max length (or reuse existing libxml2 limits)."
+        },
+        {
+          "approach": "Before calling xmlStrndup, validate that startPosition and len are within the current input buffer: ensure BASE_PTR+startPosition >= BASE_PTR and (BASE_PTR+startPosition)+len <= ctxt->input->end (and cap len to INT_MAX).",
+          "reasoning": "Directly prevents the out-of-bounds read even if offset/len become inconsistent; complements the offset-based design.",
+          "trade_offs": "May truncate or reject malformed inputs; must decide error-recovery behavior consistent with HTML parsing mode."
+        },
+        {
+          "approach": "Track an absolute stream position (e.g., consumed+offset-at-start) and re-derive the current pointer at the end, or update startPosition when the buffer is shrunk/moved.",
+          "reasoning": "Keeps the \u2018don\u2019t hold raw pointers\u2019 goal from 11ed4a7a while making offsets robust to buffer moves.",
+          "trade_offs": "More complex and easier to get wrong; requires careful integration with libxml2\u2019s input buffering/shrinking semantics."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 42697,
+      "output_tokens": 3502
+    },
+    "timing": {
+      "start_time": 1768796203.4488254,
+      "end_time": 1768797665.4997084,
+      "duration": 1462.0508830547333
+    },
+    "trajectory": {
+      "agent_role": "history_miner",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nA global-buffer-overflow (out-of-bounds read) occurs in xmlStrndup (xmlstring.c) when invoked from the HTML parser (HTMLparser.c) during DOCTYPE/system/public literal parsing (e.g., htmlParseSystemLiteral/htmlParseDocTypeDecl). The parser can supply an incorrect length/offset to xmlStrndup, causing it to read past the end ",
+      "total_steps": 4,
+      "total_duration": 1462.0508830547333,
+      "total_input_tokens": 42697,
+      "total_output_tokens": 3502,
+      "total_cost": 0.07455735000000001,
+      "final_state": "success"
+    }
+  },
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "{\n  \"root_cause\": \"htmlParseSystemLiteral/htmlParsePubidLiteral compute a substring using (BASE_PTR + startPosition, len) without validating that startPosition/len still refer to the current input buffer. If the input buffer base changes (e.g., due to shrink/move) or len becomes inconsistent, xmlStrndup blindly memcpy\u2019s len bytes, causing an out-of-bounds read (ASan global-buffer-overflow).\",\n  \"fix_approach\": \"Added a small helper (htmlStrndupInput) in HTMLparser.c that validates startPosition and len against ctxt->input->base/end and INT_MAX before calling xmlStrndup. Replaced direct xmlStrndup calls in htmlParseSystemLiteral and htmlParsePubidLiteral with this helper and emit a parse error if bounds validation fails.\",\n  \"files_modified\": [\"HTMLparser.c\"],\n  \"verification\": {\n    \"build_success\": true,\n    \"repro_success\": true,\n    \"exit_code\": 0,\n    \"asan_output\": \"No sanitizer errors detected\"\n  },\n  \"confidence\": \"high\"\n}",
+    "parsed_output": {
+      "root_cause": "htmlParseSystemLiteral/htmlParsePubidLiteral compute a substring using (BASE_PTR + startPosition, len) without validating that startPosition/len still refer to the current input buffer. If the input buffer base changes (e.g., due to shrink/move) or len becomes inconsistent, xmlStrndup blindly memcpy\u2019s len bytes, causing an out-of-bounds read (ASan global-buffer-overflow).",
+      "fix_approach": "Added a small helper (htmlStrndupInput) in HTMLparser.c that validates startPosition and len against ctxt->input->base/end and INT_MAX before calling xmlStrndup. Replaced direct xmlStrndup calls in htmlParseSystemLiteral and htmlParsePubidLiteral with this helper and emit a parse error if bounds validation fails.",
+      "files_modified": [
+        "HTMLparser.c"
+      ],
+      "verification": {
+        "build_success": true,
+        "repro_success": true,
+        "exit_code": 0,
+        "asan_output": "No sanitizer errors detected"
+      },
+      "confidence": "high"
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 548761,
+      "output_tokens": 12534
+    },
+    "timing": {
+      "start_time": 1768797665.5083003,
+      "end_time": 1768797981.9107184,
+      "duration": 316.4024181365967
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nA global-buffer-overflow (out-of-bounds read) occurs in xmlStrndup (xmlstring.c) when invoked from the HTML parser (HTMLparser.c) during DOCTYPE/system/public literal parsing (e.g., htmlParseSystemLiteral/htmlParseDocTypeDecl). The parser can supply an incorrect length/offset to xmlStrndup, causing it to read past the end ",
+      "total_steps": 29,
+      "total_duration": 316.4024181365967,
+      "total_input_tokens": 548761,
+      "total_output_tokens": 12534,
+      "total_cost": 0.3312221500000001,
+      "final_state": "success"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 893158,
+    "output_tokens": 24730
+  },
+  "timing": {
+    "total_duration": 2147.176270723343
+  }
+}

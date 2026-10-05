@@ -1,0 +1,96 @@
+diff --git a/xinclude.c b/xinclude.c
+index f48e0af5..137d7c7b 100644
+--- a/xinclude.c
++++ b/xinclude.c
+@@ -401,8 +401,13 @@ xmlXIncludeFreeContext(xmlXIncludeCtxtPtr ctxt) {
+     }
+     if (ctxt->incTab != NULL)
+ 	xmlFree(ctxt->incTab);
+-    if (ctxt->txtTab != NULL)
++    if (ctxt->txtTab != NULL) {
++	for (i = 0;i < ctxt->txtNr;i++) {
++	    if (ctxt->txtTab[i] != NULL)
++		xmlFreeNode(ctxt->txtTab[i]);
++	}
+ 	xmlFree(ctxt->txtTab);
++    }
+     if (ctxt->txturlTab != NULL)
+ 	xmlFree(ctxt->txturlTab);
+     if (ctxt->base != NULL) {
+@@ -774,12 +779,16 @@ xmlXIncludeAddTxt(xmlXIncludeCtxtPtr ctxt, xmlNodePtr txt, const xmlURL url) {
+ 		                          sizeof(ctxt->txtTab[0]));
+         if (ctxt->txtTab == NULL) {
+ 	    xmlXIncludeErrMemory(ctxt, NULL, "processing text");
++	    if (txt != NULL)
++	        xmlFreeNode(txt);
+ 	    return;
+ 	}
+         ctxt->txturlTab = (xmlURL *) xmlMalloc(ctxt->txtMax *
+ 		                          sizeof(ctxt->txturlTab[0]));
+         if (ctxt->txturlTab == NULL) {
+ 	    xmlXIncludeErrMemory(ctxt, NULL, "processing text");
++	    if (txt != NULL)
++	        xmlFreeNode(txt);
+ 	    return;
+ 	}
+     }
+@@ -789,12 +798,16 @@ xmlXIncludeAddTxt(xmlXIncludeCtxtPtr ctxt, xmlNodePtr txt, const xmlURL url) {
+ 	             ctxt->txtMax * sizeof(ctxt->txtTab[0]));
+         if (ctxt->txtTab == NULL) {
+ 	    xmlXIncludeErrMemory(ctxt, NULL, "processing text");
++	    if (txt != NULL)
++	        xmlFreeNode(txt);
+ 	    return;
+ 	}
+         ctxt->txturlTab = (xmlURL *) xmlRealloc(ctxt->txturlTab,
+ 	             ctxt->txtMax * sizeof(ctxt->txturlTab[0]));
+         if (ctxt->txturlTab == NULL) {
+ 	    xmlXIncludeErrMemory(ctxt, NULL, "processing text");
++	    if (txt != NULL)
++	        xmlFreeNode(txt);
+ 	    return;
+ 	}
+     }
+@@ -1846,6 +1859,12 @@ xmlXIncludeLoadTxt(xmlXIncludeCtxtPtr ctxt, const xmlChar *url, int nr) {
+     for (i = 0; i < ctxt->txtNr; i++) {
+ 	if (xmlStrEqual(URL, ctxt->txturlTab[i])) {
+ 	    node = xmlCopyNode(ctxt->txtTab[i], 1);
++	    if (node == NULL) {
++	        xmlXIncludeErrMemory(ctxt, ctxt->incTab[nr]->ref,
++	                             "processing text");
++	        xmlFree(URL);
++	        return(-1);
++	    }
+ 	    goto loaded;
+ 	}
+     }
+@@ -1935,7 +1954,28 @@ xinclude_multibyte_fallback:
+ 	xmlBufShrink(buf->buffer, len);
+     }
+     xmlFreeParserCtxt(pctxt);
+-    xmlXIncludeAddTxt(ctxt, node, URL);
++
++    /*
++     * Cache a detached copy of the loaded text node. When using the
++     * streaming reader, inserted nodes can be freed as the reader advances.
++     * Keeping such nodes in ctxt->txtTab would lead to use-after-free when
++     * reusing the cached entry.
++     */
++    {
++        xmlNodePtr cached = xmlCopyNode(node, 1);
++
++        if (cached == NULL) {
++            xmlXIncludeErrMemory(ctxt, ctxt->incTab[nr]->ref,
++                                 "processing text");
++            xmlFreeNode(node);
++            xmlFreeInputStream(inputStream);
++            xmlFree(URL);
++            return(-1);
++        }
++
++        xmlXIncludeAddTxt(ctxt, cached, URL);
++    }
++
+     xmlFreeInputStream(inputStream);
+ 
+ loaded:

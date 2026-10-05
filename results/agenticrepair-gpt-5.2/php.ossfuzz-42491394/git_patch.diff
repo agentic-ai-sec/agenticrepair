@@ -1,0 +1,32 @@
+diff --git a/ext/spl/spl_observer.c b/ext/spl/spl_observer.c
+index c83e8bf3a9f..be88f733284 100644
+--- a/ext/spl/spl_observer.c
++++ b/ext/spl/spl_observer.c
+@@ -764,8 +764,25 @@ PHP_METHOD(SplObjectStorage, unserialize)
+ 			var_push_dtor(&var_hash, &obj);
+ 		}
+ 		element = spl_object_storage_attach(intern, Z_OBJ(entry), Z_ISUNDEF(inf)?NULL:&inf);
+-		ZVAL_OBJ(&obj, element->obj);
+-		var_replace(&var_hash, &entry, &obj);
++		/*
++		 * var_replace() stores the zval* into the unserialize reference table.
++		 * Using a stack zval here would make that table point into a returned
++		 * stack frame, causing stack-use-after-return during later reference
++		 * resolution (e.g. R:/r:).
++		 *
++		 * Allocate a temporary zval in var_hash-owned storage to ensure the
++		 * referenced zval remains valid for the duration of unserialization.
++		 */
++		{
++			zval *obj_tmp = var_tmp_var(&var_hash);
++			if (!obj_tmp) {
++				zval_ptr_dtor(&entry);
++				zval_ptr_dtor(&inf);
++				goto outexcept;
++			}
++			ZVAL_OBJ_COPY(obj_tmp, element->obj);
++			var_replace(&var_hash, &entry, obj_tmp);
++		}
+ 		var_replace(&var_hash, &inf, &element->inf);
+ 		zval_ptr_dtor(&entry);
+ 		ZVAL_UNDEF(&entry);

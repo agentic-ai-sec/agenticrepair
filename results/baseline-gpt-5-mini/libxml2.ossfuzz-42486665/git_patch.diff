@@ -1,0 +1,71 @@
+diff --git a/xinclude.c b/xinclude.c
+index 3c810ca1..d29ece64 100644
+--- a/xinclude.c
++++ b/xinclude.c
+@@ -213,6 +213,32 @@ xmlXIncludeFreeRef(xmlXIncludeRefPtr ref) {
+     xmlFree(ref);
+ }
+ 
++/*
++ * Clear namespace pointers on a node tree so that freeing the nodes
++ * won't attempt to free namespace structures that may be shared
++ * elsewhere. This is a defensive measure used around XInclude code
++ * where nodes are unlinked/freed while other nodes may still point
++ * at the same namespace objects.
++ */
++static void
++xmlXIncludeClearNamespaces(xmlNodePtr node) {
++    xmlNodePtr cur;
++
++    if (node == NULL)
++        return;
++    for (cur = node; cur != NULL; cur = cur->next) {
++        if ((cur->type == XML_ELEMENT_NODE) ||
++            (cur->type == XML_XINCLUDE_START) ||
++            (cur->type == XML_XINCLUDE_END)) {
++            cur->nsDef = NULL;
++            cur->ns = NULL;
++        }
++        if (cur->children != NULL)
++            xmlXIncludeClearNamespaces(cur->children);
++    }
++}
++
++
+ /**
+  * xmlXIncludeNewRef:
+  * @ctxt: the XInclude context
+@@ -2213,6 +2239,7 @@ xmlXIncludeIncludeNode(xmlXIncludeCtxtPtr ctxt, int nr) {
+ 	                   XML_XINCLUDE_MULTIPLE_ROOT,
+ 		       "XInclude error: would result in multiple root nodes\n",
+ 			   NULL);
++            xmlXIncludeClearNamespaces(list);
+             xmlFreeNodeList(list);
+ 	    return(-1);
+ 	}
+@@ -2228,7 +2255,8 @@ xmlXIncludeIncludeNode(xmlXIncludeCtxtPtr ctxt, int nr) {
+ 
+ 	    xmlAddPrevSibling(cur, end);
+ 	}
+-	xmlUnlinkNode(cur);
++	xmlXIncludeClearNamespaces(cur);
++		xmlUnlinkNode(cur);
+ 	xmlFreeNode(cur);
+     } else {
+         xmlNodePtr child, next;
+@@ -2245,6 +2273,7 @@ xmlXIncludeIncludeNode(xmlXIncludeCtxtPtr ctxt, int nr) {
+ 	    xmlXIncludeErr(ctxt, ctxt->incTab[nr]->ref,
+ 	                   XML_XINCLUDE_BUILD_FAILED,
+ 			   "failed to build node\n", NULL);
++            xmlXIncludeClearNamespaces(list);
+             xmlFreeNodeList(list);
+ 	    return(-1);
+ 	}
+@@ -2264,6 +2293,7 @@ xmlXIncludeIncludeNode(xmlXIncludeCtxtPtr ctxt, int nr) {
+         for (child = cur->children; child != NULL; child = next) {
+             next = child->next;
+             xmlUnlinkNode(child);
++            xmlXIncludeClearNamespaces(child);
+             xmlFreeNode(child);
+         }
+     }

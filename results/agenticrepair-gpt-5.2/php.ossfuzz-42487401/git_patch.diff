@@ -1,0 +1,75 @@
+diff --git a/Zend/zend_generators.c b/Zend/zend_generators.c
+index baca12f66b5..bfbf6c2e341 100644
+--- a/Zend/zend_generators.c
++++ b/Zend/zend_generators.c
+@@ -185,7 +185,12 @@ static void zend_generator_remove_leaf_child(zend_generator_node *node, zend_gen
+ 		HashTable *ht = node->child.ht;
+ 		zend_ulong child_leaf;
+ 		zend_generator *child_generator;
++		zend_generator *removed_child;
++
++		removed_child = zend_hash_index_find_ptr(ht, (zend_ulong) leaf);
++		ZEND_ASSERT(removed_child != NULL);
+ 		zend_hash_index_del(ht, (zend_ulong) leaf);
++		OBJ_RELEASE(&removed_child->std);
+ 		if (--node->children == 1) {
+ 			ZEND_HASH_FOREACH_NUM_KEY_PTR(ht, child_leaf, child_generator) {
+ 				node->child.single.leaf = (zend_generator *) child_leaf;
+@@ -249,6 +254,11 @@ static void zend_generator_dtor_storage(zend_object *object) /* {{{ */
+ 					root = next;
+ 				}
+ 				parent->node.ptr.root = toproot;
++				/* parent stops being a yield-from node and becomes a leaf, drop the child reference */
++				if (parent->node.child.single.child) {
++					OBJ_RELEASE(&parent->node.child.single.child->std);
++					parent->node.child.single.child = NULL;
++				}
+ 				parent->node.children = 0;
+ 			} else {
+ 				zend_generator_remove_leaf_child(&parent->node, generator, NULL);
+@@ -343,9 +353,20 @@ static void zend_generator_free_storage(zend_object *object) /* {{{ */
+ 		zval_ptr_dtor(&generator->retval);
+ 	}
+ 
+-	if (UNEXPECTED(generator->node.children > 1)) {
+-		zend_hash_destroy(generator->node.child.ht);
+-		efree(generator->node.child.ht);
++	if (UNEXPECTED(generator->node.children == 1)) {
++		/* Drop reference held by yield-from tree bookkeeping. */
++		if (generator->node.child.single.child) {
++			OBJ_RELEASE(&generator->node.child.single.child->std);
++			generator->node.child.single.child = NULL;
++		}
++	} else if (UNEXPECTED(generator->node.children > 1)) {
++		HashTable *ht = generator->node.child.ht;
++		zend_generator *child_generator;
++		ZEND_HASH_FOREACH_PTR(ht, child_generator) {
++			OBJ_RELEASE(&child_generator->std);
++		} ZEND_HASH_FOREACH_END();
++		zend_hash_destroy(ht);
++		efree(ht);
+ 	}
+ 
+ 	zend_object_std_dtor(&generator->std);
+@@ -535,6 +556,9 @@ static void zend_generator_add_single_child(zend_generator_node *node, zend_gene
+ 	if (node->children == 0) {
+ 		node->child.single.leaf = leaf;
+ 		node->child.single.child = child;
++		/* The yield-from tree stores raw zend_generator* pointers. Keep the referenced
++		 * generator alive while it is reachable through this node. */
++		GC_ADDREF(&child->std);
+ 	} else {
+ 		if (node->children == 1) {
+ 			HashTable *ht = emalloc(sizeof(HashTable));
+@@ -544,8 +568,11 @@ static void zend_generator_add_single_child(zend_generator_node *node, zend_gene
+ 			node->child.ht = ht;
+ 		}
+ 
++		/* Each leaf->child entry owns a reference to the child generator. */
++		GC_ADDREF(&child->std);
+ 		if (zend_hash_index_add_ptr(node->child.ht, (zend_ulong) leaf, child) == NULL) {
+ 			ZEND_ASSERT(node->children > 1);
++						OBJ_RELEASE(&child->std);
+ 			return;
+ 		}
+ 	}

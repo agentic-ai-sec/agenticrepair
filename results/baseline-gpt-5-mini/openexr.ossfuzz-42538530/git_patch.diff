@@ -1,0 +1,106 @@
+diff --git a/src/lib/OpenEXRCore/validation.c b/src/lib/OpenEXRCore/validation.c
+index 65e2346b..ad5c5c09 100644
+--- a/src/lib/OpenEXRCore/validation.c
++++ b/src/lib/OpenEXRCore/validation.c
+@@ -680,10 +680,20 @@ internal_exr_validate_shared_attrs (exr_context_t ctxt,
+     {
+         if (curpart->displayWindow)
+         {
+-            if (memcmp (basepart->displayWindow->box2i,
+-                        curpart->displayWindow->box2i,
+-                        sizeof(exr_attr_box2i_t)))
++            /* ensure attributes are box2i and pointers valid before memcmp */
++            if (basepart->displayWindow->type == EXR_ATTR_BOX2I &&
++                curpart->displayWindow->type == EXR_ATTR_BOX2I &&
++                basepart->displayWindow->box2i && curpart->displayWindow->box2i)
++            {
++                if (memcmp (basepart->displayWindow->box2i,
++                            curpart->displayWindow->box2i,
++                            sizeof(exr_attr_box2i_t)))
++                    rv = EXR_ERR_ATTR_TYPE_MISMATCH;
++            }
++            else
++            {
+                 rv = EXR_ERR_ATTR_TYPE_MISMATCH;
++            }
+         }
+         else
+             rv = EXR_ERR_ATTR_TYPE_MISMATCH;
+@@ -699,10 +709,17 @@ internal_exr_validate_shared_attrs (exr_context_t ctxt,
+     {
+         if (curpart->pixelAspectRatio)
+         {
+-            // NaN compares false, but if they're both NaN?
+-            if (memcmp (&(basepart->pixelAspectRatio->f),
+-                        &(curpart->pixelAspectRatio->f),
+-                        sizeof(float)))
++            /* ensure both are float attributes before comparing */
++            if (basepart->pixelAspectRatio->type == EXR_ATTR_FLOAT &&
++                curpart->pixelAspectRatio->type == EXR_ATTR_FLOAT)
++            {
++                /* NaN compares false, but if they're both NaN? */
++                if (memcmp (&(basepart->pixelAspectRatio->f),
++                            &(curpart->pixelAspectRatio->f),
++                            sizeof(float)))
++                    rv = EXR_ERR_ATTR_TYPE_MISMATCH;
++            }
++            else
+                 rv = EXR_ERR_ATTR_TYPE_MISMATCH;
+         }
+         else
+@@ -717,14 +734,23 @@ internal_exr_validate_shared_attrs (exr_context_t ctxt,
+     rv1 = exr_get_attribute_by_name (ctxt, curpartidx, "timecode", &cattr);
+     if (EXR_ERR_SUCCESS == rv && rv == rv1)
+     {
+-        if (memcmp (battr->timecode,
+-                    cattr->timecode,
+-                    sizeof(exr_attr_timecode_t)))
++        /* ensure types and pointers valid before memcmp */
++        if (battr->type == EXR_ATTR_TIMECODE && cattr->type == EXR_ATTR_TIMECODE &&
++            battr->timecode && cattr->timecode)
+         {
+-            rv = EXR_ERR_ATTR_TYPE_MISMATCH;
++            if (memcmp (battr->timecode,
++                        cattr->timecode,
++                        sizeof(exr_attr_timecode_t)))
++            {
++                rv = EXR_ERR_ATTR_TYPE_MISMATCH;
++            }
++            else
++                rv = EXR_ERR_SUCCESS;
+         }
+         else
+-            rv = EXR_ERR_SUCCESS;
++        {
++            rv = EXR_ERR_ATTR_TYPE_MISMATCH;
++        }
+     }
+     else if (EXR_ERR_SUCCESS == rv1)
+         rv = EXR_ERR_ATTR_TYPE_MISMATCH;
+@@ -737,12 +763,21 @@ internal_exr_validate_shared_attrs (exr_context_t ctxt,
+     rv1 = exr_get_attribute_by_name (ctxt, curpartidx, "chromaticities", &cattr);
+     if (EXR_ERR_SUCCESS == rv && rv == rv1)
+     {
+-        if (memcmp (battr->chromaticities,
+-                    cattr->chromaticities,
+-                    sizeof(exr_attr_chromaticities_t)))
+-            rv = EXR_ERR_ATTR_TYPE_MISMATCH;
++        /* ensure types and pointers valid before memcmp */
++        if (battr->type == EXR_ATTR_CHROMATICITIES && cattr->type == EXR_ATTR_CHROMATICITIES &&
++            battr->chromaticities && cattr->chromaticities)
++        {
++            if (memcmp (battr->chromaticities,
++                        cattr->chromaticities,
++                        sizeof(exr_attr_chromaticities_t)))
++                rv = EXR_ERR_ATTR_TYPE_MISMATCH;
++            else
++                rv = EXR_ERR_SUCCESS;
++        }
+         else
+-            rv = EXR_ERR_SUCCESS;
++        {
++            rv = EXR_ERR_ATTR_TYPE_MISMATCH;
++        }
+     }
+     else if (EXR_ERR_SUCCESS == rv1)
+         rv = EXR_ERR_ATTR_TYPE_MISMATCH;

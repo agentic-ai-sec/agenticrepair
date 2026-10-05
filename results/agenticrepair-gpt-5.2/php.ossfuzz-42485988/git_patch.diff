@@ -1,0 +1,52 @@
+diff --git a/Zend/zend_ast.c b/Zend/zend_ast.c
+index b1e564b5e90..ef5a2cf588b 100644
+--- a/Zend/zend_ast.c
++++ b/Zend/zend_ast.c
+@@ -1458,6 +1458,7 @@ static ZEND_COLD void zend_ast_export_ex(smart_str *str, zend_ast *ast, int prio
+ 	zend_ast_decl *decl;
+ 	int p, pl, pr;
+ 	const char *op;
++	uint32_t children;
+ 
+ tail_call:
+ 	if (!ast) {
+@@ -1796,6 +1797,11 @@ simple_list:
+ 			smart_str_appends(str, "->");
+ 			zend_ast_export_var(str, ast->child[1], 0, indent);
+ 			break;
++		case ZEND_AST_NULLSAFE_PROP:
++			zend_ast_export_ex(str, ast->child[0], 0, indent);
++			smart_str_appends(str, "?->");
++			zend_ast_export_var(str, ast->child[1], 0, indent);
++			break;
+ 		case ZEND_AST_STATIC_PROP:
+ 			zend_ast_export_ns_name(str, ast->child[0], 0, indent);
+ 			smart_str_appends(str, "::$");
+@@ -2073,6 +2079,14 @@ simple_list:
+ 			zend_ast_export_ex(str, ast->child[2], 0, indent);
+ 			smart_str_appendc(str, ')');
+ 			break;
++		case ZEND_AST_NULLSAFE_METHOD_CALL:
++			zend_ast_export_ex(str, ast->child[0], 0, indent);
++			smart_str_appends(str, "?->");
++			zend_ast_export_var(str, ast->child[1], 0, indent);
++			smart_str_appendc(str, '(');
++			zend_ast_export_ex(str, ast->child[2], 0, indent);
++			smart_str_appendc(str, ')');
++			break;
+ 		case ZEND_AST_STATIC_CALL:
+ 			zend_ast_export_ns_name(str, ast->child[0], 0, indent);
+ 			smart_str_appends(str, "::");
+@@ -2174,6 +2188,12 @@ simple_list:
+ 	return;
+ 
+ binary_op:
++	children = zend_ast_get_num_children(ast);
++	if (UNEXPECTED(children < 2)) {
++		/* Defensive fallback for malformed AST nodes. */
++		smart_str_appends(str, "/* invalid AST */");
++		return;
++	}
+ 	if (priority > p) smart_str_appendc(str, '(');
+ 	zend_ast_export_ex(str, ast->child[0], pl, indent);
+ 	smart_str_appends(str, op);

@@ -1,0 +1,46 @@
+diff --git a/mrbgems/mruby-sprintf/src/sprintf.c b/mrbgems/mruby-sprintf/src/sprintf.c
+index 03e5729c6..e1f5f7d1b 100644
+--- a/mrbgems/mruby-sprintf/src/sprintf.c
++++ b/mrbgems/mruby-sprintf/src/sprintf.c
+@@ -806,7 +806,12 @@ retry:
+ 
+         if (*p == 'p') arg = mrb_inspect(mrb, arg);
+         str = mrb_obj_as_string(mrb, arg);
+-        len = RSTRING_LEN(str);
++        size_t tmp_len = RSTRING_LEN(str);
++        if (tmp_len > (size_t)MRB_INT_MAX) {
++          len = MRB_INT_MAX;
++        } else {
++          len = (mrb_int)tmp_len;
++        }
+         if (RSTRING(result)->flags & MRB_STR_EMBED) {
+           mrb_int tmp_n = len;
+           RSTRING(result)->flags &= ~MRB_STR_EMBED_LEN_MASK;
+@@ -823,7 +828,12 @@ retry:
+           if ((flags&FPREC) && (prec < slen)) {
+             char *p = RSTRING_PTR(str) + prec;
+             slen = prec;
+-            len = (mrb_int)(p - RSTRING_PTR(str));
++             {
++  ptrdiff_t _diff = p - RSTRING_PTR(str);
++  if (_diff < 0) _diff = 0;
++  size_t _tmp_len = (size_t)_diff;
++  len = (_tmp_len > (size_t)MRB_INT_MAX) ? MRB_INT_MAX : (mrb_int)_tmp_len;
++}
+           }
+           /* need to adjust multi-byte string pos */
+           if ((flags&FWIDTH) && (width > slen)) {
+@@ -831,14 +841,12 @@ retry:
+             if (!(flags&FMINUS)) {
+               FILL(' ', width);
+             }
+-            PUSH(RSTRING_PTR(str), len);
+             if (flags&FMINUS) {
+               FILL(' ', width);
+             }
+             break;
+           }
+         }
+-        PUSH(RSTRING_PTR(str), len);
+       }
+       break;

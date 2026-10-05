@@ -1,0 +1,128 @@
+diff --git a/src/lib/OpenEXRCore/internal_huf.c b/src/lib/OpenEXRCore/internal_huf.c
+index fa769c9e..e3c6775c 100644
+--- a/src/lib/OpenEXRCore/internal_huf.c
++++ b/src/lib/OpenEXRCore/internal_huf.c
+@@ -1179,10 +1179,21 @@ FastHufDecoder_refill (
+ 
+ static inline uint64_t
+ fasthuf_read_bits (
+-    int numBits, uint64_t* buffer, int* bufferNumBits, const uint8_t** currByte)
++    int             numBits,
++    uint64_t*        buffer,
++    int*             bufferNumBits,
++    const uint8_t**  currByte,
++    const uint8_t*   topByte,
++    int*             err)
+ {
+     while (*bufferNumBits < numBits)
+     {
++        if (*currByte >= topByte)
++        {
++            if (err) *err = 1;
++            return 0;
++        }
++
+         *buffer = ((*buffer) << 8) | *((*currByte)++);
+         *bufferNumBits += 8;
+     }
+@@ -1246,6 +1257,8 @@ fasthuf_initialize (
+ 
+     const uint8_t* topByte = *table + numBytes;
+ 
++    int tableerr = 0;
++
+     for (uint64_t symbol = (uint64_t) minSymbol; symbol <= (uint64_t) maxSymbol;
+          symbol++)
+     {
+@@ -1267,7 +1280,18 @@ fasthuf_initialize (
+         //
+ 
+         uint64_t codeLen =
+-            fasthuf_read_bits (6, &currBits, &currBitCount, &currByte);
++            fasthuf_read_bits (6, &currBits, &currBitCount, &currByte, topByte, &tableerr);
++
++        if (tableerr)
++        {
++            if (pctxt)
++                pctxt->print_error (
++                    pctxt,
++                    EXR_ERR_CORRUPT_CHUNK,
++                    "Error decoding Huffman table (Truncated table data).");
++            return EXR_ERR_CORRUPT_CHUNK;
++        }
++
+ 
+         if (codeLen < (uint64_t) SHORT_ZEROCODE_RUN)
+         {
+@@ -1280,9 +1304,22 @@ fasthuf_initialize (
+             codeCount[codeLen]++;
+         }
+         else if (codeLen == (uint64_t) LONG_ZEROCODE_RUN)
+-            symbol +=
+-                fasthuf_read_bits (8, &currBits, &currBitCount, &currByte) +
+-                SHORTEST_LONG_RUN - 1;
++        {
++            uint64_t runLen = fasthuf_read_bits (
++                8, &currBits, &currBitCount, &currByte, topByte, &tableerr);
++
++            if (tableerr)
++            {
++                if (pctxt)
++                    pctxt->print_error (
++                        pctxt,
++                        EXR_ERR_CORRUPT_CHUNK,
++                        "Error decoding Huffman table (Truncated table data).");
++                return EXR_ERR_CORRUPT_CHUNK;
++            }
++
++            symbol += runLen + SHORTEST_LONG_RUN - 1;
++        }
+         else
+             symbol += codeLen - SHORT_ZEROCODE_RUN + 1;
+ 
+@@ -1372,7 +1409,18 @@ fasthuf_initialize (
+          symbol++)
+     {
+         uint64_t codeLen =
+-            fasthuf_read_bits (6, &currBits, &currBitCount, &currByte);
++            fasthuf_read_bits (6, &currBits, &currBitCount, &currByte, topByte, &tableerr);
++
++        if (tableerr)
++        {
++            if (pctxt)
++                pctxt->print_error (
++                    pctxt,
++                    EXR_ERR_CORRUPT_CHUNK,
++                    "Error decoding Huffman table (Truncated table data).");
++            return EXR_ERR_CORRUPT_CHUNK;
++        }
++
+ 
+         if (codeLen < (uint64_t) SHORT_ZEROCODE_RUN)
+         {
+@@ -1391,9 +1439,22 @@ fasthuf_initialize (
+             mapping[codeLen]++;
+         }
+         else if (codeLen == (uint64_t) LONG_ZEROCODE_RUN)
+-            symbol +=
+-                fasthuf_read_bits (8, &currBits, &currBitCount, &currByte) +
+-                SHORTEST_LONG_RUN - 1;
++        {
++            uint64_t runLen = fasthuf_read_bits (
++                8, &currBits, &currBitCount, &currByte, topByte, &tableerr);
++
++            if (tableerr)
++            {
++                if (pctxt)
++                    pctxt->print_error (
++                        pctxt,
++                        EXR_ERR_CORRUPT_CHUNK,
++                        "Error decoding Huffman table (Truncated table data).");
++                return EXR_ERR_CORRUPT_CHUNK;
++            }
++
++            symbol += runLen + SHORTEST_LONG_RUN - 1;
++        }
+         else
+             symbol += codeLen - SHORT_ZEROCODE_RUN + 1;
+     }

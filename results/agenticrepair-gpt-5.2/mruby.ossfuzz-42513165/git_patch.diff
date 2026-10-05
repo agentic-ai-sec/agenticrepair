@@ -1,0 +1,218 @@
+diff --git a/mrbgems/mruby-bigint/core/bigint.c b/mrbgems/mruby-bigint/core/bigint.c
+index b7892ef21..f450ca474 100644
+--- a/mrbgems/mruby-bigint/core/bigint.c
++++ b/mrbgems/mruby-bigint/core/bigint.c
+@@ -643,26 +643,55 @@ mpz_sizeinbase(mpz_t *x, int base)
+ static int
+ mpz_init_set_str(mrb_state *mrb, mpz_t *x, const char *s, mrb_int len, mrb_int base)
+ {
+-  size_t i;
++  mrb_int i;
+   int retval = 0;
+   mpz_t t,m,bb;
+   short sn;
+   unsigned int k;
++  mrb_bool seen_digit = FALSE;
++
++  /*
++   * Defensive validation:
++   * - len/base can come from byte streams (irep pool) and must not be
++   *   interpreted as signed values.
++   * - Avoid unsigned underflow in the reverse scan.
++   */
++  if (!s || len <= 0) {
++    return -1;
++  }
++  if (iabs(base) < 2 || iabs(base) > 36) {
++    return -1;
++  }
++
+   mpz_init(mrb,x);
+   mpz_init_set_int(mrb,&m,1);
+   mpz_init(mrb,&t);
+   zero(x);
++
+   if (*s == '-') {
+-    sn = -1; s++;
++    sn = -1;
++    s++;
++    len--;
++    if (base < 0) base = -base;
++    if (len <= 0) {
++      retval = -1;
++      goto cleanup;
++    }
+   }
+   else if (base < 0) {          /* trick: negative if base < 0 */
+-    sn = -1; base = -base;
++    sn = -1;
++    base = -base;
+   }
+-  else
++  else {
+     sn = 1;
++  }
++
++  /* base is now positive and in [2,36] */
+   mpz_init_set_int(mrb,&bb, base);
+-  for (i = len-1;; i--) {
+-    if (s[i]=='_') continue;
++
++  for (i = len-1; i >= 0; i--) {
++    if (s[i] == '_') continue;
++
+     if (s[i] >= '0' && s[i] <= '9')
+       k = (unsigned int)s[i] - (unsigned int)'0';
+     else if (s[i] >= 'A' && s[i] <= 'Z')
+@@ -673,23 +702,33 @@ mpz_init_set_str(mrb_state *mrb, mpz_t *x, const char *s, mrb_int len, mrb_int b
+       retval = (-1);
+       break;
+     }
+-    if (k >= base) {
++    if (k >= (unsigned int)base) {
+       retval = (-1);
+       break;
+     }
++    seen_digit = TRUE;
++
+     mpz_mul_int(mrb,&t,&m,(mrb_int)k);
+     mpz_add(mrb,x,x,&t);
+     mpz_mul(mrb,&m,&m,&bb);
+     if (i == 0) break;
+   }
++
++  if (retval == 0 && !seen_digit) {
++    retval = -1;
++  }
++
+   if (x->sn)
+     x->sn = sn;
++
++cleanup:
+   mpz_clear(mrb,&m);
+   mpz_clear(mrb,&bb);
+   mpz_clear(mrb,&t);
+   return retval;
+ }
+ 
++
+ static char*
+ mpz_get_str(mrb_state *mrb, char *s, mrb_int sz, mrb_int base, mpz_t *x)
+ {
+diff --git a/mrbgems/mruby-compiler/core/codegen.c b/mrbgems/mruby-compiler/core/codegen.c
+index 8d9a96ba9..8d1d7bc72 100644
+--- a/mrbgems/mruby-compiler/core/codegen.c
++++ b/mrbgems/mruby-compiler/core/codegen.c
+@@ -1028,7 +1028,7 @@ new_litbn(codegen_scope *s, const char *p, int base, mrb_bool neg)
+     buf = (char*)codegen_realloc(s, NULL, plen+3);
+     buf[0] = (char)plen;
+     buf[1] = base;
+-    if (neg) buf[1] = 0x80;
++    if (neg) buf[1] = (char)(buf[1] | 0x80);
+     memcpy(buf+2, p, plen);
+     buf[plen+2] = '\0';
+     pv->u.str = buf;
+diff --git a/mrbgems/mruby-compiler/core/y.tab.c b/mrbgems/mruby-compiler/core/y.tab.c
+index 7ab370574..6945361cc 100644
+--- a/mrbgems/mruby-compiler/core/y.tab.c
++++ b/mrbgems/mruby-compiler/core/y.tab.c
+@@ -12918,7 +12918,7 @@ mrb_parser_new(mrb_state *mrb)
+ 
+   p->lex_strterm = NULL;
+ 
+-  p->current_filename_index = -1;
++  p->current_filename_index = 0;
+   p->filename_table = NULL;
+   p->filename_table_length = 0;
+ 
+diff --git a/src/dump.c b/src/dump.c
+index c0ad4b689..0123d88f6 100644
+--- a/src/dump.c
++++ b/src/dump.c
+@@ -10,6 +10,7 @@
+ #include <mruby/irep.h>
+ #include <mruby/debug.h>
+ #include <string.h>
++#include <stdint.h>
+ 
+ #ifndef MRB_NO_FLOAT
+ #include <mruby/endian.h>
+@@ -129,7 +130,7 @@ get_pool_block_size(mrb_state *mrb, const mrb_irep *irep)
+ 
+     case IREP_TT_BIGINT:
+       {
+-        mrb_int len = irep->pool[pool_no].u.str[0];
++        mrb_int len = (mrb_int)(uint8_t)irep->pool[pool_no].u.str[0];
+         mrb_assert_int_fit(mrb_int, len, size_t, SIZE_MAX);
+         size += (size_t)len+2;
+       }
+@@ -195,7 +196,7 @@ write_pool_block(mrb_state *mrb, const mrb_irep *irep, uint8_t *buf)
+ 
+     case IREP_TT_BIGINT:
+       cur += uint8_to_bin(IREP_TT_BIGINT, cur); /* data type */
+-      len = irep->pool[pool_no].u.str[0];
++      len = (mrb_int)(uint8_t)irep->pool[pool_no].u.str[0];
+       memcpy(cur, irep->pool[pool_no].u.str, (size_t)len+2);
+       cur += len+2;
+       break;
+diff --git a/src/symbol.c b/src/symbol.c
+index 429074532..8a82e1a0d 100644
+--- a/src/symbol.c
++++ b/src/symbol.c
+@@ -5,6 +5,7 @@
+ */
+ 
+ #include <string.h>
++#include <stdint.h>
+ #include <mruby.h>
+ #include <mruby/khash.h>
+ #include <mruby/string.h>
+@@ -122,17 +123,17 @@ sym_inline_unpack(mrb_sym sym, char *buf, mrb_int *lenp)
+ static uint8_t
+ symhash(const char *key, size_t len)
+ {
+-    uint32_t hash, i;
++    uint64_t hash, i;
+ 
+-    for(hash = i = 0; i < len; ++i) {
+-        hash += key[i];
++    for (hash = i = 0; i < len; ++i) {
++        hash += (uint8_t)key[i];
+         hash += (hash << 10);
+         hash ^= (hash >> 6);
+     }
+     hash += (hash << 3);
+     hash ^= (hash >> 11);
+     hash += (hash << 15);
+-    return hash & 0xff;
++    return (uint8_t)(hash & 0xff);
+ }
+ 
+ #define sym_lit_p(mrb, i) (mrb->symflags[i>>3]&(1<<(i&7)))
+diff --git a/src/vm.c b/src/vm.c
+index 3c3a5237f..372b509f6 100644
+--- a/src/vm.c
++++ b/src/vm.c
+@@ -16,6 +16,7 @@
+ #include <mruby/variable.h>
+ #include <mruby/error.h>
+ #include <mruby/opcode.h>
++#include <stdint.h>
+ #include "value_array.h"
+ #include <mruby/throw.h>
+ #include <mruby/dump.h>
+@@ -1357,7 +1358,13 @@ RETRY_TRY_BLOCK:
+ #ifdef MRB_USE_BIGINT
+         {
+           const char *s = pool[b].u.str;
+-          regs[a] = mrb_bint_new_str(mrb, s+2, (mrb_int)s[0], (mrb_int)s[1]);
++          /* pool bigint header: [0]=len (uint8), [1]=base with sign flag (0x80) */
++          mrb_int blen = (mrb_int)(uint8_t)s[0];
++          uint8_t bbase = (uint8_t)s[1];
++          mrb_int bint_base = (mrb_int)(bbase & 0x7f);
++          if (bint_base == 0) bint_base = 10; /* compatibility with older encodings */
++          if (bbase & 0x80) bint_base = -bint_base;
++          regs[a] = mrb_bint_new_str(mrb, s+2, blen, bint_base);
+         }
+         break;
+ #else

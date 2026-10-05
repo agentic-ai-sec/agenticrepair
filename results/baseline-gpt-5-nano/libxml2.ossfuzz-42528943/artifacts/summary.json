@@ -1,0 +1,11 @@
+{
+  "instance_id": "libxml2.ossfuzz-42528943",
+  "final_status": "failed",
+  "total_token_usage": {
+    "input_tokens": 5144929,
+    "output_tokens": 136859
+  },
+  "timing": {
+    "total_duration": 743.9091384410858
+  }
+}

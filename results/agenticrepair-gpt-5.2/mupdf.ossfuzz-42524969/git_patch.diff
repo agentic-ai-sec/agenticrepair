@@ -1,0 +1,59 @@
+diff --git a/source/fitz/load-bmp.c b/source/fitz/load-bmp.c
+index db173ce0a..f03bcec70 100644
+--- a/source/fitz/load-bmp.c
++++ b/source/fitz/load-bmp.c
+@@ -27,6 +27,7 @@
+ 
+ #include <string.h>
+ #include <limits.h>
++#include <stddef.h>
+ 
+ static const unsigned char web_palette[] = {
+ 	0x00, 0x00, 0x00, 0x33, 0x00, 0x00, 0x66, 0x00, 0x00, 0x99, 0x00, 0x00, 0xCC, 0x00, 0x00, 0xFF, 0x00, 0x00,
+@@ -603,11 +604,15 @@ bmp_read_bitmap(fz_context *ctx, struct info *info, const unsigned char *begin,
+ 	if (ssp + sstride * height > end)
+ 	{
+ 		int32_t h = (end - ssp) / sstride;
+-		if (h == 0 || h > SHRT_MAX)
++		/* Allow completely truncated bitmaps to load as blank images.
++		 * The later clamp (and loop bounds) will prevent any reads. */
++		if (h > SHRT_MAX)
+ 		{
+ 			fz_free(ctx, decompressed);
+ 			fz_throw(ctx, FZ_ERROR_GENERIC, "image dimensions out of range in bmp image");
+ 		}
++		if (h == 0)
++			fz_warn(ctx, "premature end in bitmap data in bmp image");
+ 	}
+ 
+ 	fz_try(ctx)
+@@ -933,14 +938,27 @@ bmp_read_palette(fz_context *ctx, struct info *info, const unsigned char *begin,
+ {
+ 	int i, expected, present, entry_size;
+ 	const unsigned char *bitmap;
++	ptrdiff_t avail;
+ 
+ 	entry_size = palette_entry_size(info);
+-	bitmap = begin + info->bitmapoffset;
++	bitmap = begin + info->bitmapoffset;	
++	/* Malformed files can claim the bitmap starts before the palette.
++	 * Clamp to avoid negative pointer differences and negative palette counts. */
++	if (bitmap < p)
++	{
++		fz_warn(ctx, "bitmap offset precedes color table in bmp image");
++		bitmap = p;
++	}
++	if (bitmap > end)
++		bitmap = end;
+ 
+ 	expected = fz_mini(info->colors, 1 << info->bitcount);
+ 	if (expected == 0)
+ 		expected = 1 << info->bitcount;
+-	present = fz_mini(expected, (bitmap - p) / entry_size);
++	avail = bitmap - p;
++	if (avail < 0)
++		avail = 0;
++	present = fz_mini(expected, (int)(avail / entry_size));
+ 
+ 	for (i = 0; i < present; i++)
+ 	{

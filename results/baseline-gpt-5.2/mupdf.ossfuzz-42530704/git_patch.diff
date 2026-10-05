@@ -1,0 +1,26 @@
+diff --git a/source/fitz/load-bmp.c b/source/fitz/load-bmp.c
+index 402fc0d31..28d50fee4 100644
+--- a/source/fitz/load-bmp.c
++++ b/source/fitz/load-bmp.c
+@@ -805,8 +805,20 @@ bmp_read_color_profile(fz_context *ctx, struct info *info, const unsigned char *
+ 	{
+ 		fz_buffer *profile;
+ 		fz_colorspace *cs;
++		uint32_t buflen;
+ 
+-		if ((uint32_t)(end - begin) < info->profilesize)
++		buflen = (uint32_t)(end - begin);
++
++		/*
++		 * The profile is stored at begin + profileoffset for profilesize bytes.
++		 * Validate both offset and size to avoid reading past the supplied buffer.
++		 */
++		if (info->profilesize == 0)
++		{
++			fz_warn(ctx, "ignoring empty color profile in bmp image");
++			return NULL;
++		}
++		if (info->profileoffset > buflen || info->profilesize > buflen - info->profileoffset)
+ 		{
+ 			fz_warn(ctx, "ignoring truncated color profile in bmp image");
+ 			return NULL;

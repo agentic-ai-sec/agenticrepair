@@ -1,0 +1,55 @@
+diff --git a/mrbgems/mruby-complex/src/complex.c b/mrbgems/mruby-complex/src/complex.c
+index 66176c3c1..016f12197 100644
+--- a/mrbgems/mruby-complex/src/complex.c
++++ b/mrbgems/mruby-complex/src/complex.c
+@@ -156,6 +156,21 @@ mrb_complex_eq(mrb_state *mrb, mrb_value x, mrb_value y)
+     if (p1->imaginary != 0) return FALSE;
+     return p1->real == mrb_float(y);
+ 
++  case MRB_TT_RATIONAL:
++    /*
++     * Avoid delegating to the other object (mrb_equal(y, x)) for Rational.
++     * Otherwise Rational#== delegates to Complex and Complex#== delegates
++     * back to Rational, causing unbounded mutual recursion.
++     */
++    if (p1->imaginary != 0) return FALSE;
++    {
++      mrb_value den = mrb_funcall(mrb, y, "denominator", 0);
++      if (!mrb_integer_p(den) || mrb_integer(den) != 1) return FALSE;
++      mrb_value num = mrb_funcall(mrb, y, "numerator", 0);
++      if (!mrb_integer_p(num)) return FALSE;
++      return p1->real == (mrb_float)mrb_integer(num);
++    }
++
+   default:
+     return mrb_equal(mrb, y, x);
+   }
+diff --git a/src/vm.c b/src/vm.c
+index 1c59d4406..f22249e46 100644
+--- a/src/vm.c
++++ b/src/vm.c
+@@ -478,7 +478,24 @@ mrb_funcall_with_block(mrb_state *mrb, mrb_value self, mrb_sym mid, mrb_int argc
+     }
+     c = mrb_class(mrb, self);
+     m = mrb_method_search_vm(mrb, &c, mid);
+-    mrb_stack_extend(mrb, argc + 3);
++    /*
++     * Reserve enough stack space for the call setup.
++     *
++     * The new call frame starts at (current_ci->stack + nregs).
++     * mrb_funcall_with_block writes the receiver and arguments into that
++     * new frame (and in the varargs/method_missing path, stores an args
++     * array into the future frame before cipush()).
++     *
++     * Extending by only (argc+3) based on the current frame base is
++     * insufficient when nregs is large (e.g. deep/nested mrb_funcall/mrb_equal
++     * recursion), which can lead to an out-of-bounds write at stend.
++     */
++    {
++      /* slots needed in the callee frame for argument setup */
++      mrb_int setup_slots = (argc < CALL_MAXARGS) ? (argc + 2) : 3; /* self + args + blk */
++      /* total slots needed from current frame base */
++      mrb_stack_extend(mrb, n + setup_slots);
++    }
+     if (MRB_METHOD_UNDEF_P(m) || argc >= 15) {
+       mrb_value args = mrb_ary_new_from_values(mrb, argc, argv);

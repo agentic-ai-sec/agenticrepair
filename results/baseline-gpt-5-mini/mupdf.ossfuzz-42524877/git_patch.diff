@@ -1,0 +1,60 @@
+diff --git a/source/fitz/load-bmp.c b/source/fitz/load-bmp.c
+index 3d27d749e..f4c3221fd 100644
+--- a/source/fitz/load-bmp.c
++++ b/source/fitz/load-bmp.c
+@@ -416,11 +416,22 @@ bmp_decompress_rle8(fz_context *ctx, struct info *info, const unsigned char *p,
+ 			sp += sn + pad;
+ 		}
+ 		else
+-		{ /* encoded */
+-			int dn, sn;
+-			dn = sp[0];
+-			sn = 1;
+-			sp++;
++			{ /* encoded */
++				int dn, sn;
++				dn = sp[0];
++				sn = 1;
++				sp++;
++				/* Limit dn to available bytes to avoid reading past *end. */
++				if (sp >= *end)
++				{
++					fz_warn(ctx, "premature end of pixel data in encoded code in bmp image");
++					dn = 0;
++				}
++				else if ((size_t)dn > (size_t)(*end - sp))
++				{
++					fz_warn(ctx, "premature end of pixel data in encoded code in bmp image");
++					dn = (int)(*end - sp);
++				}
+ 			for (i = 0; i < dn; i++)
+ 			{
+ 				uint32_t actualx = x;
+@@ -527,11 +538,22 @@ bmp_decompress_rle4(fz_context *ctx, struct info *info, const unsigned char *p,
+ 			sp += sn + pad;
+ 		}
+ 		else
+-		{ /* encoded */
+-			int dn, sn;
+-			dn = sp[0];
+-			sn = 1;
+-			sp++;
++			{ /* encoded */
++				int dn, sn;
++				dn = sp[0];
++				sn = 1;
++				sp++;
++				/* Limit dn to available bytes to avoid reading past *end. */
++				if (sp >= *end)
++				{
++					fz_warn(ctx, "premature end of pixel data in encoded code in bmp image");
++					dn = 0;
++				}
++				else if ((size_t)dn > (size_t)(*end - sp))
++				{
++					fz_warn(ctx, "premature end of pixel data in encoded code in bmp image");
++					dn = (int)(*end - sp);
++				}
+ 			for (i = 0; i < dn; i++)
+ 			{
+ 				uint32_t actualx = x;

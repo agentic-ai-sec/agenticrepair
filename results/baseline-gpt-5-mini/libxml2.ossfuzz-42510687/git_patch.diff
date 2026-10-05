@@ -1,0 +1,13 @@
+diff --git a/dict.c b/dict.c
+index c29d2af7..309dcec3 100644
+--- a/dict.c
++++ b/dict.c
+@@ -1224,7 +1224,7 @@ xmlDictOwns(xmlDictPtr dict, const xmlChar *str) {
+ 	return(-1);
+     pool = dict->strings;
+     while (pool != NULL) {
+-        if ((str >= &pool->array[0]) && (str <= pool->free))
++        if ((str >= &pool->array[0]) && (str < pool->free))
+ 	    return(1);
+ 	pool = pool->next;
+     }

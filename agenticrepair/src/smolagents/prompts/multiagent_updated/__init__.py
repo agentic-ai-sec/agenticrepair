@@ -1,2 +1,0 @@
-# Multiagent prompts package
-

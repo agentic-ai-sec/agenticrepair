@@ -1,0 +1,46 @@
+diff --git a/parser.c b/parser.c
+index 9bda9458..177090af 100644
+--- a/parser.c
++++ b/parser.c
+@@ -9927,8 +9927,18 @@ xmlParseContent(xmlParserCtxtPtr ctxt) {
+     xmlParseContentInternal(ctxt);
+ 
+     if ((ctxt->instate != XML_PARSER_EOF) && (ctxt->nameNr > nameNr)) {
+-        const xmlChar *name = ctxt->nameTab[ctxt->nameNr - 1];
+-        int line = ctxt->pushTab[ctxt->nameNr - 1].line;
++        const xmlChar *name = BAD_CAST "(unknown)";
++        int line = (ctxt->input != NULL) ? ctxt->input->line : 0;
++
++        /*
++         * Error reporting may run in parser modes where pushTab isn't
++         * initialized or where the name stack is empty.
++         */
++        if ((ctxt->nameNr > 0) && (ctxt->nameTab != NULL) &&
++            (ctxt->nameTab[ctxt->nameNr - 1] != NULL))
++            name = ctxt->nameTab[ctxt->nameNr - 1];
++        if ((ctxt->nameNr > 0) && (ctxt->pushTab != NULL))
++            line = ctxt->pushTab[ctxt->nameNr - 1].line;
+         xmlFatalErrMsgStrIntStr(ctxt, XML_ERR_TAG_NOT_FINISHED,
+                 "Premature end of data in tag %s line %d\n",
+ 		name, line, NULL);
+@@ -9959,8 +9969,18 @@ xmlParseElement(xmlParserCtxtPtr ctxt) {
+ 	return;
+ 
+     if (CUR == 0) {
+-        const xmlChar *name = ctxt->nameTab[ctxt->nameNr - 1];
+-        int line = ctxt->pushTab[ctxt->nameNr - 1].line;
++        const xmlChar *name = BAD_CAST "(unknown)";
++        int line = (ctxt->input != NULL) ? ctxt->input->line : 0;
++
++        /*
++         * Don't assume that the element/name stacks are initialized in all
++         * parser modes (e.g. SAX1) or that nameNr is non-zero on EOF.
++         */
++        if ((ctxt->nameNr > 0) && (ctxt->nameTab != NULL) &&
++            (ctxt->nameTab[ctxt->nameNr - 1] != NULL))
++            name = ctxt->nameTab[ctxt->nameNr - 1];
++        if ((ctxt->nameNr > 0) && (ctxt->pushTab != NULL))
++            line = ctxt->pushTab[ctxt->nameNr - 1].line;
+         xmlFatalErrMsgStrIntStr(ctxt, XML_ERR_TAG_NOT_FINISHED,
+                 "Premature end of data in tag %s line %d\n",
+ 		name, line, NULL);

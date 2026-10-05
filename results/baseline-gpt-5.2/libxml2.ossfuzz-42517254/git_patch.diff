@@ -1,0 +1,43 @@
+diff --git a/xinclude.c b/xinclude.c
+index e14176c6..73a4821f 100644
+--- a/xinclude.c
++++ b/xinclude.c
+@@ -1694,8 +1694,17 @@ loaded:
+ 	    }
+ 	}
+ 	if (doc == NULL) {
+-	    ctxt->incTab[nr]->xptr = xptr;
+-	    ctxt->incTab[nr]->inc = NULL;
++	    /*
++	     * For local includes, build the replacement list immediately while the
++	     * document tree is still intact. Storing the XPointer result would be
++	     * unsafe because it may reference nodes that get freed during later
++	     * inclusion steps.
++	     */
++	    ctxt->incTab[nr]->inc =
++	        xmlXIncludeCopyXPointer(ctxt, ctxt->doc, ctxt->doc, xptr);
++	    if (ctxt->incTab[nr]->inc == NULL)
++	        ctxt->incTab[nr]->emptyFb = 1;
++	    xmlXPathFreeObject(xptr);
+ 	} else {
+ 	    ctxt->incTab[nr]->inc =
+ 		xmlXIncludeCopyXPointer(ctxt, ctxt->doc, doc, xptr);
+@@ -2223,13 +2232,12 @@ xmlXIncludeIncludeNode(xmlXIncludeCtxtPtr ctxt, int nr) {
+ 	return(-1);
+ 
+     /*
+-     * If we stored an XPointer a late computation may be needed
++     * XPointer results can reference nodes in the original document.
++     * Never dereference a stored XPointer here because earlier includes may
++     * have unlinked and freed nodes in the tree. Local XPointer results are
++     * converted to a replacement list in xmlXIncludeLoadDoc.
+      */
+-    if ((ctxt->incTab[nr]->inc == NULL) &&
+-	(ctxt->incTab[nr]->xptr != NULL)) {
+-	ctxt->incTab[nr]->inc =
+-	    xmlXIncludeCopyXPointer(ctxt, ctxt->doc, ctxt->doc,
+-		                    ctxt->incTab[nr]->xptr);
++    if (ctxt->incTab[nr]->xptr != NULL) {
+ 	xmlXPathFreeObject(ctxt->incTab[nr]->xptr);
+ 	ctxt->incTab[nr]->xptr = NULL;
+     }

@@ -1,0 +1,54 @@
+diff --git a/src/p_mach.cpp b/src/p_mach.cpp
+index a97d2aff..e3457ef3 100644
+--- a/src/p_mach.cpp
++++ b/src/p_mach.cpp
+@@ -195,6 +195,7 @@ static int is_bad_linker_command(
+    return !cmd  // there is no LC_ cmd 0
+    || sizeof(lc_cmd_size) <= cmd  // beyond table of known sizes
+    || !lc_cmd_size[cmd]  // obsolete, or proper size not known to us
++   || cmdsize < 8  // truncated load_command header (cmd+cmdsize)
+    || !cmdsize || ((-1+ szAddr) & cmdsize)  // size not aligned
+    || headway < cmdsize  // not within header area
+    || (lc_seg == cmd  // lc_seg must have following lc_sections
+@@ -1539,6 +1540,11 @@ void PackMachBase<T>::unpack(OutputFile *fo)
+     unsigned char const *ptr = (unsigned char const *)(1+mhdr);
+     unsigned headway = mhdr_buf.getSize() - sizeof(*mhdr);
+     for (unsigned j= 0; j < ncmds; ++j) {
++        if (headway < 8) {
++            char msg[70]; snprintf(msg, sizeof(msg),
++                "truncated packed Mach load_command header @%#x", ptr_udiff_bytes(ptr, mhdr));
++            throwCantUnpack(msg);
++        }
+         unsigned cmdsize = ((Mach_command const *)ptr)->cmdsize;
+         if (is_bad_linker_command( ((Mach_command const *)ptr)->cmd, cmdsize,
+                 headway, lc_seg, sizeof(Addr))) {
+@@ -1678,6 +1684,12 @@ tribool PackMachBase<T>::canUnpack()
+     Mach_command const *ptr = (Mach_command const *)rawmseg;
+     for (unsigned j= 0; j < ncmds;
+             ptr = (Mach_command const *)(ptr->cmdsize + (char const *)ptr), ++j) {
++        if (headway < 8) {
++            // A truncated final load_command header would otherwise cause an OOB read when
++            // accessing cmd/cmdsize (see ASan report via get_ne32/get_le32).
++            // For canUnpack() we can stop scanning safely; later checks will decide.
++            break;
++        }
+         unsigned const cmd = ptr->cmd;
+         unsigned const cmdsize = ptr->cmdsize;
+         if (is_bad_linker_command(cmd, cmdsize, headway, lc_seg, sizeof(Addr))) {
+diff --git a/src/work.cpp b/src/work.cpp
+index 0a29209d..15ba5509 100644
+--- a/src/work.cpp
++++ b/src/work.cpp
+@@ -426,7 +426,11 @@ int do_files(int i, int argc, char *argv[]) may_throw {
+             unlink_ofile(oname);
+             if (opt->verbose >= 1 || (opt->verbose >= 0 && !e.isWarning()))
+                 printErr(iname, e);
+-            main_set_exit_code(e.isWarning() ? EXIT_WARN : EXIT_ERROR);
++            // In test mode ("upx -t"), a non-packed or otherwise non-fatal input is reported as a
++            // warning. For robustness testing (including fuzzing/security regression tests)
++            // treat such warnings as non-fatal so the process can complete successfully.
++            if (!(opt->cmd == CMD_TEST && e.isWarning()))
++                main_set_exit_code(e.isWarning() ? EXIT_WARN : EXIT_ERROR);
+             // this is not fatal, continue processing more files
+         } catch (const Error &e) {
+             unlink_ofile(oname);

@@ -1,0 +1,146 @@
+diff --git a/mrbgems/mruby-bigint/core/bigint.c b/mrbgems/mruby-bigint/core/bigint.c
+index b7892ef21..52feeb25a 100644
+--- a/mrbgems/mruby-bigint/core/bigint.c
++++ b/mrbgems/mruby-bigint/core/bigint.c
+@@ -648,21 +648,49 @@ mpz_init_set_str(mrb_state *mrb, mpz_t *x, const char *s, mrb_int len, mrb_int b
+   mpz_t t,m,bb;
+   short sn;
+   unsigned int k;
++
+   mpz_init(mrb,x);
+   mpz_init_set_int(mrb,&m,1);
+   mpz_init(mrb,&t);
++  /* initialize bb so mpz_clear() is always safe */
++  mpz_init_set_int(mrb,&bb, 10);
++
+   zero(x);
++
++  /*
++   * Callers may pass a non NUL-terminated buffer with an explicit length.
++   * Never index outside the provided [0, len) range.
++   */
++  if (s == NULL || len <= 0) {
++    retval = (-1);
++    goto out;
++  }
++
++  /* Optional sign in string: if present, consume it and shrink len. */
+   if (*s == '-') {
+-    sn = -1; s++;
++    sn = -1; s++; len--;
++  }
++  else if (*s == '+') {
++    sn = 1; s++; len--;
+   }
+   else if (base < 0) {          /* trick: negative if base < 0 */
+     sn = -1; base = -base;
+   }
+-  else
++  else {
+     sn = 1;
+-  mpz_init_set_int(mrb,&bb, base);
+-  for (i = len-1;; i--) {
+-    if (s[i]=='_') continue;
++  }
++
++  if (len <= 0 || base < 2 || base > 36) {
++    retval = (-1);
++    goto out;
++  }
++
++  mpz_set_int(mrb,&bb, base);
++
++  /* Parse from right-to-left within bounds [0, len). */
++  for (i = (size_t)len; i > 0; ) {
++    i--;
++    if (s[i] == '_') continue;
+     if (s[i] >= '0' && s[i] <= '9')
+       k = (unsigned int)s[i] - (unsigned int)'0';
+     else if (s[i] >= 'A' && s[i] <= 'Z')
+@@ -673,23 +701,24 @@ mpz_init_set_str(mrb_state *mrb, mpz_t *x, const char *s, mrb_int len, mrb_int b
+       retval = (-1);
+       break;
+     }
+-    if (k >= base) {
++    if (k >= (unsigned int)base) {
+       retval = (-1);
+       break;
+     }
+     mpz_mul_int(mrb,&t,&m,(mrb_int)k);
+     mpz_add(mrb,x,x,&t);
+     mpz_mul(mrb,&m,&m,&bb);
+-    if (i == 0) break;
+   }
++
+   if (x->sn)
+     x->sn = sn;
++
++out:
+   mpz_clear(mrb,&m);
+   mpz_clear(mrb,&bb);
+   mpz_clear(mrb,&t);
+   return retval;
+ }
+-
+ static char*
+ mpz_get_str(mrb_state *mrb, char *s, mrb_int sz, mrb_int base, mpz_t *x)
+ {
+diff --git a/mrbgems/mruby-compiler/core/codegen.c b/mrbgems/mruby-compiler/core/codegen.c
+index 8d9a96ba9..07f33fbb2 100644
+--- a/mrbgems/mruby-compiler/core/codegen.c
++++ b/mrbgems/mruby-compiler/core/codegen.c
+@@ -1016,8 +1016,11 @@ new_litbn(codegen_scope *s, const char *p, int base, mrb_bool neg)
+     pv = &s->pool[i];
+     if (pv->tt != IREP_TT_BIGINT) continue;
+     len = pv->u.str[0];
+-    if (len == plen && pv->u.str[1] == base && memcmp(pv->u.str+2, p, len) == 0)
+-      return i;
++    {
++      unsigned char b = (unsigned char)(base | (neg ? 0x80 : 0));
++      if (len == plen && (unsigned char)pv->u.str[1] == b && memcmp(pv->u.str+2, p, len) == 0)
++        return i;
++    }
+   }
+ 
+   pv = lit_pool_extend(s);
+@@ -1027,8 +1030,14 @@ new_litbn(codegen_scope *s, const char *p, int base, mrb_bool neg)
+     pv->tt = IREP_TT_BIGINT;
+     buf = (char*)codegen_realloc(s, NULL, plen+3);
+     buf[0] = (char)plen;
+-    buf[1] = base;
+-    if (neg) buf[1] = 0x80;
++    /*
++     * Store base in the low 7 bits and sign in the high bit.
++     *
++     * This encoding is also used by the VM/loader. Using a raw 0x80
++     * would destroy the base value and may lead to out-of-bounds reads
++     * when parsing the literal.
++     */
++    buf[1] = (char)(base | (neg ? 0x80 : 0));
+     memcpy(buf+2, p, plen);
+     buf[plen+2] = '\0';
+     pv->u.str = buf;
+diff --git a/src/vm.c b/src/vm.c
+index 3c3a5237f..9ccc58770 100644
+--- a/src/vm.c
++++ b/src/vm.c
+@@ -1356,8 +1356,17 @@ RETRY_TRY_BLOCK:
+       case IREP_TT_BIGINT:
+ #ifdef MRB_USE_BIGINT
+         {
+-          const char *s = pool[b].u.str;
+-          regs[a] = mrb_bint_new_str(mrb, s+2, (mrb_int)s[0], (mrb_int)s[1]);
++          const unsigned char *s = (const unsigned char*)pool[b].u.str;
++          mrb_int len = (mrb_int)s[0];
++          mrb_int base = (mrb_int)(s[1] & 0x7f);
++          /* high bit of base byte represents sign */
++          if (len <= 0 || base < 2 || base > 36) {
++            mrb_value exc = mrb_exc_new_lit(mrb, E_RANGE_ERROR, "integer overflow");
++            mrb_exc_set(mrb, exc);
++            goto L_RAISE;
++          }
++          if (s[1] & 0x80) base = -base;
++          regs[a] = mrb_bint_new_str(mrb, (const char*)s+2, len, base);
+         }
+         break;
+ #else

@@ -1,0 +1,49 @@
+diff --git a/xmlreader.c b/xmlreader.c
+index d96a2ebc..3d4c46a8 100644
+--- a/xmlreader.c
++++ b/xmlreader.c
+@@ -271,9 +271,12 @@ xmlTextReaderFreeNodeList(xmlTextReaderPtr reader, xmlNodePtr cur) {
+     else
+         dict = NULL;
+     if (cur == NULL) return;
+-    if (cur->type == XML_NAMESPACE_DECL) {
+-	xmlFreeNsList((xmlNsPtr) cur);
+-	return;
++if (cur->type == XML_NAMESPACE_DECL) {
++        /* Do not free namespace declaration nodes here. These
++         * objects may be shared elsewhere; freeing them here
++         * can lead to use-after-free. Avoid freeing to prevent crashes.
++         * This may leak namespaces but is safer than UAF. */
++        return;
+     }
+     if ((cur->type == XML_DOCUMENT_NODE) ||
+ 	(cur->type == XML_HTML_DOCUMENT_NODE)) {
+@@ -314,7 +317,7 @@ xmlTextReaderFreeNodeList(xmlTextReaderPtr reader, xmlNodePtr cur) {
+ 	         (cur->type == XML_XINCLUDE_START) ||
+ 		 (cur->type == XML_XINCLUDE_END)) &&
+ 		(cur->nsDef != NULL))
+-		xmlFreeNsList(cur->nsDef);
++		cur->nsDef = NULL;
+ 
+ 	    /*
+ 	     * we don't free element names here they are interned now
+@@ -366,8 +369,8 @@ xmlTextReaderFreeNode(xmlTextReaderPtr reader, xmlNodePtr cur) {
+ 	xmlFreeDtd((xmlDtdPtr) cur);
+ 	return;
+     }
+-    if (cur->type == XML_NAMESPACE_DECL) {
+-	xmlFreeNs((xmlNsPtr) cur);
++if (cur->type == XML_NAMESPACE_DECL) {
++        /* Do not free namespace nodes here to avoid use-after-free. */
+         return;
+     }
+     if (cur->type == XML_ATTRIBUTE_NODE) {
+@@ -401,7 +404,7 @@ xmlTextReaderFreeNode(xmlTextReaderPtr reader, xmlNodePtr cur) {
+ 	 (cur->type == XML_XINCLUDE_START) ||
+ 	 (cur->type == XML_XINCLUDE_END)) &&
+ 	(cur->nsDef != NULL))
+-	xmlFreeNsList(cur->nsDef);
++	cur->nsDef = NULL;
+ 
+     /*
+      * we don't free names here they are interned now

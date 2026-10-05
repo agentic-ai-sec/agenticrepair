@@ -1,0 +1,240 @@
+{
+  "instance_id": "mupdf.ossfuzz-42520029",
+  "final_status": "success",
+  "static_analyzer_output": {
+    "role": "static_analyzer",
+    "raw_output": "{\n  \"analysis_type\": \"memory\",\n  \"findings\": [\n    {\n      \"file\": \"source/pdf/pdf-cmap-parse.c\",\n      \"line\": 246,\n      \"message\": \"Stack buffer int dst[256] is filled with min(buf->len/2, 256) entries, but pdf_map_one_to_many is called with len=buf->len/2 (unclamped), allowing reads past dst[] in callee.\",\n      \"severity\": \"error\"\n    },\n    {\n      \"file\": \"source/pdf/pdf-cmap.c\",\n      \"line\": 728,\n      \"message\": \"pdf_map_one_to_many iterates i < len and reads/writes values[i]/values[j] while decoding surrogate pairs before enforcing PDF_MRANGE_CAP; if caller passes an oversized len, values[] can be read out-of-bounds.\",\n      \"severity\": \"error\"\n    }\n  ],\n  \"dataflow_summary\": \"\",\n  \"key_insight\": \"The overflow is triggered by a length mismatch: the bfRange-array parser clamps how many elements it writes into a 256-int stack buffer, but passes the original (unclamped) element count to pdf_map_one_to_many, which processes len elements before doing any cap check.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Fix the immediate caller bug: in pdf_parse_bf_range_array, pass the clamped length (len) to pdf_map_one_to_many instead of buf->len/2.\",\n      \"reasoning\": \"Static inspection shows dst[] is only populated up to `len = min(buf->len/2, 256)`, so using the same `len` for the call prevents out-of-bounds reads in pdf_map_one_to_many.\",\n      \"trade_offs\": \"Long bfRange arrays will be truncated to 256 code units; may change behavior for malformed/oversized CMaps but improves safety.\"\n    },\n    {\n      \"approach\": \"Harden pdf_map_one_to_many: validate len before any access (including surrogate decoding). E.g., if (len > PDF_MRANGE_CAP) { warn; return; } placed at function entry, or clamp len to PDF_MRANGE_CAP.\",\n      \"reasoning\": \"ASan indicates the read happens inside pdf_map_one_to_many before its existing `len > PDF_MRANGE_CAP` check; moving the check ahead eliminates the OOB even if callers are buggy.\",\n      \"trade_offs\": \"May silently ignore large mappings earlier; ensure warning behavior is acceptable and consistent with existing semantics.\"\n    },\n    {\n      \"approach\": \"Refactor parsing to avoid fixed-size stack buffers for dst/dststr (use dynamic allocation sized to buf->len/2 with a reasonable global limit), and always pass the allocated length.\",\n      \"reasoning\": \"Removes the class of bugs where write-side length and read-side length diverge due to truncation; makes it easier to keep parsing logic correct for varying input sizes.\",\n      \"trade_offs\": \"More allocation overhead and need for strict upper bounds to prevent memory exhaustion from malicious CMaps.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "analysis_type": "memory",
+      "findings": [
+        {
+          "file": "source/pdf/pdf-cmap-parse.c",
+          "line": 246,
+          "message": "Stack buffer int dst[256] is filled with min(buf->len/2, 256) entries, but pdf_map_one_to_many is called with len=buf->len/2 (unclamped), allowing reads past dst[] in callee.",
+          "severity": "error"
+        },
+        {
+          "file": "source/pdf/pdf-cmap.c",
+          "line": 728,
+          "message": "pdf_map_one_to_many iterates i < len and reads/writes values[i]/values[j] while decoding surrogate pairs before enforcing PDF_MRANGE_CAP; if caller passes an oversized len, values[] can be read out-of-bounds.",
+          "severity": "error"
+        }
+      ],
+      "dataflow_summary": "",
+      "key_insight": "The overflow is triggered by a length mismatch: the bfRange-array parser clamps how many elements it writes into a 256-int stack buffer, but passes the original (unclamped) element count to pdf_map_one_to_many, which processes len elements before doing any cap check.",
+      "fix_suggestions": [
+        {
+          "approach": "Fix the immediate caller bug: in pdf_parse_bf_range_array, pass the clamped length (len) to pdf_map_one_to_many instead of buf->len/2.",
+          "reasoning": "Static inspection shows dst[] is only populated up to `len = min(buf->len/2, 256)`, so using the same `len` for the call prevents out-of-bounds reads in pdf_map_one_to_many.",
+          "trade_offs": "Long bfRange arrays will be truncated to 256 code units; may change behavior for malformed/oversized CMaps but improves safety."
+        },
+        {
+          "approach": "Harden pdf_map_one_to_many: validate len before any access (including surrogate decoding). E.g., if (len > PDF_MRANGE_CAP) { warn; return; } placed at function entry, or clamp len to PDF_MRANGE_CAP.",
+          "reasoning": "ASan indicates the read happens inside pdf_map_one_to_many before its existing `len > PDF_MRANGE_CAP` check; moving the check ahead eliminates the OOB even if callers are buggy.",
+          "trade_offs": "May silently ignore large mappings earlier; ensure warning behavior is acceptable and consistent with existing semantics."
+        },
+        {
+          "approach": "Refactor parsing to avoid fixed-size stack buffers for dst/dststr (use dynamic allocation sized to buf->len/2 with a reasonable global limit), and always pass the allocated length.",
+          "reasoning": "Removes the class of bugs where write-side length and read-side length diverge due to truncation; makes it easier to keep parsing logic correct for varying input sizes.",
+          "trade_offs": "More allocation overhead and need for strict upper bounds to prevent memory exhaustion from malicious CMaps."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 160143,
+      "output_tokens": 4957
+    },
+    "timing": {
+      "start_time": 1768847358.625163,
+      "end_time": 1768847623.8763127,
+      "duration": 265.2511496543884
+    },
+    "trajectory": {
+      "agent_role": "static_analyzer",
+      "task": "<uploaded_files>\n/src/mupdf\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/mupdf`. Consider the following issue description:\n\n<issue_description>\nA stack-buffer-overflow in pdf_map_one_to_many (triggered during CMap parsing via pdf_parse_bf_range / pdf_load_cmap) can read past the end of a stack buffer while processing bfRange/CMap data, leading to crashes and potential memory corruption or other security impacts.\n---\n==2173==ERROR: AddressSanitizer: stack-buffer-overfl",
+      "total_steps": 12,
+      "total_duration": 265.2511496543884,
+      "total_input_tokens": 160143,
+      "total_output_tokens": 4957,
+      "total_cost": 0.13816984999999998,
+      "final_state": "success"
+    }
+  },
+  "dynamic_analyzer_output": {
+    "role": "dynamic_analyzer",
+    "raw_output": "{\n  \"tools_used\": [\"gdb\", \"ubsan\"],\n  \"crash_info\": {\n    \"address\": \"0x7ffec3e97540\",\n    \"type\": \"stack-buffer-overflow (READ of size 4)\",\n    \"location\": \"source/pdf/pdf-cmap-parse.c:223 (dst[256] in pdf_parse_bf_range_array) -> pdf_map_one_to_many() reads past end\"\n  },\n  \"backtrace\": [\n    \"#0 pdf_map_one_to_many (mutool+0x45c0d5)\",\n    \"#1 pdf_parse_bf_range_array (mutool+0x45809b)\",\n    \"#2 pdf_parse_bf_range / pdf_load_cmap path (mutool+0x62f3bb ...)\"\n  ],\n  \"memory_state\": \"ASan reports overflow of stack object 'dst.i.i' sized [32,1056) bytes (=1024 bytes = 256 ints). Faulting read at offset 1056 indicates access to values[256] (4 bytes past the end) due to len passed larger than 256.\",\n  \"root_cause_hint\": \"In pdf_parse_bf_range_array(), dst is a fixed stack buffer int dst[256]. The parser fills only up to len=min(buf->len/2, 256), but calls pdf_map_one_to_many(..., dst, buf->len/2). When buf->len/2 > 256, pdf_map_one_to_many iterates i < len and reads values[i] beyond dst, triggering the stack-buffer-overflow before its later PDF_MRANGE_CAP (8) length check can prevent anything.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Fix caller: in pdf_parse_bf_range_array(), pass the capped length variable (len) to pdf_map_one_to_many, not buf->len/2. Optionally emit a warning when truncation happens.\",\n      \"reasoning\": \"Dynamic evidence shows the overflow occurs exactly when buf->len/2 exceeds the local dst capacity; using the computed capped 'len' aligns the callee's iteration bounds with the actual initialized buffer size.\",\n      \"trade_offs\": \"Behavior change: extremely long bfRange array strings will be truncated (or ignored if you choose to reject), but that is already consistent with later PDF_MRANGE_CAP limits and is far preferable to OOB reads.\"\n    },\n    {\n      \"approach\": \"Add defensive validation in pdf_map_one_to_many: early-return if len > PDF_MRANGE_CAP before the surrogate-pair decoding loop (or move the PDF_MRANGE_CAP check above the loop).\",\n      \"reasoning\": \"Even if a caller passes an excessive len, the function should not walk it before validating. This prevents large-len cases from triggering long loops and potential OOB when callers make mistakes.\",\n      \"trade_offs\": \"This alone cannot guarantee safety if a caller passes a too-large len with a too-small buffer but len <= PDF_MRANGE_CAP; however it will prevent the specific crash scenario where len is huge.\"\n    },\n    {\n      \"approach\": \"Avoid fixed-size stack buffering: allocate dst dynamically sized to buf->len/2 (with an upper bound) in pdf_parse_bf_range_array, then pass the true allocated length.\",\n      \"reasoning\": \"Removes the mismatch risk between token length and local array capacity, and allows correct processing of larger strings if desired.\",\n      \"trade_offs\": \"More heap allocations in CMap parsing (performance/DoS considerations). Still should enforce a strict maximum (e.g., reject > PDF_MRANGE_CAP or another sane bound) to prevent memory/time blowups.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "tools_used": [
+        "gdb",
+        "ubsan"
+      ],
+      "crash_info": {
+        "address": "0x7ffec3e97540",
+        "type": "stack-buffer-overflow (READ of size 4)",
+        "location": "source/pdf/pdf-cmap-parse.c:223 (dst[256] in pdf_parse_bf_range_array) -> pdf_map_one_to_many() reads past end"
+      },
+      "backtrace": [
+        "#0 pdf_map_one_to_many (mutool+0x45c0d5)",
+        "#1 pdf_parse_bf_range_array (mutool+0x45809b)",
+        "#2 pdf_parse_bf_range / pdf_load_cmap path (mutool+0x62f3bb ...)"
+      ],
+      "memory_state": "ASan reports overflow of stack object 'dst.i.i' sized [32,1056) bytes (=1024 bytes = 256 ints). Faulting read at offset 1056 indicates access to values[256] (4 bytes past the end) due to len passed larger than 256.",
+      "root_cause_hint": "In pdf_parse_bf_range_array(), dst is a fixed stack buffer int dst[256]. The parser fills only up to len=min(buf->len/2, 256), but calls pdf_map_one_to_many(..., dst, buf->len/2). When buf->len/2 > 256, pdf_map_one_to_many iterates i < len and reads values[i] beyond dst, triggering the stack-buffer-overflow before its later PDF_MRANGE_CAP (8) length check can prevent anything.",
+      "fix_suggestions": [
+        {
+          "approach": "Fix caller: in pdf_parse_bf_range_array(), pass the capped length variable (len) to pdf_map_one_to_many, not buf->len/2. Optionally emit a warning when truncation happens.",
+          "reasoning": "Dynamic evidence shows the overflow occurs exactly when buf->len/2 exceeds the local dst capacity; using the computed capped 'len' aligns the callee's iteration bounds with the actual initialized buffer size.",
+          "trade_offs": "Behavior change: extremely long bfRange array strings will be truncated (or ignored if you choose to reject), but that is already consistent with later PDF_MRANGE_CAP limits and is far preferable to OOB reads."
+        },
+        {
+          "approach": "Add defensive validation in pdf_map_one_to_many: early-return if len > PDF_MRANGE_CAP before the surrogate-pair decoding loop (or move the PDF_MRANGE_CAP check above the loop).",
+          "reasoning": "Even if a caller passes an excessive len, the function should not walk it before validating. This prevents large-len cases from triggering long loops and potential OOB when callers make mistakes.",
+          "trade_offs": "This alone cannot guarantee safety if a caller passes a too-large len with a too-small buffer but len <= PDF_MRANGE_CAP; however it will prevent the specific crash scenario where len is huge."
+        },
+        {
+          "approach": "Avoid fixed-size stack buffering: allocate dst dynamically sized to buf->len/2 (with an upper bound) in pdf_parse_bf_range_array, then pass the true allocated length.",
+          "reasoning": "Removes the mismatch risk between token length and local array capacity, and allows correct processing of larger strings if desired.",
+          "trade_offs": "More heap allocations in CMap parsing (performance/DoS considerations). Still should enforce a strict maximum (e.g., reject > PDF_MRANGE_CAP or another sane bound) to prevent memory/time blowups."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 410396,
+      "output_tokens": 8104
+    },
+    "timing": {
+      "start_time": 1768847623.884207,
+      "end_time": 1768847933.0430574,
+      "duration": 309.15885043144226
+    },
+    "trajectory": {
+      "agent_role": "dynamic_analyzer",
+      "task": "<uploaded_files>\n/src/mupdf\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/mupdf`. Consider the following issue description:\n\n<issue_description>\nA stack-buffer-overflow in pdf_map_one_to_many (triggered during CMap parsing via pdf_parse_bf_range / pdf_load_cmap) can read past the end of a stack buffer while processing bfRange/CMap data, leading to crashes and potential memory corruption or other security impacts.\n---\n==2173==ERROR: AddressSanitizer: stack-buffer-overfl",
+      "total_steps": 18,
+      "total_duration": 309.15885043144226,
+      "total_input_tokens": 410396,
+      "total_output_tokens": 8104,
+      "total_cost": 0.2546698,
+      "final_state": "success"
+    }
+  },
+  "history_miner_output": {
+    "role": "history_miner",
+    "raw_output": "{\n  \"file_analyzed\": \"source/pdf/pdf-cmap.c\",\n  \"function_analyzed\": \"pdf_map_one_to_many\",\n  \"relevant_commits\": [\n    {\n      \"hash\": \"9aa00973d5\",\n      \"message\": \"Fix various APIs to use size_t's for lengths\",\n      \"changes\": \"Changed pdf_map_one_to_many and CMap parser helpers to use size_t for length; updated bfchar/bfrange parsing loops.\",\n      \"relevance\": \"After the size_t conversion, callers pass/handle lengths derived from buf->len/2; if this length exceeds the fixed 256-element stack buffers, later code can iterate using the larger length and read past the end.\"\n    },\n    {\n      \"hash\": \"b0bfcf253e\",\n      \"message\": \"Fix 694698: Support 32-bit values in CMaps\",\n      \"changes\": \"Introduced the one-to-many mapping table design and PDF_MRANGE_CAP-based limits for mranges.\",\n      \"relevance\": \"Shows the intended safety model (cap-based limiting) for one-to-many mappings; current crash happens because len is used before applying a cap check.\"\n    },\n    {\n      \"hash\": \"d695605c5d\",\n      \"message\": \"Bug 694900: Avoid valgrind problems when cmap tables fill up\",\n      \"changes\": \"Added failure/overflow handling so range entries are only created when backing storage updates succeed.\",\n      \"relevance\": \"Demonstrates a prior security hardening pattern in this area: validate capacity/limits first, then perform updates. Similar ordering is needed here (bounds check before iterating over values).\"\n    }\n  ],\n  \"vulnerability_origin\": \"Likely introduced by the combination of (1) callers in pdf-cmap-parse.c using fixed-size stack arrays (e.g., int dst[256]) but passing an uncapped len (buf->len/2) into pdf_map_one_to_many, and (2) later changes (in the vulnerable base commit) that iterate over values[0..len-1] early (surrogate-pair decoding) before enforcing PDF_MRANGE_CAP. This allows OOB reads from the stack buffers when buf->len/2 > 256.\",\n  \"fix_hints\": \"History shows prior fixes in this subsystem tend to (a) clamp/validate lengths early and (b) avoid creating mappings when backing storage is invalid/overflowing. Apply the same: validate len against both caller buffer capacity and PDF_MRANGE_CAP before any reads/writes using len.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"In pdf_map_one_to_many: move the `if (len > PDF_MRANGE_CAP) ... return;` check to the top (before surrogate-pair decoding loop) and also guard against absurdly large len (e.g., len > SIZE_MAX/sizeof(int)).\",\n      \"reasoning\": \"Matches the earlier cap-based safety model (b0bfcf253e) and prevents using attacker-controlled len in the decoding loop.\",\n      \"trade_offs\": \"May drop/ignore overly-long mappings earlier than before; but those mappings were already meant to be ignored.\"\n    },\n    {\n      \"approach\": \"In pdf-cmap-parse.c: pass the actual populated length (the clamped `len` variable) into pdf_map_one_to_many instead of buf->len/2; optionally warn when truncating to 256.\",\n      \"reasoning\": \"Eliminates the immediate cause of reading beyond the 256-element stack buffers by ensuring callee never sees a length larger than the buffer filled.\",\n      \"trade_offs\": \"Truncation may change behavior for malformed/hostile CMaps; but it is safer and consistent with robust parsing goals.\"\n    },\n    {\n      \"approach\": \"Alternative: allocate destination arrays dynamically sized to buf->len/2 (with a hard upper bound), and treat `values` as `const int *` in pdf_map_one_to_many (copy into a local work buffer if transformation is needed).\",\n      \"reasoning\": \"Avoids fixed stack buffers entirely and prevents in-place modification of caller memory; improves robustness for legitimate larger sequences.\",\n      \"trade_offs\": \"More allocations during CMap parsing; must add strict upper bounds to avoid memory DoS.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "file_analyzed": "source/pdf/pdf-cmap.c",
+      "function_analyzed": "pdf_map_one_to_many",
+      "relevant_commits": [
+        {
+          "hash": "9aa00973d5",
+          "message": "Fix various APIs to use size_t's for lengths",
+          "changes": "Changed pdf_map_one_to_many and CMap parser helpers to use size_t for length; updated bfchar/bfrange parsing loops.",
+          "relevance": "After the size_t conversion, callers pass/handle lengths derived from buf->len/2; if this length exceeds the fixed 256-element stack buffers, later code can iterate using the larger length and read past the end."
+        },
+        {
+          "hash": "b0bfcf253e",
+          "message": "Fix 694698: Support 32-bit values in CMaps",
+          "changes": "Introduced the one-to-many mapping table design and PDF_MRANGE_CAP-based limits for mranges.",
+          "relevance": "Shows the intended safety model (cap-based limiting) for one-to-many mappings; current crash happens because len is used before applying a cap check."
+        },
+        {
+          "hash": "d695605c5d",
+          "message": "Bug 694900: Avoid valgrind problems when cmap tables fill up",
+          "changes": "Added failure/overflow handling so range entries are only created when backing storage updates succeed.",
+          "relevance": "Demonstrates a prior security hardening pattern in this area: validate capacity/limits first, then perform updates. Similar ordering is needed here (bounds check before iterating over values)."
+        }
+      ],
+      "vulnerability_origin": "Likely introduced by the combination of (1) callers in pdf-cmap-parse.c using fixed-size stack arrays (e.g., int dst[256]) but passing an uncapped len (buf->len/2) into pdf_map_one_to_many, and (2) later changes (in the vulnerable base commit) that iterate over values[0..len-1] early (surrogate-pair decoding) before enforcing PDF_MRANGE_CAP. This allows OOB reads from the stack buffers when buf->len/2 > 256.",
+      "fix_hints": "History shows prior fixes in this subsystem tend to (a) clamp/validate lengths early and (b) avoid creating mappings when backing storage is invalid/overflowing. Apply the same: validate len against both caller buffer capacity and PDF_MRANGE_CAP before any reads/writes using len.",
+      "fix_suggestions": [
+        {
+          "approach": "In pdf_map_one_to_many: move the `if (len > PDF_MRANGE_CAP) ... return;` check to the top (before surrogate-pair decoding loop) and also guard against absurdly large len (e.g., len > SIZE_MAX/sizeof(int)).",
+          "reasoning": "Matches the earlier cap-based safety model (b0bfcf253e) and prevents using attacker-controlled len in the decoding loop.",
+          "trade_offs": "May drop/ignore overly-long mappings earlier than before; but those mappings were already meant to be ignored."
+        },
+        {
+          "approach": "In pdf-cmap-parse.c: pass the actual populated length (the clamped `len` variable) into pdf_map_one_to_many instead of buf->len/2; optionally warn when truncating to 256.",
+          "reasoning": "Eliminates the immediate cause of reading beyond the 256-element stack buffers by ensuring callee never sees a length larger than the buffer filled.",
+          "trade_offs": "Truncation may change behavior for malformed/hostile CMaps; but it is safer and consistent with robust parsing goals."
+        },
+        {
+          "approach": "Alternative: allocate destination arrays dynamically sized to buf->len/2 (with a hard upper bound), and treat `values` as `const int *` in pdf_map_one_to_many (copy into a local work buffer if transformation is needed).",
+          "reasoning": "Avoids fixed stack buffers entirely and prevents in-place modification of caller memory; improves robustness for legitimate larger sequences.",
+          "trade_offs": "More allocations during CMap parsing; must add strict upper bounds to avoid memory DoS."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 396833,
+      "output_tokens": 9556
+    },
+    "timing": {
+      "start_time": 1768847933.0545788,
+      "end_time": 1768849213.380704,
+      "duration": 1280.3261251449585
+    },
+    "trajectory": {
+      "agent_role": "history_miner",
+      "task": "<uploaded_files>\n/src/mupdf\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/mupdf`. Consider the following issue description:\n\n<issue_description>\nA stack-buffer-overflow in pdf_map_one_to_many (triggered during CMap parsing via pdf_parse_bf_range / pdf_load_cmap) can read past the end of a stack buffer while processing bfRange/CMap data, leading to crashes and potential memory corruption or other security impacts.\n---\n==2173==ERROR: AddressSanitizer: stack-buffer-overfl",
+      "total_steps": 19,
+      "total_duration": 1280.3261251449585,
+      "total_input_tokens": 396833,
+      "total_output_tokens": 9556,
+      "total_cost": 0.26517295,
+      "final_state": "success"
+    }
+  },
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "{\n  \"root_cause\": \"pdf_parse_bf_range_array() stored at most 256 ints into a fixed stack buffer (int dst[256]) but then called pdf_map_one_to_many() with the original element count (buf->len/2). When buf->len/2 > 256, pdf_map_one_to_many() iterated using the oversized len and read past dst[], triggering an ASan stack-buffer-overflow before its later PDF_MRANGE_CAP check.\",\n  \"fix_approach\": \"1) Align caller length with the actual initialized buffer length: pdf_parse_bf_range_array() now passes the clamped `len` (min(buf->len/2, 256)) into pdf_map_one_to_many(), and emits a warning when truncation occurs. 2) Add a defensive early length check in pdf_map_one_to_many() to reject obviously oversized one-to-many mappings before the surrogate-pair decoding loop can walk attacker-controlled lengths.\",\n  \"files_modified\": [\n    \"source/pdf/pdf-cmap-parse.c\",\n    \"source/pdf/pdf-cmap.c\"\n  ],\n  \"verification\": {\n    \"build_success\": true,\n    \"repro_success\": true,\n    \"exit_code\": 0,\n    \"asan_output\": \"No sanitizer errors detected\"\n  },\n  \"confidence\": \"high\"\n}",
+    "parsed_output": {
+      "root_cause": "pdf_parse_bf_range_array() stored at most 256 ints into a fixed stack buffer (int dst[256]) but then called pdf_map_one_to_many() with the original element count (buf->len/2). When buf->len/2 > 256, pdf_map_one_to_many() iterated using the oversized len and read past dst[], triggering an ASan stack-buffer-overflow before its later PDF_MRANGE_CAP check.",
+      "fix_approach": "1) Align caller length with the actual initialized buffer length: pdf_parse_bf_range_array() now passes the clamped `len` (min(buf->len/2, 256)) into pdf_map_one_to_many(), and emits a warning when truncation occurs. 2) Add a defensive early length check in pdf_map_one_to_many() to reject obviously oversized one-to-many mappings before the surrogate-pair decoding loop can walk attacker-controlled lengths.",
+      "files_modified": [
+        "source/pdf/pdf-cmap-parse.c",
+        "source/pdf/pdf-cmap.c"
+      ],
+      "verification": {
+        "build_success": true,
+        "repro_success": true,
+        "exit_code": 0,
+        "asan_output": "No sanitizer errors detected"
+      },
+      "confidence": "high"
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 203193,
+      "output_tokens": 5647
+    },
+    "timing": {
+      "start_time": 1768849213.3924854,
+      "end_time": 1768849379.0427136,
+      "duration": 165.65022826194763
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/mupdf\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/mupdf`. Consider the following issue description:\n\n<issue_description>\nA stack-buffer-overflow in pdf_map_one_to_many (triggered during CMap parsing via pdf_parse_bf_range / pdf_load_cmap) can read past the end of a stack buffer while processing bfRange/CMap data, leading to crashes and potential memory corruption or other security impacts.\n---\n==2173==ERROR: AddressSanitizer: stack-buffer-overfl",
+      "total_steps": 14,
+      "total_duration": 165.65022826194763,
+      "total_input_tokens": 203193,
+      "total_output_tokens": 5647,
+      "total_cost": 0.19514495,
+      "final_state": "success"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 1170565,
+    "output_tokens": 28264
+  },
+  "timing": {
+    "total_duration": 2020.4248135089874
+  }
+}

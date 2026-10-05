@@ -1,0 +1,34 @@
+diff --git a/src/string.c b/src/string.c
+index e214ad4c2..fa1dc1fe2 100644
+--- a/src/string.c
++++ b/src/string.c
+@@ -623,6 +623,12 @@ memsearch_swar(const char *xs, long m, const char *ys, long n)
+     for (size_t j = 0; zeros; j++) {
+       if (zeros & MASK4) {
+         const mrb_int idx = i + j;
++        /* idx must be within the last valid start position (n - m)
++           so that memcmp below never reads past ys+n. */
++        if (idx > n - m) {
++          /* Remaining candidates in this word are even further right. */
++          break;
++        }
+         const char* p = s0 + idx + 1;
+         if (memcmp(p, xs + 1, m - 2) == 0) {
+           return idx;
+@@ -640,10 +646,13 @@ memsearch_swar(const char *xs, long m, const char *ys, long n)
+   if (i+m < n) {
+     const char *p = s0;
+     const char *e = ys + n;
+-    for (;p<e;) {
+-      size_t len = e-p;
++    for (; p < e; ) {
++      size_t len = (size_t)(e - p);
+       p = (const char*)memchr(p, *xs, len);
+-      if (p == NULL || len < m) break;
++      if (p == NULL) break;
++      /* memchr() can advance p; re-check remaining length before memcmp(). */
++      len = (size_t)(e - p);
++      if (len < (size_t)m) break;
+       if (memcmp(p+1, xs+1, m-1) == 0) return (mrb_int)(p - ys);
+       p++;
+     }

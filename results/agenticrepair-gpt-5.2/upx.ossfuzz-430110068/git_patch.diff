@@ -1,0 +1,211 @@
+diff --git a/src/p_lx_elf.cpp b/src/p_lx_elf.cpp
+index b57dfe5a..c986da0f 100644
+--- a/src/p_lx_elf.cpp
++++ b/src/p_lx_elf.cpp
+@@ -8644,6 +8644,7 @@ Elf32_Sym const *PackLinuxElf32::elf_lookup(char const *name) const
+ {
+     if (hashtab && dynsym && dynstr) {
+         unsigned const n_bucket = get_te32(&hashtab[0]);
++        unsigned const n_chain  = get_te32(&hashtab[1]);
+         unsigned const *const buckets = &hashtab[2];
+         unsigned const *const chains = &buckets[n_bucket];
+         // Find the end of DT_HASH and DT_DYNSYM. Perhaps elf_find_table_size()
+@@ -8662,23 +8663,54 @@ Elf32_Sym const *PackLinuxElf32::elf_lookup(char const *name) const
+             if (this->file_size == (off_t)dt_offsets[j])
+                 break;  // end sentinel
+         }
+-        if (n_bucket) {
++        bool sysv_hash_ok = true;
++        // Validate DT_HASH extent and make sure buckets/chains dereferences stay in-bounds.
++        // SysV hash layout: [nbucket, nchain, buckets[nbucket], chains[nchain]]
++        if (!l_hash || l_hash <= (void const *)hashtab) {
++            sysv_hash_ok = false;
++        }
++        if (!l_sym || l_sym <= (void const *)dynsym) {
++            sysv_hash_ok = false;
++        }
++        if (sysv_hash_ok)
++        {
++            upx_uint64_t const words_avail =
++                (upx_uint64_t)(((unsigned char const *)l_hash - (unsigned char const *)hashtab) / sizeof(unsigned));
++            upx_uint64_t const words_need = (upx_uint64_t)2 + (upx_uint64_t)n_bucket + (upx_uint64_t)n_chain;
++            if (words_avail < words_need) {
++                sysv_hash_ok = false;
++            }
++        }
++        if (sysv_hash_ok && n_bucket) {
+             unsigned const m = elf_hash(name) % n_bucket;
+             unsigned n_visit = 0;
+             unsigned si;
+-            if (l_hash <= &buckets[m])
+-                throwCantPack("bad DT_HASH %u", m);
+-            for (si= get_te32(&buckets[m]); si; si = get_te32(&chains[si])) {
+-                if (l_sym <= &dynsym[si])
+-                    throwCantPack("bad DT_HASH chain %d\n", si);
++            if (l_hash <= &buckets[m]) {
++                // ignore malformed DT_HASH
++            }
++            else {
++            for (si = get_te32(&buckets[m]); si; ) {
++                if (n_chain <= si) {
++                    break;
++                }
++                // Ensure the 32-bit read of chains[si] is within the DT_HASH region.
++                if (((unsigned char const *)&chains[si]) + sizeof(unsigned) > (unsigned char const *)l_hash) {
++                    break;
++                }
++                if (l_sym <= &dynsym[si]) {
++                    break;
++                }
+                 char const *const p= get_dynsym_name(si, (unsigned)-1);
+                 if (p && 0==strcmp(name, p))
+                     return &dynsym[si];
+-                if (l_sym <= &dynsym[n_visit++])
+-                    throwCantPack("circular DT_HASH chain %d\n", si);
++                if (n_visit >= n_chain || l_sym <= &dynsym[n_visit++]) {
++                    break;
++                }
++                si = get_te32(&chains[si]);
+             }
+         }
+     }
++    }
+     if (gashtab && dynsym && dynstr) {
+         unsigned const n_bucket = get_te32(&gashtab[0]);
+         unsigned const symbias  = get_te32(&gashtab[1]);
+@@ -8736,6 +8768,16 @@ Elf32_Sym const *PackLinuxElf32::elf_lookup(char const *name) const
+     //    (1==n_bucket && 0==buckets[0] && 1==n_bitmask && 0==bitmask[0])
+     // to minimize space in DT_GNU_HASH. This causes the fancy lookup to fail.
+     // Is a fallback to linear search assumed?
++    // Fallback: linear search of DT_DYNSYM when hash tables are missing or malformed.
++    // This avoids crashes on fuzzed DT_HASH/DT_GNU_HASH while still allowing symbol resolution.
++    if (dynsym && dynstr) {
++        for (unsigned si = 0; si < symnum_max; ++si) {
++            char const *const p = get_dynsym_name(si, (unsigned)-1);
++            if (p && 0==strcmp(name, p))
++                return &dynsym[si];
++        }
++    }
++
+     // 2022-03-12  Some Rust programs have 0==n_bucket.
+     return nullptr;
+ 
+@@ -8745,6 +8787,7 @@ Elf64_Sym const *PackLinuxElf64::elf_lookup(char const *name) const
+ {
+     if (hashtab && dynsym && dynstr) {
+         unsigned const n_bucket = get_te32(&hashtab[0]);
++        unsigned const n_chain  = get_te32(&hashtab[1]);
+         unsigned const *const buckets = &hashtab[2];
+         unsigned const *const chains = &buckets[n_bucket];
+         // Find the end of DT_HASH and DT_DYNSYM. Perhaps elf_find_table_size()
+@@ -8763,23 +8806,54 @@ Elf64_Sym const *PackLinuxElf64::elf_lookup(char const *name) const
+             if (this->file_size == (off_t)dt_offsets[j])
+                 break;  //end
+         }
++        bool sysv_hash_ok = true;
++        // Validate DT_HASH extent and make sure buckets/chains dereferences stay in-bounds.
++        // SysV hash layout: [nbucket, nchain, buckets[nbucket], chains[nchain]]
++        if (!l_hash || l_hash <= (void const *)hashtab) {
++            sysv_hash_ok = false;
++        }
++        if (!l_sym || l_sym <= (void const *)dynsym) {
++            sysv_hash_ok = false;
++        }
++        if (sysv_hash_ok)
++        {
++            upx_uint64_t const words_avail =
++                (upx_uint64_t)(((unsigned char const *)l_hash - (unsigned char const *)hashtab) / sizeof(unsigned));
++            upx_uint64_t const words_need = (upx_uint64_t)2 + (upx_uint64_t)n_bucket + (upx_uint64_t)n_chain;
++            if (words_avail < words_need) {
++                sysv_hash_ok = false;
++            }
++        }
+         if (n_bucket) { // -rust-musl can have "empty" hashtab
+             unsigned const m = elf_hash(name) % n_bucket;
+             unsigned n_visit = 0;
+             unsigned si;
+-            if (l_hash <= &buckets[m])
+-                throwCantPack("bad DT_HASH %u", m);
+-            for (si= get_te32(&buckets[m]); si; si = get_te32(&chains[si])) {
+-                if (l_sym <= &dynsym[si])
+-                    throwCantPack("bad DT_HASH chain %d\n", si);
++            if (l_hash <= &buckets[m]) {
++                // ignore malformed DT_HASH
++            }
++            else {
++            for (si = get_te32(&buckets[m]); si; ) {
++                if (n_chain <= si) {
++                    break;
++                }
++                // Ensure the 32-bit read of chains[si] is within the DT_HASH region.
++                if (((unsigned char const *)&chains[si]) + sizeof(unsigned) > (unsigned char const *)l_hash) {
++                    break;
++                }
++                if (l_sym <= &dynsym[si]) {
++                    break;
++                }
+                 char const *const p= get_dynsym_name(si, (unsigned)-1);
+                 if (p && 0==strcmp(name, p))
+                     return &dynsym[si];
+-                if (l_sym <= &dynsym[n_visit++])
+-                    throwCantPack("circular DT_HASH chain %d\n", si);
++                if (n_visit >= n_chain || l_sym <= &dynsym[n_visit++]) {
++                    break;
++                }
++                si = get_te32(&chains[si]);
+             }
+         }
+     }
++    }
+     if (gashtab && dynsym && dynstr) {
+         unsigned const n_bucket = get_te32(&gashtab[0]);
+         unsigned const symbias  = get_te32(&gashtab[1]);
+@@ -8837,6 +8911,16 @@ Elf64_Sym const *PackLinuxElf64::elf_lookup(char const *name) const
+     //    (1==n_bucket && 0==buckets[0] && 1==n_bitmask && 0==bitmask[0])
+     // to minimize space in DT_GNU_HASH. This causes the fancy lookup to fail.
+     // Is a fallback to linear search assumed?
++    // Fallback: linear search of DT_DYNSYM when hash tables are missing or malformed.
++    // This avoids crashes on fuzzed DT_HASH/DT_GNU_HASH while still allowing symbol resolution.
++    if (dynsym && dynstr) {
++        for (unsigned si = 0; si < symnum_max; ++si) {
++            char const *const p = get_dynsym_name(si, (unsigned)-1);
++            if (p && 0==strcmp(name, p))
++                return &dynsym[si];
++        }
++    }
++
+     // 2022-03-12  Some Rust programs have 0==n_bucket.
+     return nullptr;
+ 
+diff --git a/src/work.cpp b/src/work.cpp
+index 0a29209d..f13d9a36 100644
+--- a/src/work.cpp
++++ b/src/work.cpp
+@@ -41,6 +41,7 @@
+ #include <sys/stat.h>
+ #endif
+ #include "conf.h"
++#include "except.h"
+ #include "file.h"
+ #include "packmast.h"
+ #include "ui.h"
+@@ -422,6 +423,19 @@ int do_files(int i, int argc, char *argv[]) may_throw {
+ 
+         try {
+             do_one_file(iname, oname);
++        } catch (const NotPackedException &e) {
++            unlink_ofile(oname);
++            // For "upx -l" (listing) treat NotPackedException as non-fatal.
++            // Listing is commonly used for triage of arbitrary inputs.
++            if (opt->cmd == CMD_LIST) {
++                if (opt->verbose >= 1)
++                    printErr(iname, e);
++                continue;
++            }
++            if (opt->verbose >= 1 || (opt->verbose >= 0 && !e.isWarning()))
++                printErr(iname, e);
++            main_set_exit_code(e.isWarning() ? EXIT_WARN : EXIT_ERROR);
++            // this is not fatal, continue processing more files
+         } catch (const Exception &e) {
+             unlink_ofile(oname);
+             if (opt->verbose >= 1 || (opt->verbose >= 0 && !e.isWarning()))

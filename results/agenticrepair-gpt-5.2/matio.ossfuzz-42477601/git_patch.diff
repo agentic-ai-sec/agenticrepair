@@ -1,0 +1,29 @@
+diff --git a/src/mat4.c b/src/mat4.c
+index 601a3d6..d46e7fb 100644
+--- a/src/mat4.c
++++ b/src/mat4.c
+@@ -908,7 +908,15 @@ Mat_VarReadNextInfo4(mat_t *mat)
+         Mat_VarFree(matvar);
+         return NULL;
+     }
+-    matvar->name = (char*)malloc(tmp);
++    {
++        size_t namelen = (size_t)tmp;
++        size_t alloclen = namelen + 8;
++        if ( alloclen < namelen ) {
++            Mat_VarFree(matvar);
++            return NULL;
++        }
++        matvar->name = (char*)calloc(alloclen,1);
++    }
+     if ( NULL == matvar->name ) {
+         Mat_VarFree(matvar);
+         return NULL;
+@@ -918,6 +926,7 @@ Mat_VarReadNextInfo4(mat_t *mat)
+         Mat_VarFree(matvar);
+         return NULL;
+     }
++    matvar->name[tmp] = "\0"[0];
+ 
+     matvar->internal->datapos = ftell((FILE*)mat->fp);
+     if ( matvar->internal->datapos == -1L ) {

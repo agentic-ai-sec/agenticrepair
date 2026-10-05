@@ -1,0 +1,24 @@
+diff --git a/src/numeric.c b/src/numeric.c
+index 27a7cb8c3..72f9254f0 100644
+--- a/src/numeric.c
++++ b/src/numeric.c
+@@ -1802,7 +1802,19 @@ cmpnum(mrb_state *mrb, mrb_value v1, mrb_value v2)
+ {
+ #ifdef MRB_USE_BIGINT
+   if (mrb_bigint_p(v2)) {
+-    return mrb_bint_cmp(mrb, v1, v2);
++    /* mrb_bint_cmp() expects its first operand to be a BigInt.
++       cmpnum() can be called with mixed numeric types, so when only v2 is
++       a BigInt we must swap operands and invert the result to avoid passing
++       a non-BigInt as the first argument (which would lead to RBIGINT(x)
++       type confusion and a crash in mpz_cmp()). */
++    if (mrb_bigint_p(v1)) {
++      return mrb_bint_cmp(mrb, v1, v2);
++    }
++    else {
++      mrb_int r = mrb_bint_cmp(mrb, v2, v1);
++      if (r == -2) return -2;
++      return -r;
++    }
+   }
+ #endif

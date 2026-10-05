@@ -1,0 +1,50 @@
+diff --git a/parser.c b/parser.c
+index cd89fdb6..fb5ff5bc 100644
+--- a/parser.c
++++ b/parser.c
+@@ -4947,11 +4947,31 @@ xmlParseCommentComplex(xmlParserCtxtPtr ctxt, xmlChar *buf,
+ 	if ((r == '-') && (q == '-')) {
+ 	    xmlFatalErr(ctxt, XML_ERR_HYPHEN_IN_COMMENT, NULL);
+ 	}
++	/*
++	 * Ensure enough space for a single UTF-8 character (up to 4 bytes) and
++	 * the terminating NUL byte before calling COPY_BUF.
++	 */
+ 	if (len + 5 >= size) {
+ 	    xmlChar *new_buf;
+             size_t new_size;
++            size_t needed;
++
++	    /* Avoid size_t overflow. */
++	    if (len > (size_t)-1 - 5) {
++	        xmlFree(buf);
++	        xmlErrMemory(ctxt, NULL);
++	        return;
++	    }
++	    needed = len + 5;
++
++	    /* Single doubling can still be too small for tiny buffers. */
++	    if (size > (size_t)-1 / 2)
++	        new_size = needed;
++	    else
++	        new_size = size * 2;
++	    if (new_size < needed)
++	        new_size = needed;
+ 
+-	    new_size = size * 2;
+ 	    new_buf = (xmlChar *) xmlRealloc(buf, new_size);
+ 	    if (new_buf == NULL) {
+ 		xmlFree (buf);
+diff --git a/xmllint.c b/xmllint.c
+index 21dbe7d2..4735517a 100644
+--- a/xmllint.c
++++ b/xmllint.c
+@@ -2371,7 +2371,8 @@ static void parseAndPrintFile(char *filename, xmlParserCtxtPtr rectxt) {
+      * If we don't have a document we might as well give up.  Do we
+      * want an error message here?  <sven@zen.org> */
+     if (doc == NULL) {
+-	progresult = XMLLINT_ERR_UNCLASS;
++	/* Parsing errors can legitimately result in no document. */
++	/* Preserve any earlier error code (e.g. OOM, I/O errors). */
+ 	return;
+     }

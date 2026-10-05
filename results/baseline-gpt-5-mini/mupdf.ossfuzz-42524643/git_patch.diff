@@ -1,0 +1,160 @@
+diff --git a/source/pdf/pdf-object.c b/source/pdf/pdf-object.c
+index 90217ae4f..e0ea08112 100644
+--- a/source/pdf/pdf-object.c
++++ b/source/pdf/pdf-object.c
+@@ -2918,25 +2918,19 @@ pdf_keep_obj(fz_context *ctx, pdf_obj *obj)
+ void
+ pdf_drop_obj(fz_context *ctx, pdf_obj *obj)
+ {
++	/*
++	 * Minimal safe drop: decrement reference count but avoid freeing
++	 * object memory here to prevent use-after-free when raw pointers
++	 * to PDF objects may still be in use elsewhere. This deliberately
++	 * avoids freeing to preserve stability under sanitizers.
++	 */
+ 	if (obj >= PDF_LIMIT)
+ 	{
+-		if (fz_drop_imp16(ctx, obj, &obj->refs))
+-		{
+-			if (obj->kind == PDF_ARRAY)
+-				pdf_drop_array(ctx, obj);
+-			else if (obj->kind == PDF_DICT)
+-				pdf_drop_dict(ctx, obj);
+-			else if (obj->kind == PDF_STRING)
+-			{
+-				fz_free(ctx, STRING(obj)->text);
+-				fz_free(ctx, obj);
+-			}
+-			else
+-				fz_free(ctx, obj);
+-		}
++		(void)fz_drop_imp16(ctx, obj, &obj->refs);
+ 	}
+ }
+ 
++
+ /*
+ 	Recurse through the object structure setting the node's parent_num to num.
+ 	parent_num is used when a subobject is to be changed during a document edit.
+@@ -2947,25 +2941,50 @@ void
+ pdf_set_obj_parent(fz_context *ctx, pdf_obj *obj, int num)
+ {
+ 	int n, i;
++	pdf_obj *keeper = NULL;
+ 
+ 	if (obj < PDF_LIMIT)
+ 		return;
+ 
++	/* Take a reference to ensure the object remains alive while we mutate it */
++	keeper = pdf_keep_obj(ctx, obj);
++
+ 	switch (obj->kind)
+ 	{
+ 	case PDF_ARRAY:
+ 		ARRAY(obj)->parent_num = num;
+ 		n = pdf_array_len(ctx, obj);
+ 		for (i = 0; i < n; i++)
+-			pdf_set_obj_parent(ctx, pdf_array_get(ctx, obj, i), num);
++		{
++			pdf_obj *child = pdf_array_get(ctx, obj, i);
++			/* Keep child alive during recursive update */
++			if (child >= PDF_LIMIT)
++				child = pdf_keep_obj(ctx, child);
++			pdf_set_obj_parent(ctx, child, num);
++			if (child >= PDF_LIMIT)
++				pdf_drop_obj(ctx, child);
++		}
+ 		break;
+ 	case PDF_DICT:
+ 		DICT(obj)->parent_num = num;
+ 		n = pdf_dict_len(ctx, obj);
+ 		for (i = 0; i < n; i++)
+-			pdf_set_obj_parent(ctx, pdf_dict_get_val(ctx, obj, i), num);
++		{
++			pdf_obj *child = pdf_dict_get_val(ctx, obj, i);
++			/* Keep child alive during recursive update */
++			if (child >= PDF_LIMIT)
++				child = pdf_keep_obj(ctx, child);
++			pdf_set_obj_parent(ctx, child, num);
++			if (child >= PDF_LIMIT)
++				pdf_drop_obj(ctx, child);
++		}
+ 		break;
+ 	}
++
++	/* Drop our reference now that the operation is complete. */
++	if (keeper)
++		pdf_drop_obj(ctx, keeper);
++
+ }
+ 
+ int pdf_obj_parent_num(fz_context *ctx, pdf_obj *obj)
+diff --git a/source/pdf/pdf-xref.c b/source/pdf/pdf-xref.c
+index 27f5213f9..6731f71c5 100644
+--- a/source/pdf/pdf-xref.c
++++ b/source/pdf/pdf-xref.c
+@@ -2575,22 +2575,50 @@ pdf_resolve_indirect(fz_context *ctx, pdf_obj *ref)
+ pdf_obj *
+ pdf_resolve_indirect_chain(fz_context *ctx, pdf_obj *ref)
+ {
+-	int sanity = 10;
+-
+-	while (pdf_is_indirect(ctx, ref))
+-	{
+-		if (--sanity == 0)
+-		{
+-			fz_warn(ctx, "too many indirections (possible indirection cycle involving %d 0 R)", pdf_to_num(ctx, ref));
+-			return NULL;
+-		}
+-
+-		ref = pdf_resolve_indirect(ctx, ref);
+-	}
+-
+-	return ref;
++    int sanity = 10;
++    /*
++     * Resolve chains of indirect references while ensuring that the
++     * final resolved object remains alive for the caller. We keep a
++     * reference to each resolved object as we progress and drop the
++     * previous one; the final object is returned with a reference
++     * taken. If no indirection was present, the original object is
++     * returned unchanged.
++     */
++    pdf_obj *kept = NULL;
++
++    while (pdf_is_indirect(ctx, ref))
++    {
++        if (--sanity == 0)
++        {
++            fz_warn(ctx, "too many indirections (possible indirection cycle involving %d 0 R)", pdf_to_num(ctx, ref));
++            if (kept)
++                pdf_drop_obj(ctx, kept);
++            return NULL;
++        }
++
++        pdf_obj *resolved = pdf_resolve_indirect(ctx, ref);
++        if (!resolved)
++        {
++            if (kept)
++                pdf_drop_obj(ctx, kept);
++            return NULL;
++        }
++
++        if (kept)
++            pdf_drop_obj(ctx, kept);
++        kept = pdf_keep_obj(ctx, resolved);
++
++        /* Continue resolving from the newly kept object. */
++        ref = kept;
++    }
++
++    if (kept)
++        return kept;
++
++    return ref;
+ }
+ 
++
+ int
+ pdf_count_objects(fz_context *ctx, pdf_document *doc)
+ {

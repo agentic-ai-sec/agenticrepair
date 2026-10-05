@@ -1,0 +1,20 @@
+diff --git a/source/fitz/load-bmp.c b/source/fitz/load-bmp.c
+index db173ce0a..24fe10b6c 100644
+--- a/source/fitz/load-bmp.c
++++ b/source/fitz/load-bmp.c
+@@ -940,7 +940,14 @@ bmp_read_palette(fz_context *ctx, struct info *info, const unsigned char *begin,
+ 	expected = fz_mini(info->colors, 1 << info->bitcount);
+ 	if (expected == 0)
+ 		expected = 1 << info->bitcount;
+-	present = fz_mini(expected, (bitmap - p) / entry_size);
++	{
++		size_t pal_bytes = 0;
++		/* Clamp palette length to avoid negative (bitmap - p) underflow when the
++		 * bitmap offset points before the end of the headers. */
++		if (bitmap > p)
++			pal_bytes = (size_t)(bitmap - p);
++		present = fz_mini(expected, (int)(pal_bytes / entry_size));
++	}
+ 
+ 	for (i = 0; i < present; i++)
+ 	{

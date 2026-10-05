@@ -1,0 +1,28 @@
+diff --git a/parser.c b/parser.c
+index cd89fdb6..5d9eb392 100644
+--- a/parser.c
++++ b/parser.c
+@@ -4947,11 +4947,20 @@ xmlParseCommentComplex(xmlParserCtxtPtr ctxt, xmlChar *buf,
+ 	if ((r == '-') && (q == '-')) {
+ 	    xmlFatalErr(ctxt, XML_ERR_HYPHEN_IN_COMMENT, NULL);
+ 	}
+-	if (len + 5 >= size) {
++	/*
++	 * Make sure there's room for the next codepoint and the trailing NUL.
++	 *
++	 * COPY_BUF can write up to 'ql' bytes (multibyte UTF-8 sequence). The
++	 * previous check used a constant slack which could be insufficient when
++	 * starting from very small buffers (e.g. size==2).
++	 */
++	if (len + (size_t) ql + 1 > size) {
+ 	    xmlChar *new_buf;
+-            size_t new_size;
++            size_t new_size = size;
++            size_t needed = len + (size_t) ql + 1;
+ 
+-	    new_size = size * 2;
++	    while (new_size < needed)
++	        new_size *= 2;
+ 	    new_buf = (xmlChar *) xmlRealloc(buf, new_size);
+ 	    if (new_buf == NULL) {
+ 		xmlFree (buf);

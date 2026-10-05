@@ -1,0 +1,85 @@
+diff --git a/src/lib/OpenEXRCore/internal_huf.c b/src/lib/OpenEXRCore/internal_huf.c
+index b6c7b007..f1f637e3 100644
+--- a/src/lib/OpenEXRCore/internal_huf.c
++++ b/src/lib/OpenEXRCore/internal_huf.c
+@@ -993,6 +993,26 @@ readUInt (const uint8_t* b)
+         ((uint32_t) b[0]) | (((uint32_t) b[1]) << 8u) |
+         (((uint32_t) b[2]) << 16u) | (((uint32_t) b[3]) << 24u));
+ }
++static inline int
++readUInt_safe(const uint8_t* buf, uint64_t len, size_t offset, uint32_t* out)
++{
++    // Read 4 bytes from buf at offset without performing any out-of-bounds
++    // memory accesses. Return 0 on failure.
++    if (offset >= len) return 0;
++    // Ensure there are at least 4 bytes available after offset
++    if (len - offset < 4) return 0;
++
++    uint32_t v = 0;
++    // Read one byte at a time to avoid any chance of a single wider read
++    // touching memory past the end of the buffer.
++    for (size_t i = 0; i < 4; ++i)
++    {
++        v |= ((uint32_t) buf[offset + i]) << ((unsigned int) (8 * i));
++    }
++    *out = v;
++    return 1;
++}
++
+ 
+ /**************************************/
+ 
+@@ -1837,7 +1857,7 @@ internal_huf_decompress (
+     void*                  spare,
+     uint64_t               sparebytes)
+ {
+-    uint32_t                            im, iM, nBits;
++    uint32_t                            im, iM, nBits, tableLength;
+     uint64_t                            nBytes;
+     const uint8_t*                      ptr;
+     exr_result_t                        rv;
+@@ -1857,20 +1877,29 @@ internal_huf_decompress (
+     if (sparebytes != internal_exr_huf_decompress_spare_bytes ())
+         return EXR_ERR_INVALID_ARGUMENT;
+ 
+-    im = readUInt (compressed);
+-    iM = readUInt (compressed + 4);
+-    // uint32_t tableLength = readUInt (compressed + 8);
+-    nBits = readUInt (compressed + 12);
++    { uint32_t tmpv; if (!readUInt_safe(compressed, nCompressed, 0, &im)) return EXR_ERR_OUT_OF_MEMORY; if (!readUInt_safe(compressed, nCompressed, 4, &iM)) return EXR_ERR_OUT_OF_MEMORY; /* uint32_t tableLength = readUInt (compressed + 8); */ if (!readUInt_safe(compressed, nCompressed, 12, &nBits)) return EXR_ERR_OUT_OF_MEMORY; }
+     // uint32_t future = readUInt (compressed + 16);
+ 
+     if (im >= HUF_ENCSIZE || iM >= HUF_ENCSIZE) return EXR_ERR_CORRUPT_CHUNK;
+ 
++    uint32_t tableLength = 0;
++    if (!readUInt_safe(compressed, nCompressed, 8, &tableLength))
++        return EXR_ERR_OUT_OF_MEMORY;
++
+     ptr = compressed + hufInfoBlockSize;
+ 
+     nBytes = (((uint64_t) (nBits) + 7)) / 8;
+ 
+-    // must be nBytes remaining in buffer
+-    if (hufInfoBlockSize + nBytes > nCompressed) return EXR_ERR_OUT_OF_MEMORY;
++    if (nCompressed < hufInfoBlockSize) return EXR_ERR_CORRUPT_CHUNK;
++    uint64_t totalRem = nCompressed - hufInfoBlockSize;
++
++    // tableLength must fit in the remaining buffer and the compressed data must
++    // fit after the table as well.
++    if ((uint64_t) tableLength > totalRem) return EXR_ERR_CORRUPT_CHUNK;
++    if ((uint64_t) tableLength + nBytes > totalRem) return EXR_ERR_OUT_OF_MEMORY;
++
++    // Limit the unpacker to the declared table length to prevent it from
++    // reading into the compressed data section.
+ 
+     //
+     // Fast decoder needs at least 2x64-bits of compressed data, and
+@@ -1894,7 +1923,7 @@ internal_huf_decompress (
+     {
+         uint64_t* freq  = (uint64_t*) spare;
+         HufDec*   hdec  = (HufDec*) (freq + HUF_ENCSIZE);
+-        uint64_t  nLeft = nCompressed - 20;
++        uint64_t  nLeft = (uint64_t) tableLength;
+ 
+         hufClearDecTable (hdec);
+         hufUnpackEncTable (&ptr, &nLeft, im, iM, freq);

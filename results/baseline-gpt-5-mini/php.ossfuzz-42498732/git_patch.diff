@@ -1,0 +1,30 @@
+diff --git a/Zend/zend_operators.c b/Zend/zend_operators.c
+index 193aade5fb3..97a0241ab61 100644
+--- a/Zend/zend_operators.c
++++ b/Zend/zend_operators.c
+@@ -1324,13 +1324,18 @@ ZEND_API zend_result ZEND_FASTCALL div_function(zval *result, zval *op1, zval *o
+ 		return FAILURE;
+ 	}
+ 
+-	if (result == op1) {
+-		zval_ptr_dtor(result);
+-	}
+-
+-	retval = div_function_base(result, &op1_copy, &op2_copy);
+-	if (retval == SUCCESS) {
+-		return SUCCESS;
++	{
++		zval tmp_result;
++		retval = div_function_base(&tmp_result, &op1_copy, &op2_copy);
++		if (retval == SUCCESS) {
++			if (result == op1) {
++				zval_ptr_dtor(result);
++				ZVAL_COPY_VALUE(result, &tmp_result);
++			} else {
++				ZVAL_COPY_VALUE(result, &tmp_result);
++			}
++			return SUCCESS;
++		}
+ 	}
+ 
+ div_by_zero:

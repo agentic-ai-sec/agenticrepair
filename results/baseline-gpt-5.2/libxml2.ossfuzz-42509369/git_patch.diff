@@ -1,0 +1,58 @@
+diff --git a/parser.c b/parser.c
+index c3068cad..5b100510 100644
+--- a/parser.c
++++ b/parser.c
+@@ -13297,6 +13297,8 @@ xmlParseBalancedChunkMemoryInternal(xmlParserCtxtPtr oldctxt,
+     xmlSAXHandlerPtr oldsax = NULL;
+     xmlNodePtr content = NULL;
+     xmlNodePtr last = NULL;
++    xmlDictPtr savedDocDict = NULL;
++    int docDictChanged = 0;
+     int size;
+     xmlParserErrors ret = XML_ERR_OK;
+ #ifdef SAX2
+@@ -13359,11 +13361,31 @@ xmlParseBalancedChunkMemoryInternal(xmlParserCtxtPtr oldctxt,
+ 	ctxt->myDoc = oldctxt->myDoc;
+         content = ctxt->myDoc->children;
+ 	last = ctxt->myDoc->last;
++
++        /*
++         * The parser context uses oldctxt->dict which may be different from
++         * the document dictionary. Nodes created during chunk parsing can
++         * point into ctxt->dict. xmlFreeNodeList/xmlFreeNode consults
++         * cur->doc->dict to decide whether to free strings, so make sure the
++         * document dictionary matches while we build and free temporary nodes.
++         */
++        savedDocDict = ctxt->myDoc->dict;
++        if (ctxt->dict != savedDocDict) {
++            if (ctxt->dict != NULL)
++                xmlDictReference(ctxt->dict);
++            ctxt->myDoc->dict = ctxt->dict;
++            docDictChanged = 1;
++        }
+     }
+     newRoot = xmlNewDocNode(ctxt->myDoc, NULL, BAD_CAST "pseudoroot", NULL);
+     if (newRoot == NULL) {
+ 	ctxt->sax = oldsax;
+ 	ctxt->dict = NULL;
++        if (docDictChanged) {
++            ctxt->myDoc->dict = savedDocDict;
++            if (ctxt->dict != NULL)
++                xmlDictFree(ctxt->dict);
++        }
+ 	xmlFreeParserCtxt(ctxt);
+ 	if (newDoc != NULL) {
+ 	    xmlFreeDoc(newDoc);
+@@ -13450,6 +13472,12 @@ xmlParseBalancedChunkMemoryInternal(xmlParserCtxtPtr oldctxt,
+     if (ctxt->lastError.code != XML_ERR_OK)
+         xmlCopyError(&ctxt->lastError, &oldctxt->lastError);
+ 
++    if (docDictChanged) {
++        ctxt->myDoc->dict = savedDocDict;
++        if (ctxt->dict != NULL)
++            xmlDictFree(ctxt->dict);
++    }
++
+     ctxt->sax = oldsax;
+     ctxt->dict = NULL;
+     ctxt->attsDefault = NULL;

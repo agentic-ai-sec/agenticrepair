@@ -1,0 +1,151 @@
+diff --git a/src/lib/OpenEXRCore/compression.c b/src/lib/OpenEXRCore/compression.c
+index 1d2eaea5..8d953329 100644
+--- a/src/lib/OpenEXRCore/compression.c
++++ b/src/lib/OpenEXRCore/compression.c
+@@ -7,9 +7,23 @@
+ #include "openexr_base.h"
+ #include "internal_memory.h"
+ #include "internal_structs.h"
++#include <string.h>
+ 
+ #include <libdeflate.h>
+ 
++/* helper that copies bytes from a possibly untrusted source using
++ * volatile reads to avoid the compiler transforming the copy into
++ * wider reads or memcpy that could read past the provided source
++ * buffer. Marked noinline to reduce chances of optimization. */
++static __attribute__((noinline)) void
++exr_copy_volatile_const(const void* src_, void* dst_, size_t n)
++{
++    const volatile unsigned char* src = (const volatile unsigned char*) src_;
++    unsigned char* dst = (unsigned char*) dst_;
++    for (size_t i = 0; i < n; ++i)
++        dst[i] = src[i];
++}
++
+ #if (                                                                          \
+     LIBDEFLATE_VERSION_MAJOR > 1 ||                                            \
+     (LIBDEFLATE_VERSION_MAJOR == 1 && LIBDEFLATE_VERSION_MINOR > 18))
+@@ -135,21 +149,65 @@ exr_uncompress_buffer (
+ 
+     if (decomp)
+     {
++        /*
++         * libdeflate may perform unaligned reads up to 2 bytes past the
++         * provided input buffer for malformed input. To avoid heap-buffer-
++         * overflow we copy the compressed input to a temporary buffer and
++         * append 2 zero bytes of padding. We then call libdeflate on the
++         * padded buffer but still ensure that the decompressor did not
++         * consume more bytes than originally present; if it did, treat the
++         * input as corrupt.
++         */
++        size_t _pad_bytes = 8;
++        size_t _padded_in_bytes = in_bytes;
++        void* _padded_in = NULL;
++
++        if (in_bytes > 0)
++        {
++            _padded_in_bytes = in_bytes + _pad_bytes;
++            _padded_in = pctxt ? pctxt->alloc_fn(_padded_in_bytes) : internal_exr_alloc(_padded_in_bytes);
++            if (!_padded_in)
++            {
++                libdeflate_free_decompressor (decomp);
++                return EXR_ERR_OUT_OF_MEMORY;
++            }
++            
++            /* copy bytes one-by-one to avoid potential implementation
++             * memcpy over-reads on malformed source buffers when
++             * compiled with certain optimizations; this prevents
++             * AddressSanitizer reports of small over-reads. */
++            {
++            exr_copy_volatile_const(in, _padded_in, in_bytes);
++            }
++            
++            memset((uint8_t*)_padded_in + in_bytes, 0, _pad_bytes);
++        }
++        else
++        {
++            _padded_in = (void*)in;
++            _padded_in_bytes = in_bytes;
++        }
++
+         res = libdeflate_zlib_decompress_ex (
+             decomp,
+-            in,
+-            in_bytes,
++            _padded_in,
++            _padded_in_bytes,
+             out,
+             out_bytes_avail,
+             &actual_in_bytes,
+             actual_out);
+ 
++        if (_padded_in != in && _padded_in) {
++            if (pctxt) pctxt->free_fn(_padded_in); else internal_exr_free(_padded_in);
++        }
++
+         libdeflate_free_decompressor (decomp);
+ 
+         if (res == LIBDEFLATE_SUCCESS)
+         {
+-            if (in_bytes == actual_in_bytes) return EXR_ERR_SUCCESS;
+-            /* it's an error to not consume the full buffer, right? */
++            /* ensure decompressor did not consume more than original buffer */
++            if (actual_in_bytes == in_bytes) return EXR_ERR_SUCCESS;
++            /* fall through and treat as corrupt */
+         }
+         return EXR_ERR_CORRUPT_CHUNK;
+     }
+diff --git a/src/lib/OpenEXRCore/internal_dwa_compressor.h b/src/lib/OpenEXRCore/internal_dwa_compressor.h
+index 688bd51a..0542facc 100644
+--- a/src/lib/OpenEXRCore/internal_dwa_compressor.h
++++ b/src/lib/OpenEXRCore/internal_dwa_compressor.h
+@@ -762,20 +762,42 @@ DwaCompressor_uncompress (
+ 
+     acCompression = counters[AC_COMPRESSION];
+ 
+-    compressedSize = unknownCompressedSize + acCompressedSize +
+-                     dcCompressedSize + rleCompressedSize;
++    /* Sum the compressed block sizes in a overflow-safe manner. If any
++     * addition would overflow or the resulting total doesn't fit within
++     * iSize (after the header), treat the chunk as corrupt. This prevents
++     * crafted headers from producing wrapped small sizes. */
++    compressedSize = 0;
++    uint64_t _tmp = unknownCompressedSize;
++    if (_tmp > UINT64_MAX - acCompressedSize) return EXR_ERR_CORRUPT_CHUNK;
++    _tmp += acCompressedSize;
++    if (_tmp > UINT64_MAX - dcCompressedSize) return EXR_ERR_CORRUPT_CHUNK;
++    _tmp += dcCompressedSize;
++    if (_tmp > UINT64_MAX - rleCompressedSize) return EXR_ERR_CORRUPT_CHUNK;
++    _tmp += rleCompressedSize;
++    compressedSize = _tmp;
+ 
+     dataPtr  = inPtr + headerSize;
+     dataLeft = iSize - headerSize;
+ 
+-    /* Both the sum and individual sizes are checked in case of overflow. */
+-    if (iSize < (headerSize + compressedSize) ||
+-        iSize < unknownCompressedSize || iSize < acCompressedSize ||
+-        iSize < dcCompressedSize || iSize < rleCompressedSize)
++    /* Ensure the total compressed data fits after the header. */
++    if (headerSize > iSize) { return EXR_ERR_CORRUPT_CHUNK; }
++    if (iSize < (headerSize + compressedSize))
+     {
+         return EXR_ERR_CORRUPT_CHUNK;
+     }
+ 
++    /* Now validate each block sequentially against the remaining bytes */
++    {
++        uint64_t _remaining = dataLeft;
++        if (unknownCompressedSize > _remaining) return EXR_ERR_CORRUPT_CHUNK;
++        _remaining -= unknownCompressedSize;
++        if (acCompressedSize > _remaining) return EXR_ERR_CORRUPT_CHUNK;
++        _remaining -= acCompressedSize;
++        if (dcCompressedSize > _remaining) return EXR_ERR_CORRUPT_CHUNK;
++        _remaining -= dcCompressedSize;
++        if (rleCompressedSize > _remaining) return EXR_ERR_CORRUPT_CHUNK;
++    }
++
+     if ((int64_t) unknownUncompressedSize < 0 ||
+         (int64_t) unknownCompressedSize < 0 || (int64_t) acCompressedSize < 0 ||
+         (int64_t) dcCompressedSize < 0 || (int64_t) rleCompressedSize < 0 ||

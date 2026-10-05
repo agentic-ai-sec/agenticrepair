@@ -1,0 +1,43 @@
+{
+  "instance_id": "libxml2.ossfuzz-424627219",
+  "final_status": "failed",
+  "static_analyzer_output": null,
+  "dynamic_analyzer_output": null,
+  "history_miner_output": null,
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "Implemented a minimal fix in src/libxml2/parser.c for xmlParsePubidLiteral to eliminate the heap-buffer-overflow when parsing PublicID literals.\n\nWhat I changed:\n- In xmlParsePubidLiteral, when the buffer needs to grow (len + 1 >= size), the code now reallocates using the newSize computed by xmlGrowCapacity and uses that newSize in xmlRealloc, rather than the old size variable. This ensures we\u2019re always expanding the allocated memory before writing more bytes.\n- Added a guard to guarantee newSize is strictly larger than the current size: if (newSize <= size) { newSize = size + 1; if (newSize > maxLength) newSize = maxLength; }. This protects against potential edge cases where xmlGrowCapacity returns a value not large enough to accommodate the next write.\n- The rest of the logic remains unchanged, including memory failure paths and error handling.\n\nRationale:\n- The sanitizer crash occurs from writing past the end of the allocated buffer when parsing PublicID literals. By ensuring we always realloc to a larger buffer (newSize) and guarding against non-growth (newSize <= size), we prevent the heap overflow.\n\nVerification plan:\n- Build: cd /src/libxml2 && secb build\n- Reproduce check: cd /src/libxml2 && secb repro\n- Expected result: No heap-buffer-overflow reported by AddressSanitizer in xmlParsePubidLiteral.\n\nNotes:\n- Changes are localized to the PublicID literal parsing path and should have no observable impact on standard XML parsing behavior or performance under normal inputs.\n",
+    "parsed_output": {
+      "raw": "Implemented a minimal fix in src/libxml2/parser.c for xmlParsePubidLiteral to eliminate the heap-buffer-overflow when parsing PublicID literals.\n\nWhat I changed:\n- In xmlParsePubidLiteral, when the buffer needs to grow (len + 1 >= size), the code now reallocates using the newSize computed by xmlGrowCapacity and uses that newSize in xmlRealloc, rather than the old size variable. This ensures we\u2019re always expanding the allocated memory before writing more bytes.\n- Added a guard to guarantee newSize is strictly larger than the current size: if (newSize <= size) { newSize = size + 1; if (newSize > maxLength) newSize = maxLength; }. This protects against potential edge cases where xmlGrowCapacity returns a value not large enough to accommodate the next write.\n- The rest of the logic remains unchanged, including memory failure paths and error handling.\n\nRationale:\n- The sanitizer crash occurs from writing past the end of the allocated buffer when parsing PublicID literals. By ensuring we always realloc to a larger buffer (newSize) and guarding against non-growth (newSize <= size), we prevent the heap overflow.\n\nVerification plan:\n- Build: cd /src/libxml2 && secb build\n- Reproduce check: cd /src/libxml2 && secb repro\n- Expected result: No heap-buffer-overflow reported by AddressSanitizer in xmlParsePubidLiteral.\n\nNotes:\n- Changes are localized to the PublicID literal parsing path and should have no observable impact on standard XML parsing behavior or performance under normal inputs.",
+      "parse_error": true
+    },
+    "success": false,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 855273,
+      "output_tokens": 38623
+    },
+    "timing": {
+      "start_time": 1769338248.0256164,
+      "end_time": 1769338480.4107614,
+      "duration": 232.38514494895935
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nHeap buffer overflow in xmlParsePubidLiteral (parser.c): when parsing PublicID literals (as part of external ID / entity declaration parsing) the parser can write one byte past the end of the allocated buffer, corrupting heap memory. A crafted XML input can trigger this, leading to crashes and potential exploitation via he",
+      "total_steps": 42,
+      "total_duration": 232.38514494895935,
+      "total_input_tokens": 855273,
+      "total_output_tokens": 38623,
+      "total_cost": 0.011549945000000002,
+      "final_state": "failed"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 855273,
+    "output_tokens": 38623
+  },
+  "timing": {
+    "total_duration": 232.39407396316528
+  }
+}

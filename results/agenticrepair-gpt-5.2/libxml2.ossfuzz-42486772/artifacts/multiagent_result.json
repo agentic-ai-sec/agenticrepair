@@ -1,0 +1,242 @@
+{
+  "instance_id": "libxml2.ossfuzz-42486772",
+  "final_status": "success",
+  "static_analyzer_output": {
+    "role": "static_analyzer",
+    "raw_output": "{\n  \"analysis_type\": \"allocation\",\n  \"findings\": [\n    {\n      \"file\": \"src/libxml2/xinclude.c\",\n      \"line\": 2195,\n      \"message\": \"CodeQL allocation queries did not report a UAF here; manual review shows dereference of ctxt->incTab[nr]->ref (cur->type) after the referenced node may be freed by xmlTextReaderFreeNode/List.\",\n      \"severity\": \"note\"\n    },\n    {\n      \"file\": \"src/libxml2/xmlreader.c\",\n      \"line\": 474,\n      \"message\": \"xmlTextReaderFreeNodeList ultimately frees xmlNode objects (xmlFree(cur)), including XInclude start/end nodes, which can invalidate pointers stored elsewhere (e.g., XInclude context ref pointers).\",\n      \"severity\": \"note\"\n    }\n  ],\n  \"dataflow_summary\": \"\",\n  \"key_insight\": \"The XInclude context stores a raw pointer (ctxt->incTab[nr]->ref) to a node owned by the TextReader\u2019s node list; xmlTextReaderRead can free that node (xmlTextReaderFreeNode/List) before xmlXIncludeIncludeNode dereferences it (cur->type at xinclude.c:2195), causing a heap-use-after-free.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Prevent xmlTextReader from freeing XInclude marker nodes (or any nodes referenced by the XInclude context) until XInclude processing completes (e.g., detach/mark nodes as in-use, or defer frees during xmlXIncludeProcessNode/xmlXIncludeDoProcess).\",\n      \"reasoning\": \"Matches the root cause: lifetime mismatch between reader-owned nodes and xinclude\u2019s stored ref pointers; ensuring the node remains alive removes the UAF at xinclude.c:2195.\",\n      \"trade_offs\": \"May increase peak memory usage and requires careful coordination/flags between xmlreader and xinclude to avoid leaks or keeping too many nodes alive.\"\n    },\n    {\n      \"approach\": \"Make XInclude context stop storing raw xmlNodePtr from the reader tree; instead store a stable identifier (e.g., node path/index) and re-locate the node when needed, or copy the required data from the node immediately (avoid later dereference).\",\n      \"reasoning\": \"Eliminates dependence on the original node object\u2019s lifetime; avoids UAF even if reader frees nodes.\",\n      \"trade_offs\": \"More invasive refactor; re-locating nodes can be complex/slow and may fail if the tree changes; copying may miss later mutations.\"\n    },\n    {\n      \"approach\": \"Add defensive validation in xmlXIncludeIncludeNode before dereference: ensure cur is still linked/owned (e.g., verify cur->doc matches current ctxt doc and node is still reachable), and abort safely if not.\",\n      \"reasoning\": \"Provides a guardrail against stale pointers and reduces exploitability/crashes when lifetimes still diverge.\",\n      \"trade_offs\": \"Does not fully fix the underlying lifetime bug; stale pointers may still pass partial checks, and robust reachability checks can be expensive.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "analysis_type": "allocation",
+      "findings": [
+        {
+          "file": "src/libxml2/xinclude.c",
+          "line": 2195,
+          "message": "CodeQL allocation queries did not report a UAF here; manual review shows dereference of ctxt->incTab[nr]->ref (cur->type) after the referenced node may be freed by xmlTextReaderFreeNode/List.",
+          "severity": "note"
+        },
+        {
+          "file": "src/libxml2/xmlreader.c",
+          "line": 474,
+          "message": "xmlTextReaderFreeNodeList ultimately frees xmlNode objects (xmlFree(cur)), including XInclude start/end nodes, which can invalidate pointers stored elsewhere (e.g., XInclude context ref pointers).",
+          "severity": "note"
+        }
+      ],
+      "dataflow_summary": "",
+      "key_insight": "The XInclude context stores a raw pointer (ctxt->incTab[nr]->ref) to a node owned by the TextReader\u2019s node list; xmlTextReaderRead can free that node (xmlTextReaderFreeNode/List) before xmlXIncludeIncludeNode dereferences it (cur->type at xinclude.c:2195), causing a heap-use-after-free.",
+      "fix_suggestions": [
+        {
+          "approach": "Prevent xmlTextReader from freeing XInclude marker nodes (or any nodes referenced by the XInclude context) until XInclude processing completes (e.g., detach/mark nodes as in-use, or defer frees during xmlXIncludeProcessNode/xmlXIncludeDoProcess).",
+          "reasoning": "Matches the root cause: lifetime mismatch between reader-owned nodes and xinclude\u2019s stored ref pointers; ensuring the node remains alive removes the UAF at xinclude.c:2195.",
+          "trade_offs": "May increase peak memory usage and requires careful coordination/flags between xmlreader and xinclude to avoid leaks or keeping too many nodes alive."
+        },
+        {
+          "approach": "Make XInclude context stop storing raw xmlNodePtr from the reader tree; instead store a stable identifier (e.g., node path/index) and re-locate the node when needed, or copy the required data from the node immediately (avoid later dereference).",
+          "reasoning": "Eliminates dependence on the original node object\u2019s lifetime; avoids UAF even if reader frees nodes.",
+          "trade_offs": "More invasive refactor; re-locating nodes can be complex/slow and may fail if the tree changes; copying may miss later mutations."
+        },
+        {
+          "approach": "Add defensive validation in xmlXIncludeIncludeNode before dereference: ensure cur is still linked/owned (e.g., verify cur->doc matches current ctxt doc and node is still reachable), and abort safely if not.",
+          "reasoning": "Provides a guardrail against stale pointers and reduces exploitability/crashes when lifetimes still diverge.",
+          "trade_offs": "Does not fully fix the underlying lifetime bug; stale pointers may still pass partial checks, and robust reachability checks can be expensive."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 59573,
+      "output_tokens": 2079
+    },
+    "timing": {
+      "start_time": 1768784109.371373,
+      "end_time": 1768784195.9482174,
+      "duration": 86.57684445381165
+    },
+    "trajectory": {
+      "agent_role": "static_analyzer",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nA heap-use-after-free in xinclude.c's xmlXIncludeIncludeNode (seen during xmlXIncludeDoProcess / xmlXIncludeProcessNode invoked from xmlTextReaderRead) reads memory from an XInclude node that has already been freed. This can lead to crashes, memory corruption, or potentially exploitable behavior when processing XInclude co",
+      "total_steps": 6,
+      "total_duration": 86.57684445381165,
+      "total_input_tokens": 59573,
+      "total_output_tokens": 2079,
+      "total_cost": 0.09444995,
+      "final_state": "success"
+    }
+  },
+  "dynamic_analyzer_output": {
+    "role": "dynamic_analyzer",
+    "raw_output": "{\n  \"tools_used\": [\"gdb\", \"ubsan\"],\n  \"crash_info\": {\n    \"address\": \"0x50c0000001c8\",\n    \"type\": \"heap-use-after-free\",\n    \"location\": \"xinclude.c:2195 (xmlXIncludeIncludeNode)\"\n  },\n  \"backtrace\": [\n    \"xmlXIncludeIncludeNode (xinclude.c:2195)\",\n    \"xmlXIncludeDoProcess (xinclude.c:2463)\",\n    \"xmlXIncludeProcessNode (xinclude.c:2640)\",\n    \"xmlTextReaderRead (xmlreader.c:1594)\",\n    \"streamFile (xmllint.c:1920)\",\n    \"main (xmllint.c:3732)\"\n  ],\n  \"memory_state\": \"ASan reports a READ of 4 bytes at 0x50c0000001c8, which is 8 bytes into a 120-byte heap allocation (xmlNode). The node was freed by xmlTextReaderFreeNodeList/xmlTextReaderFreeNode (xmlreader.c:474/522) before xmlXIncludeIncludeNode later dereferenced cur->type.\",\n  \"root_cause_hint\": \"Runtime evidence indicates that the XInclude context keeps a raw pointer ctxt->incTab[nr]->ref to an include node, but the xmlTextReader code frees parsed nodes opportunistically (xmlTextReaderFreeNode) while reading. During the later \u2018third phase\u2019 of xmlXIncludeDoProcess, xmlXIncludeIncludeNode reads fields (cur->type) from that now-freed node, causing UAF.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Prevent xmlTextReader from freeing nodes while XInclude processing is in progress (e.g., increment reader->in_xinclude before calling xmlXIncludeProcessNode and decrement after, or otherwise disable the cleanup block around xmlTextReaderFreeNode/xmlTextReaderFreeNodeList during that window).\",\n      \"reasoning\": \"The free stack in the ASan report originates from xmlTextReaderFreeNode*; gating that cleanup (already conditioned on reader->in_xinclude==0 at xmlreader.c:1536/1549) directly addresses the observed lifetime mismatch.\",\n      \"trade_offs\": \"May increase peak memory usage while XInclude is being processed; care needed to ensure reader->in_xinclude is restored on all error paths.\"\n    },\n    {\n      \"approach\": \"Explicitly preserve XInclude \u2018ref\u2019 nodes referenced by ctxt->incTab (e.g., set NODE_IS_PRESERVED / add a preservation list) until xmlXIncludeDoProcess finishes, then clear preservation and free as normal.\",\n      \"reasoning\": \"The UAF happens because ctxt->incTab[nr]->ref becomes dangling; guaranteeing those specific nodes\u2019 lifetimes through the inclusion phases avoids needing to disable all reader cleanups.\",\n      \"trade_offs\": \"Requires careful marking/unmarking and may retain additional subtrees; must ensure preservation does not leak across processing runs.\"\n    },\n    {\n      \"approach\": \"Avoid storing unstable xmlNode* in ctxt->incTab when running under the TextReader model; instead store a stable identifier (e.g., XPath/location information or a dedicated wrapper object) and re-resolve the node, or perform inclusion immediately while the node is known-live.\",\n      \"reasoning\": \"Dynamic behavior shows the pointer becomes invalid between \u2018preprocess/load\u2019 and \u2018include\u2019 phases. Removing the dependency on a long-lived raw pointer eliminates this class of UAF.\",\n      \"trade_offs\": \"More invasive change; may require additional tree traversal or refactoring of the XInclude processing pipeline.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "tools_used": [
+        "gdb",
+        "ubsan"
+      ],
+      "crash_info": {
+        "address": "0x50c0000001c8",
+        "type": "heap-use-after-free",
+        "location": "xinclude.c:2195 (xmlXIncludeIncludeNode)"
+      },
+      "backtrace": [
+        "xmlXIncludeIncludeNode (xinclude.c:2195)",
+        "xmlXIncludeDoProcess (xinclude.c:2463)",
+        "xmlXIncludeProcessNode (xinclude.c:2640)",
+        "xmlTextReaderRead (xmlreader.c:1594)",
+        "streamFile (xmllint.c:1920)",
+        "main (xmllint.c:3732)"
+      ],
+      "memory_state": "ASan reports a READ of 4 bytes at 0x50c0000001c8, which is 8 bytes into a 120-byte heap allocation (xmlNode). The node was freed by xmlTextReaderFreeNodeList/xmlTextReaderFreeNode (xmlreader.c:474/522) before xmlXIncludeIncludeNode later dereferenced cur->type.",
+      "root_cause_hint": "Runtime evidence indicates that the XInclude context keeps a raw pointer ctxt->incTab[nr]->ref to an include node, but the xmlTextReader code frees parsed nodes opportunistically (xmlTextReaderFreeNode) while reading. During the later \u2018third phase\u2019 of xmlXIncludeDoProcess, xmlXIncludeIncludeNode reads fields (cur->type) from that now-freed node, causing UAF.",
+      "fix_suggestions": [
+        {
+          "approach": "Prevent xmlTextReader from freeing nodes while XInclude processing is in progress (e.g., increment reader->in_xinclude before calling xmlXIncludeProcessNode and decrement after, or otherwise disable the cleanup block around xmlTextReaderFreeNode/xmlTextReaderFreeNodeList during that window).",
+          "reasoning": "The free stack in the ASan report originates from xmlTextReaderFreeNode*; gating that cleanup (already conditioned on reader->in_xinclude==0 at xmlreader.c:1536/1549) directly addresses the observed lifetime mismatch.",
+          "trade_offs": "May increase peak memory usage while XInclude is being processed; care needed to ensure reader->in_xinclude is restored on all error paths."
+        },
+        {
+          "approach": "Explicitly preserve XInclude \u2018ref\u2019 nodes referenced by ctxt->incTab (e.g., set NODE_IS_PRESERVED / add a preservation list) until xmlXIncludeDoProcess finishes, then clear preservation and free as normal.",
+          "reasoning": "The UAF happens because ctxt->incTab[nr]->ref becomes dangling; guaranteeing those specific nodes\u2019 lifetimes through the inclusion phases avoids needing to disable all reader cleanups.",
+          "trade_offs": "Requires careful marking/unmarking and may retain additional subtrees; must ensure preservation does not leak across processing runs."
+        },
+        {
+          "approach": "Avoid storing unstable xmlNode* in ctxt->incTab when running under the TextReader model; instead store a stable identifier (e.g., XPath/location information or a dedicated wrapper object) and re-resolve the node, or perform inclusion immediately while the node is known-live.",
+          "reasoning": "Dynamic behavior shows the pointer becomes invalid between \u2018preprocess/load\u2019 and \u2018include\u2019 phases. Removing the dependency on a long-lived raw pointer eliminates this class of UAF.",
+          "trade_offs": "More invasive change; may require additional tree traversal or refactoring of the XInclude processing pipeline."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 126515,
+      "output_tokens": 4828
+    },
+    "timing": {
+      "start_time": 1768784195.9530618,
+      "end_time": 1768784295.9641926,
+      "duration": 100.01113080978394
+    },
+    "trajectory": {
+      "agent_role": "dynamic_analyzer",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nA heap-use-after-free in xinclude.c's xmlXIncludeIncludeNode (seen during xmlXIncludeDoProcess / xmlXIncludeProcessNode invoked from xmlTextReaderRead) reads memory from an XInclude node that has already been freed. This can lead to crashes, memory corruption, or potentially exploitable behavior when processing XInclude co",
+      "total_steps": 9,
+      "total_duration": 100.01113080978394,
+      "total_input_tokens": 126515,
+      "total_output_tokens": 4828,
+      "total_cost": 0.18234685,
+      "final_state": "success"
+    }
+  },
+  "history_miner_output": {
+    "role": "history_miner",
+    "raw_output": "{\n  \"file_analyzed\": \"xinclude.c\",\n  \"function_analyzed\": \"xmlXIncludeIncludeNode\",\n  \"relevant_commits\": [\n    {\n      \"hash\": \"2c747129\",\n      \"message\": \"Fix error reporting with xi:fallback\",\n      \"changes\": \"Added a 'fallback' flag to xmlXIncludeRef; when fallback was used, unset the xi:include @href before turning the node into XML_XINCLUDE_START.\",\n      \"relevance\": \"Shows recent logic that mutates the original xi:include node during include-node replacement; increases reliance on the liveness of the referenced node (ctxt->incTab[nr]->ref).\"\n    },\n    {\n      \"hash\": \"74dcc10b\",\n      \"message\": \"Remove dead code in xinclude.c\",\n      \"changes\": \"Removed xptr field/freeing and simplified branches assuming doc != NULL; refactoring around load/copy paths.\",\n      \"relevance\": \"Refactors ownership/copy assumptions in XInclude; useful context when auditing for borrowed pointers and lifetime problems leading to UAFs.\"\n    },\n    {\n      \"hash\": \"19cae17f\",\n      \"message\": \"Revert \\\"Fix quadratic runtime in xi:fallback processing\\\"\",\n      \"changes\": \"Stopped borrowing fallback->children directly; instead copies fallback children with xmlDocCopyNodeList; adjusted where fallback children are removed/freed.\",\n      \"relevance\": \"Explicitly mentions use-after-free risk caused by borrowing nodes instead of copying them; strong historical signal that XInclude code is sensitive to node lifetimes and ownership (same class of bug).\"\n    }\n  ],\n  \"vulnerability_origin\": \"Likely triggered by holding a raw pointer (ctxt->incTab[nr]->ref) to an XInclude node whose lifetime is managed elsewhere (xmlTextReader), which can free nodes before xmlXIncludeIncludeNode dereferences them (cur->type at xinclude.c:2195). History shows prior UAFs in XInclude when borrowing nodes (19cae17f), suggesting a recurring ownership/lifetime pitfall.\",\n  \"fix_hints\": \"History (19cae17f) favors copying nodes instead of borrowing pointers when ownership is unclear. For the reader-driven path, avoid keeping pointers to nodes that xmlTextReader may free; either preserve the node in the reader or rework XInclude to not depend on the node pointer after reader advances.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Adjust xmlTextReaderRead ordering so nodes are not freed (xmlTextReaderFreeNode/NodeList) until after any XInclude processing that still references them completes.\",\n      \"reasoning\": \"The ASan trace shows the node freed in xmlTextReaderRead before xmlXIncludeProcessNode/xmlXIncludeIncludeNode reads it; fixing the order directly eliminates the UAF without changing XInclude semantics.\",\n      \"trade_offs\": \"May increase peak memory usage in the reader; must ensure no regressions in reader node lifecycle and that delayed frees don\u2019t leak in error paths.\"\n    },\n    {\n      \"approach\": \"Ensure XInclude doesn\u2019t hold a borrowed xmlNodePtr for later use when called from the reader: store stable data (e.g., a deep copy of the xi:include node or required fields like name/type/attrs), or re-locate the node in the doc when needed.\",\n      \"reasoning\": \"Mirrors the historical fix pattern from 19cae17f (copy instead of borrowing) and makes XInclude robust against external node-freeing.\",\n      \"trade_offs\": \"Copying nodes/attrs adds overhead and complexity; re-locating nodes requires a stable identifier and may be tricky if the tree is being mutated.\"\n    },\n    {\n      \"approach\": \"Use the reader\u2019s preservation mechanism (e.g., preserve patterns for xi:include/xi:fallback) so those nodes are not auto-freed while XInclude context references them.\",\n      \"reasoning\": \"Keeps the lifetime policy in the reader (the component doing the freeing) and avoids invasive XInclude changes; aligns with the bug being exposed via xmlTextReaderRead.\",\n      \"trade_offs\": \"Requires careful pattern coverage; might not protect all paths if nodes are referenced indirectly; can increase memory usage for preserved nodes.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "file_analyzed": "xinclude.c",
+      "function_analyzed": "xmlXIncludeIncludeNode",
+      "relevant_commits": [
+        {
+          "hash": "2c747129",
+          "message": "Fix error reporting with xi:fallback",
+          "changes": "Added a 'fallback' flag to xmlXIncludeRef; when fallback was used, unset the xi:include @href before turning the node into XML_XINCLUDE_START.",
+          "relevance": "Shows recent logic that mutates the original xi:include node during include-node replacement; increases reliance on the liveness of the referenced node (ctxt->incTab[nr]->ref)."
+        },
+        {
+          "hash": "74dcc10b",
+          "message": "Remove dead code in xinclude.c",
+          "changes": "Removed xptr field/freeing and simplified branches assuming doc != NULL; refactoring around load/copy paths.",
+          "relevance": "Refactors ownership/copy assumptions in XInclude; useful context when auditing for borrowed pointers and lifetime problems leading to UAFs."
+        },
+        {
+          "hash": "19cae17f",
+          "message": "Revert \"Fix quadratic runtime in xi:fallback processing\"",
+          "changes": "Stopped borrowing fallback->children directly; instead copies fallback children with xmlDocCopyNodeList; adjusted where fallback children are removed/freed.",
+          "relevance": "Explicitly mentions use-after-free risk caused by borrowing nodes instead of copying them; strong historical signal that XInclude code is sensitive to node lifetimes and ownership (same class of bug)."
+        }
+      ],
+      "vulnerability_origin": "Likely triggered by holding a raw pointer (ctxt->incTab[nr]->ref) to an XInclude node whose lifetime is managed elsewhere (xmlTextReader), which can free nodes before xmlXIncludeIncludeNode dereferences them (cur->type at xinclude.c:2195). History shows prior UAFs in XInclude when borrowing nodes (19cae17f), suggesting a recurring ownership/lifetime pitfall.",
+      "fix_hints": "History (19cae17f) favors copying nodes instead of borrowing pointers when ownership is unclear. For the reader-driven path, avoid keeping pointers to nodes that xmlTextReader may free; either preserve the node in the reader or rework XInclude to not depend on the node pointer after reader advances.",
+      "fix_suggestions": [
+        {
+          "approach": "Adjust xmlTextReaderRead ordering so nodes are not freed (xmlTextReaderFreeNode/NodeList) until after any XInclude processing that still references them completes.",
+          "reasoning": "The ASan trace shows the node freed in xmlTextReaderRead before xmlXIncludeProcessNode/xmlXIncludeIncludeNode reads it; fixing the order directly eliminates the UAF without changing XInclude semantics.",
+          "trade_offs": "May increase peak memory usage in the reader; must ensure no regressions in reader node lifecycle and that delayed frees don\u2019t leak in error paths."
+        },
+        {
+          "approach": "Ensure XInclude doesn\u2019t hold a borrowed xmlNodePtr for later use when called from the reader: store stable data (e.g., a deep copy of the xi:include node or required fields like name/type/attrs), or re-locate the node in the doc when needed.",
+          "reasoning": "Mirrors the historical fix pattern from 19cae17f (copy instead of borrowing) and makes XInclude robust against external node-freeing.",
+          "trade_offs": "Copying nodes/attrs adds overhead and complexity; re-locating nodes requires a stable identifier and may be tricky if the tree is being mutated."
+        },
+        {
+          "approach": "Use the reader\u2019s preservation mechanism (e.g., preserve patterns for xi:include/xi:fallback) so those nodes are not auto-freed while XInclude context references them.",
+          "reasoning": "Keeps the lifetime policy in the reader (the component doing the freeing) and avoids invasive XInclude changes; aligns with the bug being exposed via xmlTextReaderRead.",
+          "trade_offs": "Requires careful pattern coverage; might not protect all paths if nodes are referenced indirectly; can increase memory usage for preserved nodes."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 37403,
+      "output_tokens": 3070
+    },
+    "timing": {
+      "start_time": 1768784295.9697309,
+      "end_time": 1768784434.9672012,
+      "duration": 138.99747037887573
+    },
+    "trajectory": {
+      "agent_role": "history_miner",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nA heap-use-after-free in xinclude.c's xmlXIncludeIncludeNode (seen during xmlXIncludeDoProcess / xmlXIncludeProcessNode invoked from xmlTextReaderRead) reads memory from an XInclude node that has already been freed. This can lead to crashes, memory corruption, or potentially exploitable behavior when processing XInclude co",
+      "total_steps": 4,
+      "total_duration": 138.99747037887573,
+      "total_input_tokens": 37403,
+      "total_output_tokens": 3070,
+      "total_cost": 0.06146245,
+      "final_state": "success"
+    }
+  },
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "{\n  \"root_cause\": \"xmlTextReaderRead() can unlink/free previously read nodes as it streams (xmlTextReaderFreeNode/List). When XInclude processing is enabled, the XInclude context stores a raw pointer (ctxt->incTab[nr]->ref) to the xi:include node and later dereferences it in xmlXIncludeIncludeNode(). If the reader frees that xi:include node before XInclude finishes, xmlXIncludeIncludeNode reads fields from freed memory, causing a heap-use-after-free.\",\n  \"fix_approach\": \"Preserve xi:include nodes when the reader detects them and is about to invoke xmlXIncludeProcessNode(). Specifically, mark the current node with NODE_IS_PRESERVED before XInclude processing so the reader\u2019s streaming cleanup logic won\u2019t unlink/free it while the XInclude context may still reference it.\",\n  \"files_modified\": [\n    \"xmlreader.c\"\n  ],\n  \"verification\": {\n    \"build_success\": true,\n    \"repro_success\": true,\n    \"exit_code\": 0,\n    \"asan_output\": \"No sanitizer errors detected\"\n  },\n  \"confidence\": \"high\"\n}",
+    "parsed_output": {
+      "root_cause": "xmlTextReaderRead() can unlink/free previously read nodes as it streams (xmlTextReaderFreeNode/List). When XInclude processing is enabled, the XInclude context stores a raw pointer (ctxt->incTab[nr]->ref) to the xi:include node and later dereferences it in xmlXIncludeIncludeNode(). If the reader frees that xi:include node before XInclude finishes, xmlXIncludeIncludeNode reads fields from freed memory, causing a heap-use-after-free.",
+      "fix_approach": "Preserve xi:include nodes when the reader detects them and is about to invoke xmlXIncludeProcessNode(). Specifically, mark the current node with NODE_IS_PRESERVED before XInclude processing so the reader\u2019s streaming cleanup logic won\u2019t unlink/free it while the XInclude context may still reference it.",
+      "files_modified": [
+        "xmlreader.c"
+      ],
+      "verification": {
+        "build_success": true,
+        "repro_success": true,
+        "exit_code": 0,
+        "asan_output": "No sanitizer errors detected"
+      },
+      "confidence": "high"
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 169081,
+      "output_tokens": 4118
+    },
+    "timing": {
+      "start_time": 1768784434.9716167,
+      "end_time": 1768784508.8019662,
+      "duration": 73.83034944534302
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/libxml2\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/libxml2`. Consider the following issue description:\n\n<issue_description>\nA heap-use-after-free in xinclude.c's xmlXIncludeIncludeNode (seen during xmlXIncludeDoProcess / xmlXIncludeProcessNode invoked from xmlTextReaderRead) reads memory from an XInclude node that has already been freed. This can lead to crashes, memory corruption, or potentially exploitable behavior when processing XInclude co",
+      "total_steps": 11,
+      "total_duration": 73.83034944534302,
+      "total_input_tokens": 169081,
+      "total_output_tokens": 4118,
+      "total_cost": 0.15154055,
+      "final_state": "success"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 392572,
+    "output_tokens": 14095
+  },
+  "timing": {
+    "total_duration": 399.4373779296875
+  }
+}

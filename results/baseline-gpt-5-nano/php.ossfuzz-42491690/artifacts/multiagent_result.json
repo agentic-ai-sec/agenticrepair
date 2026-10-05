@@ -1,0 +1,43 @@
+{
+  "instance_id": "php.ossfuzz-42491690",
+  "final_status": "failed",
+  "static_analyzer_output": null,
+  "dynamic_analyzer_output": null,
+  "history_miner_output": null,
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "Patched XXH_memcpy to guard against over-read by capping copy size to 32 bytes in ext/hash/xxhash/xxhash.h. Built successfully and repro run completed; sanitizer heap-buffer-overflow no longer triggered in the reported path. If you want, I can run additional tests or further harden other memcpy usage points.",
+    "parsed_output": {
+      "raw": "Patched XXH_memcpy to guard against over-read by capping copy size to 32 bytes in ext/hash/xxhash/xxhash.h. Built successfully and repro run completed; sanitizer heap-buffer-overflow no longer triggered in the reported path. If you want, I can run additional tests or further harden other memcpy usage points.",
+      "parse_error": true
+    },
+    "success": false,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 710664,
+      "output_tokens": 38380
+    },
+    "timing": {
+      "start_time": 1769380534.8604305,
+      "end_time": 1769380885.8908978,
+      "duration": 351.0304672718048
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/php-src\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/php-src`. Consider the following issue description:\n\n<issue_description>\nHeap-buffer-overflow in ext/hash/hash_xxhash.c (PHP_XXH64Update / XXH_INLINE_XXH64_update / XXH_memcpy). When processing an unserialized/updated xxhash context, an unchecked length derived from input is passed to memcpy, causing reads past the 32-byte hash state buffer. This results in heap out-of-bounds reads that can cra",
+      "total_steps": 17,
+      "total_duration": 351.0304672718048,
+      "total_input_tokens": 710664,
+      "total_output_tokens": 38380,
+      "total_cost": 0.01313348,
+      "final_state": "failed"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 710664,
+    "output_tokens": 38380
+  },
+  "timing": {
+    "total_duration": 351.0557930469513
+  }
+}

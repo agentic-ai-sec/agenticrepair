@@ -1,0 +1,11 @@
+{
+  "instance_id": "njs.ossfuzz-42523579",
+  "final_status": "success",
+  "total_token_usage": {
+    "input_tokens": 1369775,
+    "output_tokens": 38462
+  },
+  "timing": {
+    "total_duration": 672.6430513858795
+  }
+}

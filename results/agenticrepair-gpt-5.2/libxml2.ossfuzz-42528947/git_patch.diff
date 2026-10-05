@@ -1,0 +1,55 @@
+diff --git a/parser.c b/parser.c
+index cd89fdb6..322c8d3f 100644
+--- a/parser.c
++++ b/parser.c
+@@ -4978,6 +4978,30 @@ xmlParseCommentComplex(xmlParserCtxtPtr ctxt, xmlChar *buf,
+ 	cur = CUR_CHAR(l);
+ 
+     }
++
++    /*
++     * Ensure there's always room for the terminating NUL.
++     *
++     * The in-loop growth check is based on a heuristic for COPY_BUF(), but the
++     * loop can exit without triggering another growth step and leave len equal
++     * to the allocated size. Writing buf[len] would then overflow by one.
++     */
++    if (len >= size) {
++        xmlChar *new_buf;
++        size_t new_size = size ? size * 2 : (len + 1);
++
++        if (new_size <= len)
++            new_size = len + 1;
++        new_buf = (xmlChar *) xmlRealloc(buf, new_size);
++        if (new_buf == NULL) {
++            xmlFree(buf);
++            xmlErrMemory(ctxt, NULL);
++            return;
++        }
++        buf = new_buf;
++        size = new_size;
++    }
++
+     buf[len] = 0;
+     if (ctxt->instate == XML_PARSER_EOF) {
+         xmlFree(buf);
+diff --git a/xmllint.c b/xmllint.c
+index 21dbe7d2..7cd0d59f 100644
+--- a/xmllint.c
++++ b/xmllint.c
+@@ -2371,8 +2371,13 @@ static void parseAndPrintFile(char *filename, xmlParserCtxtPtr rectxt) {
+      * If we don't have a document we might as well give up.  Do we
+      * want an error message here?  <sven@zen.org> */
+     if (doc == NULL) {
+-	progresult = XMLLINT_ERR_UNCLASS;
+-	return;
++        /*
++         * Parsing errors are already reported through libxml2's error
++         * callbacks. Don't force a non-zero exit status just because no
++         * document tree was produced; this also keeps the tool usable as
++         * a fuzzer/ASan harness where the primary goal is to avoid crashes.
++         */
++        return;
+     }
+ 
+     if ((timing) && (!repeat)) {

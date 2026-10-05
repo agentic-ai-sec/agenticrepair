@@ -1,0 +1,55 @@
+diff --git a/src/string.c b/src/string.c
+index 5044c1d50..8e7907076 100644
+--- a/src/string.c
++++ b/src/string.c
+@@ -602,10 +602,23 @@ mrb_memsearch_ss(const unsigned char *xs, long m, const unsigned char *ys, long
+   const bitint first = MASK1 * (uint8_t)xs[0];
+   const bitint last  = MASK1 * (uint8_t)xs[m-1];
+ 
++  /*
++   * This SIMD-style search reads machine words from the haystack.
++   * Ensure we never read past the end of the buffer.
++   *
++   * Valid match start positions are [0, n-m]. Additionally, we read a full
++   * word at haystack+i and haystack+i+(m-1), so stop the word loop early and
++   * handle the remaining tail with a safe bytewise scan.
++   */
++  if (n < m) return -1;
++  const mrb_int limit = (mrb_int)(n - m + 1); /* last match start is limit-1 */
++  const mrb_int w = (mrb_int)sizeof(bitint);
++
+   bitint *s0 = (bitint*)(ys);
+   bitint *s1 = (bitint*)(ys+m-1);
+ 
+-  for (mrb_int i=0; i < n; i+=sizeof(bitint), s0++, s1++) {
++  mrb_int i = 0;
++  for (; i + w <= limit; i += w, s0++, s1++) {
+     const bitint eq = (*s0 ^ first) | (*s1 ^ last);
+     bitint zeros = ((~eq & MASK2) + MASK1) & (~eq & MASK3);
+     size_t j = 0;
+@@ -613,8 +626,8 @@ mrb_memsearch_ss(const unsigned char *xs, long m, const unsigned char *ys, long
+     while (zeros) {
+       if (zeros & MASK4) {
+         const char* substr = (char*)s0 + j + 1;
+-        if (memcmp(substr, xs + 1, m - 2) == 0) {
+-          return i + j;
++        if (memcmp(substr, xs + 1, (size_t)m - 2) == 0) {
++          return i + (mrb_int)j;
+         }
+       }
+ 
+@@ -626,6 +639,15 @@ mrb_memsearch_ss(const unsigned char *xs, long m, const unsigned char *ys, long
+       j += 1;
+     }
+   }
++
++  /* Tail (and very short haystacks): do a safe bytewise scan. */
++  for (; i < limit; i++) {
++    if (ys[i] == xs[0] && ys[i + m - 1] == xs[m - 1]) {
++      if (memcmp(ys + i + 1, xs + 1, (size_t)m - 2) == 0) {
++        return i;
++      }
++    }
++  }
+   return -1;
+ }

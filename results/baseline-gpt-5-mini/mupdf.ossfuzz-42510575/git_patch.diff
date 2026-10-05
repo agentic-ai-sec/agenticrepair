@@ -1,0 +1,48 @@
+diff --git a/source/fitz/font.c b/source/fitz/font.c
+index e228a4d94..4716fb50d 100644
+--- a/source/fitz/font.c
++++ b/source/fitz/font.c
+@@ -681,6 +681,9 @@ fz_new_font_from_buffer(fz_context *ctx, const char *name, fz_buffer *buffer, in
+ 		fz_throw(ctx, FZ_ERROR_GENERIC, "FT_New_Memory_Face(%s): %s", name, ft_error_string(fterr));
+ 	}
+ 
++	/* Keep a reference to the buffer while we initialize the FreeType face. */
++	fz_buffer *owned_buffer = fz_keep_buffer(ctx, buffer);
++
+ 	if (!name)
+ 	{
+ 		if (!face->family_name)
+diff --git a/source/pdf/pdf-font.c b/source/pdf/pdf-font.c
+index e071e8bd4..a93bf3b06 100644
+--- a/source/pdf/pdf-font.c
++++ b/source/pdf/pdf-font.c
+@@ -571,15 +571,26 @@ pdf_load_embedded_font(fz_context *ctx, pdf_document *doc, pdf_font_desc *fontde
+ 			}
+ 		}
+ 
++		/* Recompute size now that 'buf' may have been replaced with the CFF subtable. */
++		size = fz_buffer_storage(ctx, buf, &data);
++		/* Make a copy of the font data to hand to FreeType. This avoids
++		 * potential use-after-free if the original stream buffer is dropped
++		 * elsewhere. The font will retain its own reference to this copied
++		 * buffer. */
++		fz_buffer *owned_buf = fz_new_buffer_from_copied_data(ctx, data, size);
++		/* Drop the original buffer and replace with our owned copy. */
++		fz_drop_buffer(ctx, buf);
++		buf = owned_buf;
++
+ 		fontdesc->font = fz_new_font_from_buffer(ctx, fontname, buf, 0, 1);
++		/* Only record embedded font size and mark as embedded on success. */
++		fontdesc->size += size;
++		fontdesc->is_embedded = 1;
+ 	}
+ 	fz_always(ctx)
+ 		fz_drop_buffer(ctx, buf);
+ 	fz_catch(ctx)
+ 		fz_rethrow(ctx);
+-
+-	fontdesc->size += fz_buffer_storage(ctx, buf, NULL);
+-	fontdesc->is_embedded = 1;
+ }
+ 
+ /*

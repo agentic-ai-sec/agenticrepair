@@ -1,0 +1,23 @@
+diff --git a/src/numeric.c b/src/numeric.c
+index 27a7cb8c3..40512d7ae 100644
+--- a/src/numeric.c
++++ b/src/numeric.c
+@@ -1801,9 +1801,17 @@ static mrb_int
+ cmpnum(mrb_state *mrb, mrb_value v1, mrb_value v2)
+ {
+ #ifdef MRB_USE_BIGINT
+-  if (mrb_bigint_p(v2)) {
++  /* mrb_bint_cmp() requires the first operand to be a Bigint.
++     Ensure we never pass a non-bigint value as the first operand.
++     (cmpnum() can be called with either operand being a Bigint.) */
++  if (mrb_bigint_p(v1)) {
+     return mrb_bint_cmp(mrb, v1, v2);
+   }
++  if (mrb_bigint_p(v2)) {
++    mrb_int r = mrb_bint_cmp(mrb, v2, v1);
++    if (r == -2) return -2;
++    return -r;
++  }
+ #endif
+ 
+ #ifdef MRB_NO_FLOAT

@@ -1,0 +1,52 @@
+diff --git a/src/mat.c b/src/mat.c
+index b217e73..b182d48 100644
+--- a/src/mat.c
++++ b/src/mat.c
+@@ -2429,22 +2429,33 @@ Mat_VarPrint(const matvar_t *matvar, int printdata)
+             case MAT_C_SPARSE: {
+                 mat_sparse_t *sparse;
+                 size_t stride = Mat_SizeOf(matvar->data_type);
++                size_t nprint;
+ #if !defined(EXTENDED_SPARSE)
+                 if ( MAT_T_DOUBLE != matvar->data_type )
+                     break;
+ #endif
+                 sparse = (mat_sparse_t *)matvar->data;
+                 if ( sparse == NULL || sparse->ndata == 0 || sparse->nir == 0 || sparse->njc == 0 ||
+-                     sparse->data == NULL ) {
++                     sparse->data == NULL || sparse->ir == NULL || sparse->jc == NULL ) {
+                     break;
+                 }
++                /*
++                 * Some malformed/crafted MAT files can contain inconsistent sparse
++                 * bookkeeping (e.g. ndata > nir or jc[] entries beyond allocated arrays).
++                 * Clamp iteration to the allocated sparse index/data arrays.
++                 */
++                nprint = (size_t)sparse->ndata;
++                if ( (size_t)sparse->nir < nprint )
++                    nprint = (size_t)sparse->nir;
+                 if ( matvar->isComplex ) {
+                     mat_complex_split_t *complex_data = (mat_complex_split_t *)sparse->data;
+                     const char *re = (const char *)complex_data->Re;
+                     const char *im = (const char *)complex_data->Im;
++                    if ( re == NULL || im == NULL )
++                        break;
+                     for ( i = 0; i < (size_t)sparse->njc - 1; i++ ) {
+                         for ( j = sparse->jc[i];
+-                              j < (size_t)sparse->jc[i + 1] && j < (size_t)sparse->ndata; j++ ) {
++                              j < (size_t)sparse->jc[i + 1] && j < nprint; j++ ) {
+                             printf("    (%u,%" SIZE_T_FMTSTR ")  ", sparse->ir[j] + 1, i + 1);
+                             Mat_PrintNumber(matvar->data_type, re + j * stride);
+                             printf(" + ");
+@@ -2454,9 +2465,9 @@ Mat_VarPrint(const matvar_t *matvar, int printdata)
+                     }
+                 } else {
+                     const char *data = (const char *)sparse->data;
+-                    for ( i = 0; i < (size_t)sparse->njc - 1; i++ ) {
++                    for ( i = 0; i < (size_t)sparse->njc - 1; i++ ){
+                         for ( j = sparse->jc[i];
+-                              j < (size_t)sparse->jc[i + 1] && j < (size_t)sparse->ndata; j++ ) {
++                              j < (size_t)sparse->jc[i + 1] && j < nprint; j++ ) {
+                             printf("    (%u,%" SIZE_T_FMTSTR ")  ", sparse->ir[j] + 1, i + 1);
+                             Mat_PrintNumber(matvar->data_type, data + j * stride);
+                             printf("\n");

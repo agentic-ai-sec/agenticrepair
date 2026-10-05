@@ -1,0 +1,246 @@
+{
+  "instance_id": "php.ossfuzz-42490125",
+  "final_status": "success",
+  "static_analyzer_output": {
+    "role": "static_analyzer",
+    "raw_output": "{\n  \"analysis_type\": \"memory\",\n  \"findings\": [\n    {\n      \"file\": \"Zend/zend_hash.c\",\n      \"line\": 652,\n      \"message\": \"Hash index derived from `h | ht->nTableMask` is used to index the hash area via `HT_HASH_EX(arData, nIndex)` without an explicit bounds/structure check; if `arData` does not have the expected preceding hash region, this becomes an OOB read.\",\n      \"severity\": \"error\"\n    },\n    {\n      \"file\": \"Zend/zend_types.h\",\n      \"line\": 421,\n      \"message\": \"`HT_HASH_EX(data, idx)` casts `idx` to int32 and uses it as an array index: `((uint32_t*)(data))[(int32_t)(idx)]`. Negative indices intentionally read before `arData` (hash region), but become unsafe if the HashTable layout/`nTableMask` is inconsistent.\",\n      \"severity\": \"warning\"\n    },\n    {\n      \"file\": \"Zend/zend_attributes.c\",\n      \"line\": 127,\n      \"message\": \"Attribute validation resolves `IS_CONSTANT_AST` via `zval_update_constant_ex()`, which can trigger hash lookups (`zend_get_constant_ex` \u2192 `zend_hash_find_bucket`) during compilation; malformed/invalid constant resolution state can expose the unsafe lookup.\",\n      \"severity\": \"note\"\n    }\n  ],\n  \"dataflow_summary\": \"No directly relevant CodeQL taint-flow result was returned for the attribute-validation path; the key issue is a memory-unsafe hash-index computation/macro use rather than a classic source\u2192sink injection flow.\",\n  \"key_insight\": \"`zend_hash_find_bucket()` relies on negative indexing into memory *before* `ht->arData` (via `HT_HASH_EX`) based on `ht->nTableMask`. If a hashtable instance used during attribute/constant resolution has an unexpected layout (or corrupted/invalid `arData`/`nTableMask`), `HT_HASH_EX(arData, nIndex)` reads outside the allocated region, matching the ASan \u20184 bytes before\u2019 heap-buffer-overflow.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Harden `zend_hash_find_bucket()`: validate HashTable invariants before `HT_HASH_EX` (e.g., `ht->arData != NULL`, `ht->nTableMask <= HT_MIN_MASK`, and that `(int32_t)nIndex` lies in `[ht->nTableMask, -1]`; reject/return NULL otherwise).\",\n      \"reasoning\": \"Directly targets the unsafe read site (zend_hash.c:652) by preventing invalid negative indices from being used when the table layout is not as expected.\",\n      \"trade_offs\": \"Minimal code churn, but adds extra branches to a hot lookup path; may need to be compiled out under `ZEND_DEBUG` or carefully optimized.\"\n    },\n    {\n      \"approach\": \"Refactor hash indexing to avoid negative array indices: compute a base pointer to the hash area using `HT_GET_DATA_ADDR(ht)`/`HT_HASH_SIZE(ht->nTableMask)` and index from 0..hash_size-1 (e.g., `uint32_t *hash = (uint32_t*)HT_GET_DATA_ADDR(ht); hash[h & ~ht->nTableMask]`).\",\n      \"reasoning\": \"Eliminates the fragile \u2018index-before-arData\u2019 convention embodied by `HT_HASH_EX` (zend_types.h:421), making accidental OOB much harder even if `arData` is near an allocation boundary.\",\n      \"trade_offs\": \"More invasive: touches core hashtable macros and may affect performance/ABI assumptions; requires careful benchmarking and broad regression testing.\"\n    },\n    {\n      \"approach\": \"Add defensive validation in attribute constant resolution: before calling `zval_update_constant_ex()` for attribute args, ensure the constant AST is well-formed and scope/state is valid; on failure, abort attribute validation with a compile error rather than continuing into lookup.\",\n      \"reasoning\": \"Reduces exposure of the hash-lookup path from partially-initialized compilation state observed in the ASan trace (attribute validation \u2192 constant resolution).\",\n      \"trade_offs\": \"Does not fix the fundamental hashtable unsafe indexing; best as a belt-and-suspenders mitigation alongside a hashtable-side hardening.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "analysis_type": "memory",
+      "findings": [
+        {
+          "file": "Zend/zend_hash.c",
+          "line": 652,
+          "message": "Hash index derived from `h | ht->nTableMask` is used to index the hash area via `HT_HASH_EX(arData, nIndex)` without an explicit bounds/structure check; if `arData` does not have the expected preceding hash region, this becomes an OOB read.",
+          "severity": "error"
+        },
+        {
+          "file": "Zend/zend_types.h",
+          "line": 421,
+          "message": "`HT_HASH_EX(data, idx)` casts `idx` to int32 and uses it as an array index: `((uint32_t*)(data))[(int32_t)(idx)]`. Negative indices intentionally read before `arData` (hash region), but become unsafe if the HashTable layout/`nTableMask` is inconsistent.",
+          "severity": "warning"
+        },
+        {
+          "file": "Zend/zend_attributes.c",
+          "line": 127,
+          "message": "Attribute validation resolves `IS_CONSTANT_AST` via `zval_update_constant_ex()`, which can trigger hash lookups (`zend_get_constant_ex` \u2192 `zend_hash_find_bucket`) during compilation; malformed/invalid constant resolution state can expose the unsafe lookup.",
+          "severity": "note"
+        }
+      ],
+      "dataflow_summary": "No directly relevant CodeQL taint-flow result was returned for the attribute-validation path; the key issue is a memory-unsafe hash-index computation/macro use rather than a classic source\u2192sink injection flow.",
+      "key_insight": "`zend_hash_find_bucket()` relies on negative indexing into memory *before* `ht->arData` (via `HT_HASH_EX`) based on `ht->nTableMask`. If a hashtable instance used during attribute/constant resolution has an unexpected layout (or corrupted/invalid `arData`/`nTableMask`), `HT_HASH_EX(arData, nIndex)` reads outside the allocated region, matching the ASan \u20184 bytes before\u2019 heap-buffer-overflow.",
+      "fix_suggestions": [
+        {
+          "approach": "Harden `zend_hash_find_bucket()`: validate HashTable invariants before `HT_HASH_EX` (e.g., `ht->arData != NULL`, `ht->nTableMask <= HT_MIN_MASK`, and that `(int32_t)nIndex` lies in `[ht->nTableMask, -1]`; reject/return NULL otherwise).",
+          "reasoning": "Directly targets the unsafe read site (zend_hash.c:652) by preventing invalid negative indices from being used when the table layout is not as expected.",
+          "trade_offs": "Minimal code churn, but adds extra branches to a hot lookup path; may need to be compiled out under `ZEND_DEBUG` or carefully optimized."
+        },
+        {
+          "approach": "Refactor hash indexing to avoid negative array indices: compute a base pointer to the hash area using `HT_GET_DATA_ADDR(ht)`/`HT_HASH_SIZE(ht->nTableMask)` and index from 0..hash_size-1 (e.g., `uint32_t *hash = (uint32_t*)HT_GET_DATA_ADDR(ht); hash[h & ~ht->nTableMask]`).",
+          "reasoning": "Eliminates the fragile \u2018index-before-arData\u2019 convention embodied by `HT_HASH_EX` (zend_types.h:421), making accidental OOB much harder even if `arData` is near an allocation boundary.",
+          "trade_offs": "More invasive: touches core hashtable macros and may affect performance/ABI assumptions; requires careful benchmarking and broad regression testing."
+        },
+        {
+          "approach": "Add defensive validation in attribute constant resolution: before calling `zval_update_constant_ex()` for attribute args, ensure the constant AST is well-formed and scope/state is valid; on failure, abort attribute validation with a compile error rather than continuing into lookup.",
+          "reasoning": "Reduces exposure of the hash-lookup path from partially-initialized compilation state observed in the ASan trace (attribute validation \u2192 constant resolution).",
+          "trade_offs": "Does not fix the fundamental hashtable unsafe indexing; best as a belt-and-suspenders mitigation alongside a hashtable-side hardening."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 104316,
+      "output_tokens": 6528
+    },
+    "timing": {
+      "start_time": 1769005982.6534913,
+      "end_time": 1769006152.4352963,
+      "duration": 169.78180503845215
+    },
+    "trajectory": {
+      "agent_role": "static_analyzer",
+      "task": "<uploaded_files>\n/src/php-src\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/php-src`. Consider the following issue description:\n\n<issue_description>\nHeap-buffer-overflow in Zend hash lookup: zend_hash_find_bucket (Zend/zend_hash.c) performs an out-of-bounds read when resolving attribute/constant values during attribute validation (zend_get_attribute_value / validate_attribute in Zend/zend_attributes.c). This out-of-bounds access can corrupt memory or crash the process ",
+      "total_steps": 8,
+      "total_duration": 169.78180503845215,
+      "total_input_tokens": 104316,
+      "total_output_tokens": 6528,
+      "total_cost": 0.14391299999999999,
+      "final_state": "success"
+    }
+  },
+  "dynamic_analyzer_output": {
+    "role": "dynamic_analyzer",
+    "raw_output": "```json\n{\n  \"tools_used\": [\"gdb\", \"ubsan\"],\n  \"crash_info\": {\n    \"address\": \"0x50300001d64c\",\n    \"type\": \"heap-buffer-overflow (out-of-bounds read)\",\n    \"location\": \"Zend/zend_hash.c:652 (zend_hash_find_bucket)\"\n  },\n  \"backtrace\": [\n    \"zend_hash_find_bucket (Zend/zend_hash.c:652)\",\n    \"zend_hash_find (Zend/zend_hash.c:2246)\",\n    \"zend_get_constant_ex -> zval_update_constant_ex -> zend_get_attribute_value -> validate_attribute (Zend/zend_constants.c:377 / Zend/zend_execute_API.c:620 / Zend/zend_attributes.c:128 / Zend/zend_attributes.c:36)\"\n  ],\n  \"memory_state\": \"ASan reports a 4-byte read at 0x50300001d64c, which is 4 bytes BEFORE a 32-byte heap region [0x50300001d650, 0x50300001d670) allocated by zend_string_alloc/zend_string_init during compilation. This indicates the hash-index read (HT_HASH_EX(arData, nIndex)) accessed arData-4.\",\n  \"root_cause_hint\": \"Runtime evidence (ASan) shows the invalid access happens at `nIndex = h | ht->nTableMask` followed by `idx = HT_HASH_EX(arData, nIndex)`. The computed `nIndex` leads HT_HASH_EX to read 4 bytes before `ht->arData`, meaning the calculated hash-index offset is outside the hashtable\u2019s hash-index area at the moment a constant is resolved for attribute validation (PoC uses `#[Attribute(parent::TARGET_CLASS)]`). This points to missing/insufficient bounds validation for the computed hash index (or use of a hash lookup path on a table state where that offset is not valid).\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Add a hard bounds/consistency check in `zend_hash_find_bucket()` before calling `HT_HASH_EX(arData, nIndex)` (similar to the assertion used in `zend_hash_str_find_bucket()`), and return NULL (or trigger a debug assertion) if the computed index would fall outside the hash-index region for `ht->nTableSize`.\",\n      \"reasoning\": \"Dynamic traces show the first invalid read occurs exactly at the `HT_HASH_EX(arData, nIndex)` access. Guarding this prevents the out-of-bounds read even if upstream state causes an unexpected `nIndex` value during attribute/constant resolution.\",\n      \"trade_offs\": \"Adds a small runtime check on every string-key hash lookup (can be compiled out or reduced to assertions in non-debug builds). Returning NULL may change behavior from crash to \u201cconstant not found\u201d in corrupted/unexpected states; needs careful selection of fail behavior.\"\n    },\n    {\n      \"approach\": \"Strengthen hashtable state validation in the caller path (e.g., `zend_hash_find()` / `zend_get_constant_ex()`) to ensure the target HashTable is initialized and in a valid mixed-hash layout before using `zend_hash_find_bucket()`; otherwise take a safe slow-path or return not-found.\",\n      \"reasoning\": \"The OOB read implies an unexpected table layout/state for the assumptions inside `zend_hash_find_bucket()`. Verifying `HT_IS_INITIALIZED(ht)` / expected flags before lookup can prevent entering the unsafe code path.\",\n      \"trade_offs\": \"More branching in a hot path; also requires identifying exactly which states/layouts are legal for `zend_hash_find_bucket()` vs requiring an alternate lookup routine.\"\n    },\n    {\n      \"approach\": \"In the attribute validation path (`zend_get_attribute_value()` / `validate_attribute()`), avoid resolving certain constant expressions eagerly (like class-constant fetches involving `parent::`) during compile-time validation; defer evaluation or validate without forcing full constant resolution until runtime where the constant table/class context is fully consistent.\",\n      \"reasoning\": \"The crash is reliably triggered while resolving a constant expression during attribute validation (ASan backtrace). Reducing or deferring constant resolution in this specific path can avoid exercising the problematic lookup state.\",\n      \"trade_offs\": \"Semantic/compatibility considerations: deferring may change when errors are thrown (compile-time vs runtime), and may require additional bookkeeping for attribute metadata.\"\n    }\n  ]\n}\n```",
+    "parsed_output": {
+      "tools_used": [
+        "gdb",
+        "ubsan"
+      ],
+      "crash_info": {
+        "address": "0x50300001d64c",
+        "type": "heap-buffer-overflow (out-of-bounds read)",
+        "location": "Zend/zend_hash.c:652 (zend_hash_find_bucket)"
+      },
+      "backtrace": [
+        "zend_hash_find_bucket (Zend/zend_hash.c:652)",
+        "zend_hash_find (Zend/zend_hash.c:2246)",
+        "zend_get_constant_ex -> zval_update_constant_ex -> zend_get_attribute_value -> validate_attribute (Zend/zend_constants.c:377 / Zend/zend_execute_API.c:620 / Zend/zend_attributes.c:128 / Zend/zend_attributes.c:36)"
+      ],
+      "memory_state": "ASan reports a 4-byte read at 0x50300001d64c, which is 4 bytes BEFORE a 32-byte heap region [0x50300001d650, 0x50300001d670) allocated by zend_string_alloc/zend_string_init during compilation. This indicates the hash-index read (HT_HASH_EX(arData, nIndex)) accessed arData-4.",
+      "root_cause_hint": "Runtime evidence (ASan) shows the invalid access happens at `nIndex = h | ht->nTableMask` followed by `idx = HT_HASH_EX(arData, nIndex)`. The computed `nIndex` leads HT_HASH_EX to read 4 bytes before `ht->arData`, meaning the calculated hash-index offset is outside the hashtable\u2019s hash-index area at the moment a constant is resolved for attribute validation (PoC uses `#[Attribute(parent::TARGET_CLASS)]`). This points to missing/insufficient bounds validation for the computed hash index (or use of a hash lookup path on a table state where that offset is not valid).",
+      "fix_suggestions": [
+        {
+          "approach": "Add a hard bounds/consistency check in `zend_hash_find_bucket()` before calling `HT_HASH_EX(arData, nIndex)` (similar to the assertion used in `zend_hash_str_find_bucket()`), and return NULL (or trigger a debug assertion) if the computed index would fall outside the hash-index region for `ht->nTableSize`.",
+          "reasoning": "Dynamic traces show the first invalid read occurs exactly at the `HT_HASH_EX(arData, nIndex)` access. Guarding this prevents the out-of-bounds read even if upstream state causes an unexpected `nIndex` value during attribute/constant resolution.",
+          "trade_offs": "Adds a small runtime check on every string-key hash lookup (can be compiled out or reduced to assertions in non-debug builds). Returning NULL may change behavior from crash to \u201cconstant not found\u201d in corrupted/unexpected states; needs careful selection of fail behavior."
+        },
+        {
+          "approach": "Strengthen hashtable state validation in the caller path (e.g., `zend_hash_find()` / `zend_get_constant_ex()`) to ensure the target HashTable is initialized and in a valid mixed-hash layout before using `zend_hash_find_bucket()`; otherwise take a safe slow-path or return not-found.",
+          "reasoning": "The OOB read implies an unexpected table layout/state for the assumptions inside `zend_hash_find_bucket()`. Verifying `HT_IS_INITIALIZED(ht)` / expected flags before lookup can prevent entering the unsafe code path.",
+          "trade_offs": "More branching in a hot path; also requires identifying exactly which states/layouts are legal for `zend_hash_find_bucket()` vs requiring an alternate lookup routine."
+        },
+        {
+          "approach": "In the attribute validation path (`zend_get_attribute_value()` / `validate_attribute()`), avoid resolving certain constant expressions eagerly (like class-constant fetches involving `parent::`) during compile-time validation; defer evaluation or validate without forcing full constant resolution until runtime where the constant table/class context is fully consistent.",
+          "reasoning": "The crash is reliably triggered while resolving a constant expression during attribute validation (ASan backtrace). Reducing or deferring constant resolution in this specific path can avoid exercising the problematic lookup state.",
+          "trade_offs": "Semantic/compatibility considerations: deferring may change when errors are thrown (compile-time vs runtime), and may require additional bookkeeping for attribute metadata."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 444104,
+      "output_tokens": 18619
+    },
+    "timing": {
+      "start_time": 1769006152.4414027,
+      "end_time": 1769006640.6656687,
+      "duration": 488.2242660522461
+    },
+    "trajectory": {
+      "agent_role": "dynamic_analyzer",
+      "task": "<uploaded_files>\n/src/php-src\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/php-src`. Consider the following issue description:\n\n<issue_description>\nHeap-buffer-overflow in Zend hash lookup: zend_hash_find_bucket (Zend/zend_hash.c) performs an out-of-bounds read when resolving attribute/constant values during attribute validation (zend_get_attribute_value / validate_attribute in Zend/zend_attributes.c). This out-of-bounds access can corrupt memory or crash the process ",
+      "total_steps": 21,
+      "total_duration": 488.2242660522461,
+      "total_input_tokens": 444104,
+      "total_output_tokens": 18619,
+      "total_cost": 0.45078879999999993,
+      "final_state": "success"
+    }
+  },
+  "history_miner_output": {
+    "role": "history_miner",
+    "raw_output": "{\n  \"file_analyzed\": \"Zend/zend_hash.c\",\n  \"function_analyzed\": \"zend_hash_find_bucket\",\n  \"relevant_commits\": [\n    {\n      \"hash\": \"76d8f392\",\n      \"message\": \"Revert HASH_FLAG_INITIALIZED into HASH_FLAG_UNINITIALIZED\",\n      \"changes\": \"Reworked HashTable init flags/invariants (HT_FLAGS set to HASH_FLAG_UNINITIALIZED until real init; assertions updated).\",\n      \"relevance\": \"Makes correct handling of HASH_FLAG_UNINITIALIZED critical; if a caller does a lookup on an uninitialized table, zend_hash_find_bucket will still compute a negative index and read before arData, matching the ASan left-OOB pattern.\"\n    },\n    {\n      \"hash\": \"6a9127c1\",\n      \"message\": \"Assert that HT entries using add_new APIs are really new\",\n      \"changes\": \"Added debug-time assertions/extra lookups around zend_hash_find_bucket usage in add/update paths.\",\n      \"relevance\": \"Shows recent attention to hash-table invariants/assumptions; however it doesn\u2019t add runtime guards in zend_hash_find_bucket itself, so invariant violations can still become memory safety bugs in release builds.\"\n    },\n    {\n      \"hash\": \"27b0fecd\",\n      \"message\": \"Turn zend_hash_exists() into inline function\",\n      \"changes\": \"Removed non-inline exists wrappers that called zend_hash_find_bucket.\",\n      \"relevance\": \"Not a direct cause, but indicates API churn around lookup helpers; may have reduced central places where safety checks could have lived.\"\n    }\n  ],\n  \"vulnerability_origin\": \"Likely an invariant violation where zend_hash_find_bucket is called on a HashTable whose layout/flags are not compatible with mixed-hash lookup (e.g., HT is still HASH_FLAG_UNINITIALIZED or otherwise not fully initialized) during compile-time attribute validation/constant resolution. The 2018 switch back to HASH_FLAG_UNINITIALIZED (76d8f392) increased reliance on callers to avoid lookups on uninitialized HTs, while attribute validation added new compile-time constant resolution paths (e.g., attribute amendments / named params era) that can hit this corner.\",\n  \"fix_hints\": \"History suggests the engine expects callers to respect HASH_FLAG_UNINITIALIZED, but zend_hash_find()/zend_hash_find_bucket() do not defensively bail out. Adding a cheap guard for UNINITIALIZED (and possibly PACKED) before using HT_HASH_EX negative indexing would prevent left-OOB reads when invariants are violated by new compilation/attribute paths.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Add a runtime guard in zend_hash_find_bucket() (or zend_hash_find()) to return NULL if HT_FLAGS(ht) has HASH_FLAG_UNINITIALIZED (and possibly if ht is packed in a way incompatible with string-key lookup).\",\n      \"reasoning\": \"Directly addresses the observed OOB pattern (negative index into hash area) when the table is not properly initialized; aligns with the flag semantics reintroduced in 76d8f392.\",\n      \"trade_offs\": \"Tiny overhead on every hash lookup; but branch is highly predictable and significantly improves robustness/safety.\"\n    },\n    {\n      \"approach\": \"Fix the higher-level invariant violation: ensure the relevant constants table (e.g., class constants_table) is initialized before attribute validation tries to resolve constants, or delay/skip constant resolution during validate_attribute for contexts where the table is not ready.\",\n      \"reasoning\": \"Prevents the bad call sequence in the first place (attribute validation -> zval_update_constant_ex -> zend_get_constant_ex -> zend_hash_find_bucket on not-ready HT).\",\n      \"trade_offs\": \"More invasive; needs careful ordering in compilation and may change when/which errors are emitted.\"\n    },\n    {\n      \"approach\": \"Strengthen consistency checks in non-debug builds for critical lookup APIs (e.g., convert some IS_CONSISTENT()/ZEND_ASSERT invariants around initialization into runtime checks for security-sensitive call sites).\",\n      \"reasoning\": \"Commit 6a9127c1 shows invariant checking was considered, but mostly gated on ZEND_DEBUG; moving key checks into release would catch corruption/invariant violations earlier.\",\n      \"trade_offs\": \"More overhead than a single UNINITIALIZED guard; must be targeted to avoid performance regressions.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "file_analyzed": "Zend/zend_hash.c",
+      "function_analyzed": "zend_hash_find_bucket",
+      "relevant_commits": [
+        {
+          "hash": "76d8f392",
+          "message": "Revert HASH_FLAG_INITIALIZED into HASH_FLAG_UNINITIALIZED",
+          "changes": "Reworked HashTable init flags/invariants (HT_FLAGS set to HASH_FLAG_UNINITIALIZED until real init; assertions updated).",
+          "relevance": "Makes correct handling of HASH_FLAG_UNINITIALIZED critical; if a caller does a lookup on an uninitialized table, zend_hash_find_bucket will still compute a negative index and read before arData, matching the ASan left-OOB pattern."
+        },
+        {
+          "hash": "6a9127c1",
+          "message": "Assert that HT entries using add_new APIs are really new",
+          "changes": "Added debug-time assertions/extra lookups around zend_hash_find_bucket usage in add/update paths.",
+          "relevance": "Shows recent attention to hash-table invariants/assumptions; however it doesn\u2019t add runtime guards in zend_hash_find_bucket itself, so invariant violations can still become memory safety bugs in release builds."
+        },
+        {
+          "hash": "27b0fecd",
+          "message": "Turn zend_hash_exists() into inline function",
+          "changes": "Removed non-inline exists wrappers that called zend_hash_find_bucket.",
+          "relevance": "Not a direct cause, but indicates API churn around lookup helpers; may have reduced central places where safety checks could have lived."
+        }
+      ],
+      "vulnerability_origin": "Likely an invariant violation where zend_hash_find_bucket is called on a HashTable whose layout/flags are not compatible with mixed-hash lookup (e.g., HT is still HASH_FLAG_UNINITIALIZED or otherwise not fully initialized) during compile-time attribute validation/constant resolution. The 2018 switch back to HASH_FLAG_UNINITIALIZED (76d8f392) increased reliance on callers to avoid lookups on uninitialized HTs, while attribute validation added new compile-time constant resolution paths (e.g., attribute amendments / named params era) that can hit this corner.",
+      "fix_hints": "History suggests the engine expects callers to respect HASH_FLAG_UNINITIALIZED, but zend_hash_find()/zend_hash_find_bucket() do not defensively bail out. Adding a cheap guard for UNINITIALIZED (and possibly PACKED) before using HT_HASH_EX negative indexing would prevent left-OOB reads when invariants are violated by new compilation/attribute paths.",
+      "fix_suggestions": [
+        {
+          "approach": "Add a runtime guard in zend_hash_find_bucket() (or zend_hash_find()) to return NULL if HT_FLAGS(ht) has HASH_FLAG_UNINITIALIZED (and possibly if ht is packed in a way incompatible with string-key lookup).",
+          "reasoning": "Directly addresses the observed OOB pattern (negative index into hash area) when the table is not properly initialized; aligns with the flag semantics reintroduced in 76d8f392.",
+          "trade_offs": "Tiny overhead on every hash lookup; but branch is highly predictable and significantly improves robustness/safety."
+        },
+        {
+          "approach": "Fix the higher-level invariant violation: ensure the relevant constants table (e.g., class constants_table) is initialized before attribute validation tries to resolve constants, or delay/skip constant resolution during validate_attribute for contexts where the table is not ready.",
+          "reasoning": "Prevents the bad call sequence in the first place (attribute validation -> zval_update_constant_ex -> zend_get_constant_ex -> zend_hash_find_bucket on not-ready HT).",
+          "trade_offs": "More invasive; needs careful ordering in compilation and may change when/which errors are emitted."
+        },
+        {
+          "approach": "Strengthen consistency checks in non-debug builds for critical lookup APIs (e.g., convert some IS_CONSISTENT()/ZEND_ASSERT invariants around initialization into runtime checks for security-sensitive call sites).",
+          "reasoning": "Commit 6a9127c1 shows invariant checking was considered, but mostly gated on ZEND_DEBUG; moving key checks into release would catch corruption/invariant violations earlier.",
+          "trade_offs": "More overhead than a single UNINITIALIZED guard; must be targeted to avoid performance regressions."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 125675,
+      "output_tokens": 9727
+    },
+    "timing": {
+      "start_time": 1769006640.6783144,
+      "end_time": 1769008485.9453187,
+      "duration": 1845.26700425148
+    },
+    "trajectory": {
+      "agent_role": "history_miner",
+      "task": "<uploaded_files>\n/src/php-src\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/php-src`. Consider the following issue description:\n\n<issue_description>\nHeap-buffer-overflow in Zend hash lookup: zend_hash_find_bucket (Zend/zend_hash.c) performs an out-of-bounds read when resolving attribute/constant values during attribute validation (zend_get_attribute_value / validate_attribute in Zend/zend_attributes.c). This out-of-bounds access can corrupt memory or crash the process ",
+      "total_steps": 10,
+      "total_duration": 1845.26700425148,
+      "total_input_tokens": 125675,
+      "total_output_tokens": 9727,
+      "total_cost": 0.25913965,
+      "final_state": "success"
+    }
+  },
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "{\n  \"root_cause\": \"During compilation/attribute validation, zend_get_constant_ex() handles class-constant fetches like parent::CONST while the current class may not yet be linked. In that state, zend_class_entry uses a union where `parent` is not a zend_class_entry* but a zend_string* (`parent_name`). The code treated `scope->parent` as a class entry unconditionally, so `ce->constants_table` was accessed through an invalid pointer, corrupting the HashTable header/arData assumptions and triggering an out-of-bounds read in zend_hash_find_bucket().\",\n  \"fix_approach\": \"1) Hardened zend_hash_find_bucket()/zend_hash_str_find_bucket()/zend_hash_index_find_bucket() to immediately bail out when called on uninitialized/packed/NULL arData tables, and added basic header sanity checks to reduce the chance of unsafe HT_HASH_EX negative-index reads if a HashTable header is invalid. 2) Fixed the real trigger in zend_get_constant_ex(): for `parent::...`, only use `scope->parent` directly when the class is linked (ZEND_ACC_LINKED). Otherwise resolve the parent via `zend_lookup_class_ex(scope->parent_name, ..., ZEND_FETCH_CLASS_NO_AUTOLOAD)` so we don\u2019t interpret a zend_string* as a zend_class_entry* during compilation.\",\n  \"files_modified\": [\n    \"Zend/zend_hash.c\",\n    \"Zend/zend_constants.c\"\n  ],\n  \"verification\": {\n    \"build_success\": true,\n    \"repro_success\": true,\n    \"exit_code\": 0,\n    \"asan_output\": \"No sanitizer errors detected\"\n  },\n  \"confidence\": \"high\"\n}",
+    "parsed_output": {
+      "root_cause": "During compilation/attribute validation, zend_get_constant_ex() handles class-constant fetches like parent::CONST while the current class may not yet be linked. In that state, zend_class_entry uses a union where `parent` is not a zend_class_entry* but a zend_string* (`parent_name`). The code treated `scope->parent` as a class entry unconditionally, so `ce->constants_table` was accessed through an invalid pointer, corrupting the HashTable header/arData assumptions and triggering an out-of-bounds read in zend_hash_find_bucket().",
+      "fix_approach": "1) Hardened zend_hash_find_bucket()/zend_hash_str_find_bucket()/zend_hash_index_find_bucket() to immediately bail out when called on uninitialized/packed/NULL arData tables, and added basic header sanity checks to reduce the chance of unsafe HT_HASH_EX negative-index reads if a HashTable header is invalid. 2) Fixed the real trigger in zend_get_constant_ex(): for `parent::...`, only use `scope->parent` directly when the class is linked (ZEND_ACC_LINKED). Otherwise resolve the parent via `zend_lookup_class_ex(scope->parent_name, ..., ZEND_FETCH_CLASS_NO_AUTOLOAD)` so we don\u2019t interpret a zend_string* as a zend_class_entry* during compilation.",
+      "files_modified": [
+        "Zend/zend_hash.c",
+        "Zend/zend_constants.c"
+      ],
+      "verification": {
+        "build_success": true,
+        "repro_success": true,
+        "exit_code": 0,
+        "asan_output": "No sanitizer errors detected"
+      },
+      "confidence": "high"
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 1284012,
+      "output_tokens": 33393
+    },
+    "timing": {
+      "start_time": 1769008485.9509943,
+      "end_time": 1769009194.8699296,
+      "duration": 708.9189352989197
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/php-src\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/php-src`. Consider the following issue description:\n\n<issue_description>\nHeap-buffer-overflow in Zend hash lookup: zend_hash_find_bucket (Zend/zend_hash.c) performs an out-of-bounds read when resolving attribute/constant values during attribute validation (zend_get_attribute_value / validate_attribute in Zend/zend_attributes.c). This out-of-bounds access can corrupt memory or crash the process ",
+      "total_steps": 40,
+      "total_duration": 708.9189352989197,
+      "total_input_tokens": 1284012,
+      "total_output_tokens": 33393,
+      "total_cost": 1.2513102,
+      "final_state": "success"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 1958107,
+    "output_tokens": 68267
+  },
+  "timing": {
+    "total_duration": 3212.232036590576
+  }
+}

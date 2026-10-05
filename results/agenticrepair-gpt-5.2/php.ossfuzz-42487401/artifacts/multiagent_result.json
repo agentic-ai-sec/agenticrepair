@@ -1,0 +1,238 @@
+{
+  "instance_id": "php.ossfuzz-42487401",
+  "final_status": "success",
+  "static_analyzer_output": {
+    "role": "static_analyzer",
+    "raw_output": "{\n  \"analysis_type\": \"allocation\",\n  \"findings\": [\n    {\n      \"file\": \"Zend/zend_generators.c\",\n      \"line\": 527,\n      \"message\": \"Generator tree traversal in zend_generator_search_multi_children_node() dereferences node->child.single.child->node in a loop; if a generator in the chain has been freed (dangling parent/child link during yield-from), this becomes a heap use-after-free.\",\n      \"severity\": \"error\"\n    }\n  ],\n  \"dataflow_summary\": \"\",\n  \"key_insight\": \"The generator \u2018tree\u2019 stores raw zend_generator* pointers in parent/child links and hash tables; zend_generator_search_multi_children_node() walks these pointers without any lifetime/GC safety, so a generator freed by refcount changes can still be traversed during yield from.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Make generator-tree links own strong references: take a GC_ADDREF/OBJ_RELEASE on any generator inserted as a node/parent in the yield-from tree (e.g., when setting generator->node.parent = from and when inserting into child tables), and release when unlinking (when parent becomes NULL / subtree is collapsed).\",\n      \"reasoning\": \"The crash is consistent with a dangling zend_generator* used in zend_generator_search_multi_children_node(); the most direct prevention is ensuring any pointer reachable from the tree keeps the pointed-to generator alive.\",\n      \"trade_offs\": \"Requires careful balancing of references on all unlink/cleanup paths (close/return/exception) to avoid leaks; may slightly increase refcount churn during deep yield-from chains.\"\n    },\n    {\n      \"approach\": \"Unlink on destruction: in the Generator object destructor/free handler, proactively detach the generator from the yield-from tree (remove from parent hash tables, null out parent pointers, update leaf/root pointers) before freeing memory.\",\n      \"reasoning\": \"Even if refcounts drop unexpectedly, removing the node prevents future traversals from reaching freed memory.\",\n      \"trade_offs\": \"Complex: destructor may run in partially-initialized states; must handle concurrent unwinding/exception paths safely; risk of tree invariants breaking if detach logic misses cases.\"\n    },\n    {\n      \"approach\": \"Add defensive validity checks in traversal (e.g., validate node/child pointers, guard against unexpected children==1 chains by breaking early) and fail closed (throw) if invariants are violated.\",\n      \"reasoning\": \"Can reduce crashability when invariants are broken, and helps catch logic bugs early.\",\n      \"trade_offs\": \"Does not truly fix use-after-free if memory is already freed; only mitigates some manifestations and may mask deeper lifetime bugs.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "analysis_type": "allocation",
+      "findings": [
+        {
+          "file": "Zend/zend_generators.c",
+          "line": 527,
+          "message": "Generator tree traversal in zend_generator_search_multi_children_node() dereferences node->child.single.child->node in a loop; if a generator in the chain has been freed (dangling parent/child link during yield-from), this becomes a heap use-after-free.",
+          "severity": "error"
+        }
+      ],
+      "dataflow_summary": "",
+      "key_insight": "The generator \u2018tree\u2019 stores raw zend_generator* pointers in parent/child links and hash tables; zend_generator_search_multi_children_node() walks these pointers without any lifetime/GC safety, so a generator freed by refcount changes can still be traversed during yield from.",
+      "fix_suggestions": [
+        {
+          "approach": "Make generator-tree links own strong references: take a GC_ADDREF/OBJ_RELEASE on any generator inserted as a node/parent in the yield-from tree (e.g., when setting generator->node.parent = from and when inserting into child tables), and release when unlinking (when parent becomes NULL / subtree is collapsed).",
+          "reasoning": "The crash is consistent with a dangling zend_generator* used in zend_generator_search_multi_children_node(); the most direct prevention is ensuring any pointer reachable from the tree keeps the pointed-to generator alive.",
+          "trade_offs": "Requires careful balancing of references on all unlink/cleanup paths (close/return/exception) to avoid leaks; may slightly increase refcount churn during deep yield-from chains."
+        },
+        {
+          "approach": "Unlink on destruction: in the Generator object destructor/free handler, proactively detach the generator from the yield-from tree (remove from parent hash tables, null out parent pointers, update leaf/root pointers) before freeing memory.",
+          "reasoning": "Even if refcounts drop unexpectedly, removing the node prevents future traversals from reaching freed memory.",
+          "trade_offs": "Complex: destructor may run in partially-initialized states; must handle concurrent unwinding/exception paths safely; risk of tree invariants breaking if detach logic misses cases."
+        },
+        {
+          "approach": "Add defensive validity checks in traversal (e.g., validate node/child pointers, guard against unexpected children==1 chains by breaking early) and fail closed (throw) if invariants are violated.",
+          "reasoning": "Can reduce crashability when invariants are broken, and helps catch logic bugs early.",
+          "trade_offs": "Does not truly fix use-after-free if memory is already freed; only mitigates some manifestations and may mask deeper lifetime bugs."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 76205,
+      "output_tokens": 3911
+    },
+    "timing": {
+      "start_time": 1768921350.6165106,
+      "end_time": 1768921500.1404161,
+      "duration": 149.52390551567078
+    },
+    "trajectory": {
+      "agent_role": "static_analyzer",
+      "task": "<uploaded_files>\n/src/php-src\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/php-src`. Consider the following issue description:\n\n<issue_description>\nHeap use-after-free in Zend/zend_generators.c: zend_generator_search_multi_children_node (reachable via zend_generator_add_child and zend_generator_yield_from) reads memory from a freed generator-related structure during \"yield from\" operations. This can cause crashes or other undefined behavior and may enable memory-corru",
+      "total_steps": 6,
+      "total_duration": 149.52390551567078,
+      "total_input_tokens": 76205,
+      "total_output_tokens": 3911,
+      "total_cost": 0.15081675,
+      "final_state": "success"
+    }
+  },
+  "dynamic_analyzer_output": {
+    "role": "dynamic_analyzer",
+    "raw_output": "{\n  \"tools_used\": [\"gdb\", \"ubsan\"],\n  \"crash_info\": {\n    \"address\": \"0x512000016a60\",\n    \"type\": \"heap-use-after-free (read)\",\n    \"location\": \"Zend/zend_generators.c:527:15 (zend_generator_search_multi_children_node)\"\n  },\n  \"backtrace\": [\n    \"#0 zend_generator_search_multi_children_node Zend/zend_generators.c:527:15\",\n    \"#1 zend_generator_add_child Zend/zend_generators.c:590:25\",\n    \"#2 zend_generator_yield_from Zend/zend_generators.c:630:2\",\n    \"#3 ZEND_YIELD_FROM_SPEC_CV_HANDLER Zend/zend_vm_execute.h:39271:6\",\n    \"#4 execute_ex Zend/zend_vm_execute.h:55130:7\",\n    \"#5 zend_generator_resume Zend/zend_generators.c:860:4\",\n    \"#6 zend_generator_ensure_initialized Zend/zend_generators.c:926:3\",\n    \"#7 zim_Generator_next Zend/zend_generators.c:1021:2\"\n  ],\n  \"memory_state\": \"ASan reports a READ of 4 bytes at 0x512000016a60, which lies 160 bytes into a freed 320-byte heap allocation [0x5120000169c0, 0x512000016b00). The allocation originates from zend_generator_create() (Zend/zend_generators.c:442) and is freed via zend_objects_store_del() (Zend/zend_objects_API.c:197).\",\n  \"root_cause_hint\": \"Runtime evidence shows zend_generator_search_multi_children_node() traversing/inspecting generator \u2018multi children\u2019 bookkeeping using a pointer to a generator-related structure that has already been freed by object destruction (zend_objects_store_del). This indicates the yield-from child/parent linkage (created in zend_generator_add_child / zend_generator_yield_from) can outlive the generator object and is not reliably unlinked or refcount-protected, leaving stale pointers that later get dereferenced during yield-from resumption.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Make child generator lifetime explicit: when adding a child to the multi-children structure, hold a strong reference (GC refcount / zend_object addref) to the child generator (and any node structures), and release it when unlinking/removing the child.\",\n      \"reasoning\": \"The bug is a classic UAF caused by a freed generator object still being reachable from the parent\u2019s yield-from bookkeeping. Strong references prevent zend_objects_store_del() from freeing the child while the parent can still traverse it.\",\n      \"trade_offs\": \"Requires careful release on all paths (normal completion, exceptions, parent close/destruct) to avoid leaks or reference cycles; may need cycle collector friendliness.\"\n    },\n    {\n      \"approach\": \"Unlink on destruction: in generator free/destructor paths, proactively detach the generator from any parent multi-children tree/list and null out backpointers so searches can\u2019t reach freed memory.\",\n      \"reasoning\": \"ASan shows the free happens via zend_objects_store_del(); ensuring unlinking happens before the free removes dangling pointers and keeps existing traversal code safe.\",\n      \"trade_offs\": \"Must handle concurrent/recursive generator shutdown (close during yield-from, exception unwinds) correctly; missing an unlink path can reintroduce the UAF.\"\n    },\n    {\n      \"approach\": \"Harden traversal: store validated handles instead of raw pointers (e.g., store zend_object_handle / generation counter) and verify liveness before dereference; treat missing/dead children as absent.\",\n      \"reasoning\": \"Even if a stale entry remains, validation prevents dereferencing freed memory in zend_generator_search_multi_children_node().\",\n      \"trade_offs\": \"Adds overhead and complexity; still preferable to fix the underlying lifetime/ownership bug.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "tools_used": [
+        "gdb",
+        "ubsan"
+      ],
+      "crash_info": {
+        "address": "0x512000016a60",
+        "type": "heap-use-after-free (read)",
+        "location": "Zend/zend_generators.c:527:15 (zend_generator_search_multi_children_node)"
+      },
+      "backtrace": [
+        "#0 zend_generator_search_multi_children_node Zend/zend_generators.c:527:15",
+        "#1 zend_generator_add_child Zend/zend_generators.c:590:25",
+        "#2 zend_generator_yield_from Zend/zend_generators.c:630:2",
+        "#3 ZEND_YIELD_FROM_SPEC_CV_HANDLER Zend/zend_vm_execute.h:39271:6",
+        "#4 execute_ex Zend/zend_vm_execute.h:55130:7",
+        "#5 zend_generator_resume Zend/zend_generators.c:860:4",
+        "#6 zend_generator_ensure_initialized Zend/zend_generators.c:926:3",
+        "#7 zim_Generator_next Zend/zend_generators.c:1021:2"
+      ],
+      "memory_state": "ASan reports a READ of 4 bytes at 0x512000016a60, which lies 160 bytes into a freed 320-byte heap allocation [0x5120000169c0, 0x512000016b00). The allocation originates from zend_generator_create() (Zend/zend_generators.c:442) and is freed via zend_objects_store_del() (Zend/zend_objects_API.c:197).",
+      "root_cause_hint": "Runtime evidence shows zend_generator_search_multi_children_node() traversing/inspecting generator \u2018multi children\u2019 bookkeeping using a pointer to a generator-related structure that has already been freed by object destruction (zend_objects_store_del). This indicates the yield-from child/parent linkage (created in zend_generator_add_child / zend_generator_yield_from) can outlive the generator object and is not reliably unlinked or refcount-protected, leaving stale pointers that later get dereferenced during yield-from resumption.",
+      "fix_suggestions": [
+        {
+          "approach": "Make child generator lifetime explicit: when adding a child to the multi-children structure, hold a strong reference (GC refcount / zend_object addref) to the child generator (and any node structures), and release it when unlinking/removing the child.",
+          "reasoning": "The bug is a classic UAF caused by a freed generator object still being reachable from the parent\u2019s yield-from bookkeeping. Strong references prevent zend_objects_store_del() from freeing the child while the parent can still traverse it.",
+          "trade_offs": "Requires careful release on all paths (normal completion, exceptions, parent close/destruct) to avoid leaks or reference cycles; may need cycle collector friendliness."
+        },
+        {
+          "approach": "Unlink on destruction: in generator free/destructor paths, proactively detach the generator from any parent multi-children tree/list and null out backpointers so searches can\u2019t reach freed memory.",
+          "reasoning": "ASan shows the free happens via zend_objects_store_del(); ensuring unlinking happens before the free removes dangling pointers and keeps existing traversal code safe.",
+          "trade_offs": "Must handle concurrent/recursive generator shutdown (close during yield-from, exception unwinds) correctly; missing an unlink path can reintroduce the UAF."
+        },
+        {
+          "approach": "Harden traversal: store validated handles instead of raw pointers (e.g., store zend_object_handle / generation counter) and verify liveness before dereference; treat missing/dead children as absent.",
+          "reasoning": "Even if a stale entry remains, validation prevents dereferencing freed memory in zend_generator_search_multi_children_node().",
+          "trade_offs": "Adds overhead and complexity; still preferable to fix the underlying lifetime/ownership bug."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 30522,
+      "output_tokens": 1629
+    },
+    "timing": {
+      "start_time": 1768921500.1463757,
+      "end_time": 1768921592.5442264,
+      "duration": 92.39785075187683
+    },
+    "trajectory": {
+      "agent_role": "dynamic_analyzer",
+      "task": "<uploaded_files>\n/src/php-src\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/php-src`. Consider the following issue description:\n\n<issue_description>\nHeap use-after-free in Zend/zend_generators.c: zend_generator_search_multi_children_node (reachable via zend_generator_add_child and zend_generator_yield_from) reads memory from a freed generator-related structure during \"yield from\" operations. This can cause crashes or other undefined behavior and may enable memory-corru",
+      "total_steps": 3,
+      "total_duration": 92.39785075187683,
+      "total_input_tokens": 30522,
+      "total_output_tokens": 1629,
+      "total_cost": 0.0389235,
+      "final_state": "success"
+    }
+  },
+  "history_miner_output": {
+    "role": "history_miner",
+    "raw_output": "{\n  \"file_analyzed\": \"Zend/zend_generators.c\",\n  \"function_analyzed\": \"zend_generator_search_multi_children_node\",\n  \"relevant_commits\": [\n    {\n      \"hash\": \"ad61e141\",\n      \"message\": \"Fix crashes with unproper cleaning of repeated yield from (GH-6130)\",\n      \"changes\": \"Adds helpers to update/remove leaf children and reshapes yield-from cleanup to keep the generator tree consistent when repeated yield-from paths are cleaned.\",\n      \"relevance\": \"Shows prior instability in yield-from tree maintenance/cleanup; inconsistent leaf/child bookkeeping can leave stale pointers that later get dereferenced by search_multi_children_node().\"\n    },\n    {\n      \"hash\": \"5fef837c\",\n      \"message\": \"Simplify non-linear generator yield from tree\",\n      \"changes\": \"Removes special-case storage for 2-4 children; switches to 0/1/many where many uses a separately allocated HashTable* (emalloc/efree) and simplifies child lookup to single vs HT.\",\n      \"relevance\": \"This refactor is the likely origin of the bug class: generator nodes now store raw pointers (single child / HT entries) and manual lifetime management becomes critical. A missing/incorrect GC refcount or cleanup can turn into UAF in search_multi_children_node() when following node->child.single.child.\"\n    },\n    {\n      \"hash\": \"27f09efa\",\n      \"message\": \"Avoid duplicate addition of generators in yield from tree\",\n      \"changes\": \"Adjusts zend_generator_add_child() logic to avoid re-adding the same generator in certain yield-from tree integration paths.\",\n      \"relevance\": \"Tweaks tree insertion semantics; can affect when nodes become leaves/non-leaves and when pointers/HT entries are updated\u2014areas tightly coupled to lifetime/refcount correctness that can trigger UAF.\"\n    }\n  ],\n  \"vulnerability_origin\": \"Most likely introduced during/after the yield-from tree refactors (notably 5fef837c), which made the multi-child case use an allocated HashTable* and increased reliance on correct refcounting/cleanup of generator pointers stored in the tree. If a child generator is destroyed while still reachable via node->child.single.child (or HT), zend_generator_search_multi_children_node() can dereference freed memory.\",\n  \"fix_hints\": \"The later fix on the vulnerable commit (452f7b0d41c message) adds a temporary GC_ADDREF/OBJ_RELEASE around recursive destructor traversal, suggesting the root issue is lifetime management: the tree can still reference generators while destruction/cleanup proceeds, so traversal must hold strong references (or the tree must be torn down safely first).\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Ensure strong references for generators stored in the yield-from tree (increment GC refcount when inserting as child/into HT; decrement when removing/tearing down the tree).\",\n      \"reasoning\": \"The UAF is caused by following node->child.single.child into a freed generator. Preventing premature free by refcounting is the most direct fix and aligns with the destructor-side addref hotfix seen in the base commit.\",\n      \"trade_offs\": \"More refcount operations and the need for careful balancing in all cleanup paths; risk of leaks if decrefs are missed.\"\n    },\n    {\n      \"approach\": \"During generator destruction/close, proactively detach the generator from its parent\u2019s child list/HT before freeing and null/poison child pointers (tree-consistency teardown before deep recursion).\",\n      \"reasoning\": \"ad61e141 shows repeated yield-from cleanup needed explicit leaf/child maintenance; a consistent detach step reduces stale pointers that search_multi_children_node() might traverse.\",\n      \"trade_offs\": \"More complex teardown logic; must handle corner cases (currently-running generators, exceptions, nested yield-from).\"\n    },\n    {\n      \"approach\": \"Make search_multi_children_node() resilient: validate child pointers (e.g., check for NULL/flags) and avoid walking into potentially destructed generators; treat unexpected states as terminal and rebuild/normalize the node.\",\n      \"reasoning\": \"Provides defense-in-depth if lifetime invariants are temporarily violated during complex yield-from unwinding.\",\n      \"trade_offs\": \"May hide underlying logic bugs; added checks can impact performance and may be insufficient if pointers are already dangling (cannot reliably validate freed memory).\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "file_analyzed": "Zend/zend_generators.c",
+      "function_analyzed": "zend_generator_search_multi_children_node",
+      "relevant_commits": [
+        {
+          "hash": "ad61e141",
+          "message": "Fix crashes with unproper cleaning of repeated yield from (GH-6130)",
+          "changes": "Adds helpers to update/remove leaf children and reshapes yield-from cleanup to keep the generator tree consistent when repeated yield-from paths are cleaned.",
+          "relevance": "Shows prior instability in yield-from tree maintenance/cleanup; inconsistent leaf/child bookkeeping can leave stale pointers that later get dereferenced by search_multi_children_node()."
+        },
+        {
+          "hash": "5fef837c",
+          "message": "Simplify non-linear generator yield from tree",
+          "changes": "Removes special-case storage for 2-4 children; switches to 0/1/many where many uses a separately allocated HashTable* (emalloc/efree) and simplifies child lookup to single vs HT.",
+          "relevance": "This refactor is the likely origin of the bug class: generator nodes now store raw pointers (single child / HT entries) and manual lifetime management becomes critical. A missing/incorrect GC refcount or cleanup can turn into UAF in search_multi_children_node() when following node->child.single.child."
+        },
+        {
+          "hash": "27f09efa",
+          "message": "Avoid duplicate addition of generators in yield from tree",
+          "changes": "Adjusts zend_generator_add_child() logic to avoid re-adding the same generator in certain yield-from tree integration paths.",
+          "relevance": "Tweaks tree insertion semantics; can affect when nodes become leaves/non-leaves and when pointers/HT entries are updated\u2014areas tightly coupled to lifetime/refcount correctness that can trigger UAF."
+        }
+      ],
+      "vulnerability_origin": "Most likely introduced during/after the yield-from tree refactors (notably 5fef837c), which made the multi-child case use an allocated HashTable* and increased reliance on correct refcounting/cleanup of generator pointers stored in the tree. If a child generator is destroyed while still reachable via node->child.single.child (or HT), zend_generator_search_multi_children_node() can dereference freed memory.",
+      "fix_hints": "The later fix on the vulnerable commit (452f7b0d41c message) adds a temporary GC_ADDREF/OBJ_RELEASE around recursive destructor traversal, suggesting the root issue is lifetime management: the tree can still reference generators while destruction/cleanup proceeds, so traversal must hold strong references (or the tree must be torn down safely first).",
+      "fix_suggestions": [
+        {
+          "approach": "Ensure strong references for generators stored in the yield-from tree (increment GC refcount when inserting as child/into HT; decrement when removing/tearing down the tree).",
+          "reasoning": "The UAF is caused by following node->child.single.child into a freed generator. Preventing premature free by refcounting is the most direct fix and aligns with the destructor-side addref hotfix seen in the base commit.",
+          "trade_offs": "More refcount operations and the need for careful balancing in all cleanup paths; risk of leaks if decrefs are missed."
+        },
+        {
+          "approach": "During generator destruction/close, proactively detach the generator from its parent\u2019s child list/HT before freeing and null/poison child pointers (tree-consistency teardown before deep recursion).",
+          "reasoning": "ad61e141 shows repeated yield-from cleanup needed explicit leaf/child maintenance; a consistent detach step reduces stale pointers that search_multi_children_node() might traverse.",
+          "trade_offs": "More complex teardown logic; must handle corner cases (currently-running generators, exceptions, nested yield-from)."
+        },
+        {
+          "approach": "Make search_multi_children_node() resilient: validate child pointers (e.g., check for NULL/flags) and avoid walking into potentially destructed generators; treat unexpected states as terminal and rebuild/normalize the node.",
+          "reasoning": "Provides defense-in-depth if lifetime invariants are temporarily violated during complex yield-from unwinding.",
+          "trade_offs": "May hide underlying logic bugs; added checks can impact performance and may be insufficient if pointers are already dangling (cannot reliably validate freed memory)."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 67804,
+      "output_tokens": 3564
+    },
+    "timing": {
+      "start_time": 1768921592.547594,
+      "end_time": 1768922479.245878,
+      "duration": 886.6982839107513
+    },
+    "trajectory": {
+      "agent_role": "history_miner",
+      "task": "<uploaded_files>\n/src/php-src\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/php-src`. Consider the following issue description:\n\n<issue_description>\nHeap use-after-free in Zend/zend_generators.c: zend_generator_search_multi_children_node (reachable via zend_generator_add_child and zend_generator_yield_from) reads memory from a freed generator-related structure during \"yield from\" operations. This can cause crashes or other undefined behavior and may enable memory-corru",
+      "total_steps": 6,
+      "total_duration": 886.6982839107513,
+      "total_input_tokens": 67804,
+      "total_output_tokens": 3564,
+      "total_cost": 0.1215802,
+      "final_state": "success"
+    }
+  },
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "{\n  \"root_cause\": \"The yield-from generator tree stores raw zend_generator* pointers (single-child link and multi-child HashTable entries) without reliably keeping the referenced generator objects alive. During yield-from operations, a generator can be destroyed (freed) while still reachable via these links, and zend_generator_search_multi_children_node() then traverses into the freed generator->node, causing a heap use-after-free.\",\n  \"fix_approach\": \"Make yield-from tree links own strong references to the child generators they point to. Specifically: (1) increment the child generator refcount whenever it is inserted as a child in the yield-from bookkeeping (single-child and HashTable cases), and release that reference when the entry is removed / when the parent collapses back to a leaf, and during generator free for any remaining children. This prevents traversal functions from ever following pointers to already-freed generators.\",\n  \"files_modified\": [\n    \"Zend/zend_generators.c\"\n  ],\n  \"verification\": {\n    \"build_success\": true,\n    \"repro_success\": true,\n    \"exit_code\": 0,\n    \"asan_output\": \"No sanitizer errors detected\"\n  },\n  \"confidence\": \"high\"\n}",
+    "parsed_output": {
+      "root_cause": "The yield-from generator tree stores raw zend_generator* pointers (single-child link and multi-child HashTable entries) without reliably keeping the referenced generator objects alive. During yield-from operations, a generator can be destroyed (freed) while still reachable via these links, and zend_generator_search_multi_children_node() then traverses into the freed generator->node, causing a heap use-after-free.",
+      "fix_approach": "Make yield-from tree links own strong references to the child generators they point to. Specifically: (1) increment the child generator refcount whenever it is inserted as a child in the yield-from bookkeeping (single-child and HashTable cases), and release that reference when the entry is removed / when the parent collapses back to a leaf, and during generator free for any remaining children. This prevents traversal functions from ever following pointers to already-freed generators.",
+      "files_modified": [
+        "Zend/zend_generators.c"
+      ],
+      "verification": {
+        "build_success": true,
+        "repro_success": true,
+        "exit_code": 0,
+        "asan_output": "No sanitizer errors detected"
+      },
+      "confidence": "high"
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 578911,
+      "output_tokens": 52795
+    },
+    "timing": {
+      "start_time": 1768922479.2509174,
+      "end_time": 1768923263.6866584,
+      "duration": 784.4357409477234
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/php-src\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/php-src`. Consider the following issue description:\n\n<issue_description>\nHeap use-after-free in Zend/zend_generators.c: zend_generator_search_multi_children_node (reachable via zend_generator_add_child and zend_generator_yield_from) reads memory from a freed generator-related structure during \"yield from\" operations. This can cause crashes or other undefined behavior and may enable memory-corru",
+      "total_steps": 23,
+      "total_duration": 784.4357409477234,
+      "total_input_tokens": 578911,
+      "total_output_tokens": 52795,
+      "total_cost": 1.2087106499999998,
+      "final_state": "success"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 753442,
+    "output_tokens": 61899
+  },
+  "timing": {
+    "total_duration": 1913.08265209198
+  }
+}

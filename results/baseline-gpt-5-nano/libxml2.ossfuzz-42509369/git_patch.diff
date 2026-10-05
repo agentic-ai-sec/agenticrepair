@@ -1,0 +1,84 @@
+diff --git a/tree.c b/tree.c
+index e4425f10..3d15f763 100644
+--- a/tree.c
++++ b/tree.c
+@@ -31,6 +31,18 @@
+ #include <libxml/xmlmemory.h>
+ #include <libxml/tree.h>
+ #include <libxml/parser.h>
++
++static inline void xmlFreeNameIfOwned(xmlChar *name, xmlDocPtr doc) {
++    if (name == NULL) return;
++    if ((doc != NULL) && (doc->dict != NULL) && xmlDictOwns(doc->dict, name)) {
++        return;
++    }
++    if (name == (xmlChar *) xmlStringText || name == (xmlChar *) xmlStringTextNoenc) {
++        return;
++    }
++    xmlFree(name);
++}
++
+ #include <libxml/uri.h>
+ #include <libxml/entities.h>
+ #include <libxml/valid.h>
+@@ -1128,7 +1140,7 @@ xmlFreeDtd(xmlDtdPtr cur) {
+ 	    c = next;
+ 	}
+     }
+-    DICT_FREE(cur->name)
++    cur->name = NULL;;
+     DICT_FREE(cur->SystemID)
+     DICT_FREE(cur->ExternalID)
+     /* TODO !!! */
+@@ -1251,7 +1263,7 @@ xmlFreeDoc(xmlDocPtr cur) {
+     if (cur->oldNs != NULL) xmlFreeNsList(cur->oldNs);
+ 
+     DICT_FREE(cur->version)
+-    DICT_FREE(cur->name)
++    cur->name = NULL;;
+     DICT_FREE(cur->encoding)
+     DICT_FREE(cur->URL)
+     xmlFree(cur);
+@@ -1897,7 +1909,6 @@ xmlNewPropInternal(xmlNodePtr node, xmlNsPtr ns,
+         else
+             cur->name = xmlStrdup(name);
+     } else
+-        cur->name = name;
+ 
+     if (value != NULL) {
+         xmlNodePtr tmp;
+@@ -2114,7 +2125,7 @@ xmlFreeProp(xmlAttrPtr cur) {
+ 	    xmlRemoveID(cur->doc, cur);
+     }
+     if (cur->children != NULL) xmlFreeNodeList(cur->children);
+-    DICT_FREE(cur->name)
++    cur->name = NULL;;
+     xmlFree(cur);
+ }
+ 
+@@ -2306,7 +2317,6 @@ xmlNewNodeEatName(xmlNsPtr ns, xmlChar *name) {
+     memset(cur, 0, sizeof(xmlNode));
+     cur->type = XML_ELEMENT_NODE;
+ 
+-    cur->name = name;
+     cur->ns = ns;
+ 
+     if ((__xmlRegisterCallbacks) && (xmlRegisterNodeDefaultValue))
+@@ -3747,7 +3757,7 @@ xmlFreeNodeList(xmlNodePtr cur) {
+ 	    if ((cur->name != NULL) &&
+ 		(cur->type != XML_TEXT_NODE) &&
+ 		(cur->type != XML_COMMENT_NODE))
+-		DICT_FREE(cur->name)
++		cur->name = NULL; { /* patch not applied by exact pattern */ };
+ 	    xmlFree(cur);
+ 	}
+ 
+@@ -3825,7 +3835,7 @@ xmlFreeNode(xmlNodePtr cur) {
+     if ((cur->name != NULL) &&
+         (cur->type != XML_TEXT_NODE) &&
+         (cur->type != XML_COMMENT_NODE))
+-	DICT_FREE(cur->name)
++	cur->name = NULL;;
+ 
+     if (((cur->type == XML_ELEMENT_NODE) ||
+ 	 (cur->type == XML_XINCLUDE_START) ||

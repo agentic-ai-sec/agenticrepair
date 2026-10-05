@@ -1,0 +1,57 @@
+diff --git a/source/pdf/pdf-xref.c b/source/pdf/pdf-xref.c
+index 27f5213f9..b10756842 100644
+--- a/source/pdf/pdf-xref.c
++++ b/source/pdf/pdf-xref.c
+@@ -2496,20 +2496,46 @@ perform_repair:
+ 	{
+ 		if (!x->obj)
+ 		{
+-			pdf_xref_entry *orig_x = x;
+-			orig_x->type = 'O'; /* Mark this node so we know we're recursing. */
++			/*
++			 * We temporarily flip the xref entry type from 'o' to 'O' as a recursion guard
++			 * while loading from an object stream.
++			 *
++			 * IMPORTANT: Do not keep a raw pdf_xref_entry* across pdf_load_obj_stm().
++			 * That call can repair/solidify the xref table which may reallocate and
++			 * invalidate entry pointers. Restoring through a stale pointer can lead
++			 * to a heap-use-after-free (typically a 1-byte write when restoring type).
++			 */
++			int mark_num = num;
++			int objstm_num = x->ofs;
++			pdf_xref_entry *loaded = NULL;
++			x->type = 'O'; /* Mark this node so we know we're recursing. */
+ 			fz_try(ctx)
+-				x = pdf_load_obj_stm(ctx, doc, x->ofs, &doc->lexbuf.base, num);
++				loaded = pdf_load_obj_stm(ctx, doc, objstm_num, &doc->lexbuf.base, num);
+ 			fz_always(ctx)
+-				orig_x->type = 'o'; /* Not recursing any more. */
++			{
++				pdf_xref_entry *restore = pdf_get_xref_entry(ctx, doc, mark_num);
++				if (restore && restore->type == 'O')
++					restore->type = 'o';
++			}
+ 			fz_catch(ctx)
+ 				fz_rethrow(ctx);
+-			if (x == NULL)
++			if (loaded == NULL)
+ 				fz_throw(ctx, FZ_ERROR_GENERIC, "cannot load object stream containing object (%d 0 R)", num);
++
++			/* pdf_load_obj_stm() may repair/solidify the xref and invalidate entry pointers.
++			 * Re-fetch the entry for this object number before dereferencing it. */
++			x = pdf_get_xref_entry(ctx, doc, num);
++			if (x == NULL)
++				fz_throw(ctx, FZ_ERROR_GENERIC, "cannot find object in xref (%d 0 R)", num);
+ 			if (!x->obj)
+ 			{
+ 				x->type = 'f';
+-				orig_x->type = 'f';
++				/* The original entry for 'num' may not be the same pointer we started with. */
++				{
++					pdf_xref_entry *orig = pdf_get_xref_entry(ctx, doc, mark_num);
++					if (orig)
++						orig->type = 'f';
++				}
+ 				if (doc->repair_attempted)
+ 					fz_throw(ctx, FZ_ERROR_GENERIC, "object (%d 0 R) was not found in its object stream", num);
+ 				goto perform_repair;

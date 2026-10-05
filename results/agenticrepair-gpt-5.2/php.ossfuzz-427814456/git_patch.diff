@@ -1,0 +1,54 @@
+diff --git a/Zend/zend_operators.c b/Zend/zend_operators.c
+index 252b8df1ea0..ec0b38adf9a 100644
+--- a/Zend/zend_operators.c
++++ b/Zend/zend_operators.c
+@@ -398,15 +398,26 @@ static zend_never_inline zend_long ZEND_FASTCALL zendi_try_get_long(const zval *
+ 		}
+ 		case IS_STRING:
+ 			{
++				/*
++				 * The warning path below may invoke a user error handler which can
++				 * perform arbitrary operations (including unsetting variables).
++				 * This can free the zval/op or its underlying zend_string while we
++				 * still need it for subsequent error reporting.
++				 *
++				 * Keep our own reference to the string to avoid using a dangling
++				 * pointer in later zend_error() formatting.
++				 */
++				zend_string *str = zend_string_copy(Z_STR_P(op));
+ 				uint8_t type;
+ 				zend_long lval;
+ 				double dval;
+ 				bool trailing_data = false;
+ 
+ 				/* For BC reasons we allow errors so that we can warn on leading numeric string */
+-				type = is_numeric_string_ex(Z_STRVAL_P(op), Z_STRLEN_P(op), &lval, &dval,
++				type = is_numeric_string_ex(ZSTR_VAL(str), ZSTR_LEN(str), &lval, &dval,
+ 					/* allow errors */ true, NULL, &trailing_data);
+ 				if (type == 0) {
++					zend_string_release(str);
+ 					*failed = 1;
+ 					return 0;
+ 				}
+@@ -417,6 +428,7 @@ static zend_never_inline zend_long ZEND_FASTCALL zendi_try_get_long(const zval *
+ 					}
+ 				}
+ 				if (EXPECTED(type == IS_LONG)) {
++					zend_string_release(str);
+ 					return lval;
+ 				} else {
+ 					/* Previously we used strtol here, not is_numeric_string,
+@@ -426,11 +438,12 @@ static zend_never_inline zend_long ZEND_FASTCALL zendi_try_get_long(const zval *
+ 					 */
+ 					lval = zend_dval_to_lval_cap(dval);
+ 					if (!zend_is_long_compatible(dval, lval)) {
+-						zend_incompatible_string_to_long_error(Z_STR_P(op));
++						zend_incompatible_string_to_long_error(str);
+ 						if (UNEXPECTED(EG(exception))) {
+ 							*failed = 1;
+ 						}
+ 					}
++					zend_string_release(str);
+ 					return lval;
+ 				}
+ 			}

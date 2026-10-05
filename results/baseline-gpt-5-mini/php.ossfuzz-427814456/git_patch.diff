@@ -1,0 +1,47 @@
+diff --git a/main/spprintf.c b/main/spprintf.c
+index f180ad31b3d..02447e380a4 100644
+--- a/main/spprintf.c
++++ b/main/spprintf.c
+@@ -549,19 +549,29 @@ static void xbuf_format_converter(void *xbuf, bool is_char, const char *fmt, va_
+ 
+ 
+ 				case 's':
+-					s = va_arg(ap, char *);
+-					if (s != NULL) {
+-						if (!adjust_precision) {
+-							s_len = strlen(s);
+-						} else {
+-							s_len = zend_strnlen(s, precision);
+-						}
+-					} else {
+-						s = S_NULL;
+-						s_len = S_NULL_LEN;
+-					}
+-					pad_char = ' ';
+-					break;
++	s = va_arg(ap, char *);
++	if (s != NULL) {
++		/* Duplicate the string into a temporary zend_string to ensure it
++		 * remains valid across nested calls that might free the original
++		 * storage (e.g. during error reporting). tmp_str will be released
++		 * at the end of this format specifier handling. */
++		tmp_str = zend_string_init(s, strlen(s), 0);
++		if (!adjust_precision) {
++			s_len = ZSTR_LEN(tmp_str);
++		} else {
++			s_len = ZSTR_LEN(tmp_str);
++			if ((size_t)precision < s_len) {
++				s_len = precision;
++			}
++		}
++		s = ZSTR_VAL(tmp_str);
++	} else {
++		s = S_NULL;
++		s_len = S_NULL_LEN;
++	}
++	pad_char = ' ';
++	break;
++
+ 
+ 
+ 				case 'f':

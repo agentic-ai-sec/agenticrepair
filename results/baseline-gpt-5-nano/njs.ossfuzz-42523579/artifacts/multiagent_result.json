@@ -1,0 +1,43 @@
+{
+  "instance_id": "njs.ossfuzz-42523579",
+  "final_status": "failed",
+  "static_analyzer_output": null,
+  "dynamic_analyzer_output": null,
+  "history_miner_output": null,
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "Root cause analysis:\n- The crash arises when njs_scope_value is called with a VM or its scope level pointers not yet initialized, leading to dereferencing a NULL vm or NULL level array element. In particular, the code does not verify vm, vm->levels, or vm->levels[type], and directly indexes them, which can trigger a segfault under crafted inputs or during certain interpreter states.\n\nProposed fixes:\n1) Minimal guard in njs_scope_value (recommended):\n   - Add nil-pointer checks for vm and vm->levels and for vm->levels[type] before dereferencing.\n   - If any check fails, return a safe sentinel value (undefined value) instead of dereferencing.\n   - This is a targeted fix that prevents the exact crash while preserving performance and behavior of existing code paths.\n2) Sanity checks at callers (defensive approach):\n   - Add guards at call sites that obtain a pointer to a value (e.g., before writing to njs_scope_value_set) to ensure the destination index exists. This is riskier and more invasive; the minimal change is preferred.\n3) Harden memory layout assumptions:\n   - Ensure vm, vm->levels and level pointers are initialized elsewhere, but this is larger scope change.\n\nChosen approach:\n- Implement the guard directly in njs_scope_value as a minimal, focused fix. This directly addresses the null-pointer dereference from the reported stack trace and is least disruptive to existing code paths.\n\nPatch (minimal and self-contained):\n- Replace the existing inline function in src/njs/src/njs_scope.h with a guarded version that returns an undefined value if any access is invalid.\n\nPatch diff (unified format):\n--- a/src/njs/src/njs_scope.h\n+++ b/src/njs/src/njs_scope.h\n@@\n-njs_inline njs_value_t *\n-njs_scope_value(njs_vm_t *vm, njs_index_t index)\n-{\n-    return vm->levels[njs_scope_index_type(index)]\n-                     [njs_scope_index_value(index)];\n-}\n+njs_inline njs_value_t *\n+njs_scope_value(njs_vm_t *vm, njs_index_t index)\n+{\n+    if (vm == NULL || vm->levels == NULL) {\n+        return &njs_value_undefined;\n+    }\n+\n+    njs_level_type_t type = njs_scope_index_type(index);\n+    njs_index_t value = njs_scope_index_value(index);\n+\n+    njs_value_t **level = vm->levels[type];\n+    if (level == NULL) {\n+        return &njs_value_undefined;\n+    }\n+\n+    njs_value_t *val = level[value];\n+    if (val == NULL) {\n+        return &njs_value_undefined;\n+    }\n+\n+    return val;\n+}\n\nVerification plan:\n- Rebuild and run tests to ensure no functional regressions. The sanitizer-friendly guard should prevent the AddressSanitizer SEGV observed in the issue when null-pointer scenarios occur.\n- Steps to verify locally (in /src/njs):\n  1) secb build\n  2) secb repro\n  3) While running, use crafted inputs that previously triggered a crash to confirm the crash is mitigated.\n\nNotes:\n- This change is intentionally minimal and localized to fix the exact crash scenario described in the issue. It preserves the existing API and semantics for valid indices while providing a safe fallback when encountering invalid state.\n- If more aggressive hardening is desired, we can extend similar guards to other scope accessors, but the current fix targets the bug described.\n\nIf you want, I can generate a patch file diffs for direct application or attempt another patch method (via a patch utility) next.",
+    "parsed_output": {
+      "raw": "Root cause analysis:\n- The crash arises when njs_scope_value is called with a VM or its scope level pointers not yet initialized, leading to dereferencing a NULL vm or NULL level array element. In particular, the code does not verify vm, vm->levels, or vm->levels[type], and directly indexes them, which can trigger a segfault under crafted inputs or during certain interpreter states.\n\nProposed fixes:\n1) Minimal guard in njs_scope_value (recommended):\n   - Add nil-pointer checks for vm and vm->levels and for vm->levels[type] before dereferencing.\n   - If any check fails, return a safe sentinel value (undefined value) instead of dereferencing.\n   - This is a targeted fix that prevents the exact crash while preserving performance and behavior of existing code paths.\n2) Sanity checks at callers (defensive approach):\n   - Add guards at call sites that obtain a pointer to a value (e.g., before writing to njs_scope_value_set) to ensure the destination index exists. This is riskier and more invasive; the minimal change is preferred.\n3) Harden memory layout assumptions:\n   - Ensure vm, vm->levels and level pointers are initialized elsewhere, but this is larger scope change.\n\nChosen approach:\n- Implement the guard directly in njs_scope_value as a minimal, focused fix. This directly addresses the null-pointer dereference from the reported stack trace and is least disruptive to existing code paths.\n\nPatch (minimal and self-contained):\n- Replace the existing inline function in src/njs/src/njs_scope.h with a guarded version that returns an undefined value if any access is invalid.\n\nPatch diff (unified format):\n--- a/src/njs/src/njs_scope.h\n+++ b/src/njs/src/njs_scope.h\n@@\n-njs_inline njs_value_t *\n-njs_scope_value(njs_vm_t *vm, njs_index_t index)\n-{\n-    return vm->levels[njs_scope_index_type(index)]\n-                     [njs_scope_index_value(index)];\n-}\n+njs_inline njs_value_t *\n+njs_scope_value(njs_vm_t *vm, njs_index_t index)\n+{\n+    if (vm == NULL || vm->levels == NULL) {\n+        return &njs_value_undefined;\n+    }\n+\n+    njs_level_type_t type = njs_scope_index_type(index);\n+    njs_index_t value = njs_scope_index_value(index);\n+\n+    njs_value_t **level = vm->levels[type];\n+    if (level == NULL) {\n+        return &njs_value_undefined;\n+    }\n+\n+    njs_value_t *val = level[value];\n+    if (val == NULL) {\n+        return &njs_value_undefined;\n+    }\n+\n+    return val;\n+}\n\nVerification plan:\n- Rebuild and run tests to ensure no functional regressions. The sanitizer-friendly guard should prevent the AddressSanitizer SEGV observed in the issue when null-pointer scenarios occur.\n- Steps to verify locally (in /src/njs):\n  1) secb build\n  2) secb repro\n  3) While running, use crafted inputs that previously triggered a crash to confirm the crash is mitigated.\n\nNotes:\n- This change is intentionally minimal and localized to fix the exact crash scenario described in the issue. It preserves the existing API and semantics for valid indices while providing a safe fallback when encountering invalid state.\n- If more aggressive hardening is desired, we can extend similar guards to other scope accessors, but the current fix targets the bug described.\n\nIf you want, I can generate a patch file diffs for direct application or attempt another patch method (via a patch utility) next.",
+      "parse_error": true
+    },
+    "success": false,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 342526,
+      "output_tokens": 87149
+    },
+    "timing": {
+      "start_time": 1769374337.4664648,
+      "end_time": 1769374689.042725,
+      "duration": 351.57626032829285
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/njs\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/njs`. Consider the following issue description:\n\n<issue_description>\nA null pointer dereference in njs_scope_value (src/njs/src/njs_scope.h), reachable from the bytecode interpreter (njs_vmcode_interpreter in njs_vmcode.c), can read from the zero page (e.g. offset 0x18) and cause a segmentation fault. Crafted input can trigger this during script execution, resulting in a process crash (denial-of-se",
+      "total_steps": 24,
+      "total_duration": 351.57626032829285,
+      "total_input_tokens": 342526,
+      "total_output_tokens": 87149,
+      "total_cost": 0.01965983,
+      "final_state": "failed"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 342526,
+    "output_tokens": 87149
+  },
+  "timing": {
+    "total_duration": 351.5853521823883
+  }
+}

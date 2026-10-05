@@ -1,0 +1,55 @@
+diff --git a/src/lib/OpenEXRCore/validation.c b/src/lib/OpenEXRCore/validation.c
+index 65e2346b..76b35830 100644
+--- a/src/lib/OpenEXRCore/validation.c
++++ b/src/lib/OpenEXRCore/validation.c
+@@ -680,7 +680,12 @@ internal_exr_validate_shared_attrs (exr_context_t ctxt,
+     {
+         if (curpart->displayWindow)
+         {
+-            if (memcmp (basepart->displayWindow->box2i,
++            /* Ensure attributes are of expected type and pointers are valid before memcmp */
++            if (basepart->displayWindow->type != EXR_ATTR_BOX2I ||
++                curpart->displayWindow->type != EXR_ATTR_BOX2I ||
++                basepart->displayWindow->box2i == NULL ||
++                curpart->displayWindow->box2i == NULL ||
++                memcmp (basepart->displayWindow->box2i,
+                         curpart->displayWindow->box2i,
+                         sizeof(exr_attr_box2i_t)))
+                 rv = EXR_ERR_ATTR_TYPE_MISMATCH;
+@@ -699,8 +704,10 @@ internal_exr_validate_shared_attrs (exr_context_t ctxt,
+     {
+         if (curpart->pixelAspectRatio)
+         {
+-            // NaN compares false, but if they're both NaN?
+-            if (memcmp (&(basepart->pixelAspectRatio->f),
++            /* Ensure attributes are float types and pointers valid before comparing */
++            if (basepart->pixelAspectRatio->type != EXR_ATTR_FLOAT ||
++                curpart->pixelAspectRatio->type != EXR_ATTR_FLOAT ||
++                memcmp (&(basepart->pixelAspectRatio->f),
+                         &(curpart->pixelAspectRatio->f),
+                         sizeof(float)))
+                 rv = EXR_ERR_ATTR_TYPE_MISMATCH;
+@@ -717,7 +724,10 @@ internal_exr_validate_shared_attrs (exr_context_t ctxt,
+     rv1 = exr_get_attribute_by_name (ctxt, curpartidx, "timecode", &cattr);
+     if (EXR_ERR_SUCCESS == rv && rv == rv1)
+     {
+-        if (memcmp (battr->timecode,
++        /* Ensure both attributes are actually timecode types and pointers valid */
++        if (battr->type != EXR_ATTR_TIMECODE || cattr->type != EXR_ATTR_TIMECODE ||
++            battr->timecode == NULL || cattr->timecode == NULL ||
++            memcmp (battr->timecode,
+                     cattr->timecode,
+                     sizeof(exr_attr_timecode_t)))
+         {
+@@ -737,7 +747,10 @@ internal_exr_validate_shared_attrs (exr_context_t ctxt,
+     rv1 = exr_get_attribute_by_name (ctxt, curpartidx, "chromaticities", &cattr);
+     if (EXR_ERR_SUCCESS == rv && rv == rv1)
+     {
+-        if (memcmp (battr->chromaticities,
++        /* Ensure both attributes are chromaticities types and pointers valid */
++        if (battr->type != EXR_ATTR_CHROMATICITIES || cattr->type != EXR_ATTR_CHROMATICITIES ||
++            battr->chromaticities == NULL || cattr->chromaticities == NULL ||
++            memcmp (battr->chromaticities,
+                     cattr->chromaticities,
+                     sizeof(exr_attr_chromaticities_t)))
+             rv = EXR_ERR_ATTR_TYPE_MISMATCH;

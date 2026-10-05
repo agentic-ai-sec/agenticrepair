@@ -1,0 +1,27 @@
+diff --git a/Zend/zend_closures.c b/Zend/zend_closures.c
+index ceeac23531c..46b755b1e30 100644
+--- a/Zend/zend_closures.c
++++ b/Zend/zend_closures.c
+@@ -327,6 +327,11 @@ static zend_result zend_create_closure_from_callable(zval *return_value, zval *c
+ 		call.type = ZEND_INTERNAL_FUNCTION;
+ 		call.fn_flags = mptr->common.fn_flags & ZEND_ACC_STATIC;
+ 		call.handler = zend_closure_call_magic;
++		/* mptr is a trampoline function that will be freed below. Make sure
++		 * that the function_name survives for as long as the created closure,
++		 * because zend_closure_free_storage() will release it later.
++		 */
++		zend_string_addref(mptr->common.function_name);
+ 		call.function_name = mptr->common.function_name;
+ 		call.scope = mptr->common.scope;
+ 
+@@ -797,6 +802,11 @@ void zend_closure_from_frame(zval *return_value, zend_execute_data *call) { /* {
+ 		trampoline.type = ZEND_INTERNAL_FUNCTION;
+ 		trampoline.fn_flags = mptr->common.fn_flags & ZEND_ACC_STATIC;
+ 		trampoline.handler = zend_closure_call_magic;
++		/* mptr is a trampoline function that will be freed below. Make sure
++		 * that the function_name survives for as long as the created closure,
++		 * because zend_closure_free_storage() will release it later.
++		 */
++		zend_string_addref(mptr->common.function_name);
+ 		trampoline.function_name = mptr->common.function_name;
+ 		trampoline.scope = mptr->common.scope;

@@ -1,0 +1,139 @@
+diff --git a/HTMLparser.c b/HTMLparser.c
+index b8b6bd23..96356a05 100644
+--- a/HTMLparser.c
++++ b/HTMLparser.c
+@@ -2979,23 +2979,23 @@ htmlParseAttValue(htmlParserCtxtPtr ctxt) {
+ 
+ static xmlChar *
+ htmlParseSystemLiteral(htmlParserCtxtPtr ctxt) {
+-    size_t len = 0, startPosition = 0;
++    size_t len = 0;
++    size_t maxLength = (ctxt->options & XML_PARSE_HUGE) ?
++                       XML_MAX_HUGE_LENGTH :
++                       XML_MAX_TEXT_LENGTH;
+     int err = 0;
+     int quote;
+     xmlChar *ret = NULL;
++    const xmlChar *start;
+ 
+-    if ((CUR != '"') && (CUR != '\'')) {
+-	htmlParseErr(ctxt, XML_ERR_LITERAL_NOT_STARTED,
+-	             "SystemLiteral \" or ' expected\n", NULL, NULL);
++    if ((CUR != 0x22) && (CUR != 0x27)) {
++        htmlParseErr(ctxt, XML_ERR_LITERAL_NOT_STARTED,
++                     "SystemLiteral \" or ' expected\n", NULL, NULL);
+         return(NULL);
+     }
+     quote = CUR;
+     NEXT;
+ 
+-    if (CUR_PTR < BASE_PTR)
+-        return(ret);
+-    startPosition = CUR_PTR - BASE_PTR;
+-
+     while ((CUR != 0) && (CUR != quote)) {
+         /* TODO: Handle UTF-8 */
+         if (!IS_CHAR_CH(CUR)) {
+@@ -3005,16 +3005,30 @@ htmlParseSystemLiteral(htmlParserCtxtPtr ctxt) {
+         }
+         NEXT;
+         len++;
++        if (len > maxLength) {
++            htmlParseErr(ctxt, XML_ERR_URI_REQUIRED,
++                         "SystemLiteral too long\n", NULL, NULL);
++            err = 1;
++            break;
++        }
+     }
++
+     if (CUR != quote) {
+         htmlParseErr(ctxt, XML_ERR_LITERAL_NOT_FINISHED,
+                      "Unfinished SystemLiteral\n", NULL, NULL);
+-    } else {
+-        NEXT;
+-        if (err == 0)
+-            ret = xmlStrndup((BASE_PTR+startPosition), len);
++        return(NULL);
+     }
+ 
++    /* CUR points to the closing quote, len chars were consumed */
++    if ((size_t) (ctxt->input->cur - ctxt->input->base) < len)
++        return(NULL);
++    start = ctxt->input->cur - len;
++
++    NEXT;
++
++    if (err == 0)
++        ret = xmlStrndup(start, (int) len);
++
+     return(ret);
+ }
+ 
+@@ -3031,26 +3045,23 @@ htmlParseSystemLiteral(htmlParserCtxtPtr ctxt) {
+ 
+ static xmlChar *
+ htmlParsePubidLiteral(htmlParserCtxtPtr ctxt) {
+-    size_t len = 0, startPosition = 0;
++    size_t len = 0;
++    size_t maxLength = (ctxt->options & XML_PARSE_HUGE) ?
++                       XML_MAX_HUGE_LENGTH :
++                       XML_MAX_TEXT_LENGTH;
+     int err = 0;
+     int quote;
+     xmlChar *ret = NULL;
++    const xmlChar *start;
+ 
+-    if ((CUR != '"') && (CUR != '\'')) {
+-	htmlParseErr(ctxt, XML_ERR_LITERAL_NOT_STARTED,
+-	             "PubidLiteral \" or ' expected\n", NULL, NULL);
++    if ((CUR != 0x22) && (CUR != 0x27)) {
++        htmlParseErr(ctxt, XML_ERR_LITERAL_NOT_STARTED,
++                     "PubidLiteral \" or ' expected\n", NULL, NULL);
+         return(NULL);
+     }
+     quote = CUR;
+     NEXT;
+ 
+-    /*
+-     * Name ::= (Letter | '_') (NameChar)*
+-     */
+-    if (CUR_PTR < BASE_PTR)
+-        return(ret);
+-    startPosition = CUR_PTR - BASE_PTR;
+-
+     while ((CUR != 0) && (CUR != quote)) {
+         if (!IS_PUBIDCHAR_CH(CUR)) {
+             htmlParseErrInt(ctxt, XML_ERR_INVALID_CHAR,
+@@ -3059,17 +3070,29 @@ htmlParsePubidLiteral(htmlParserCtxtPtr ctxt) {
+         }
+         len++;
+         NEXT;
++        if (len > maxLength) {
++            htmlParseErr(ctxt, XML_ERR_PUBID_REQUIRED,
++                         "PubidLiteral too long\n", NULL, NULL);
++            err = 1;
++            break;
++        }
+     }
+ 
+     if (CUR != quote) {
+         htmlParseErr(ctxt, XML_ERR_LITERAL_NOT_FINISHED,
+                      "Unfinished PubidLiteral\n", NULL, NULL);
+-    } else {
+-        NEXT;
+-        if (err == 0)
+-            ret = xmlStrndup((BASE_PTR + startPosition), len);
++        return(NULL);
+     }
+ 
++    if ((size_t) (ctxt->input->cur - ctxt->input->base) < len)
++        return(NULL);
++    start = ctxt->input->cur - len;
++
++    NEXT;
++
++    if (err == 0)
++        ret = xmlStrndup(start, (int) len);
++
+     return(ret);
+ }

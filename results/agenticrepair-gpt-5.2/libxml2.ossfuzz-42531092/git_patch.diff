@@ -1,0 +1,215 @@
+diff --git a/buf.c b/buf.c
+index ac412adb..15e2b3a2 100644
+--- a/buf.c
++++ b/buf.c
+@@ -379,6 +379,25 @@ xmlBufGrowInternal(xmlBufPtr buf, size_t len) {
+         return(0);
+     }
+ 
++    /*
++     * In IO mode, xmlBufShrink can move the content pointer forward
++     * without copying. If we later need to grow, the required realloc
++     * size can include the already-consumed prefix (start_buf), which
++     * can lead to unexpectedly large allocations. Compact the buffer
++     * back to contentIO to reclaim space before growing.
++     */
++    if ((buf->alloc == XML_BUFFER_ALLOC_IO) && (buf->contentIO != NULL)) {
++        size_t start_buf = buf->content - buf->contentIO;
++
++        if (start_buf > 0) {
++            memmove(buf->contentIO, buf->content, buf->use);
++            buf->content = buf->contentIO;
++            buf->content[buf->use] = 0;
++            buf->size += start_buf;
++            UPDATE_COMPAT(buf)
++        }
++    }
++
+     if (buf->size > (size_t) len) {
+         size = buf->size > SIZE_MAX / 2 ? SIZE_MAX : buf->size * 2;
+     } else {
+diff --git a/dict.c b/dict.c
+index a0d311a2..7ce17504 100644
+--- a/dict.c
++++ b/dict.c
+@@ -163,11 +163,20 @@ xmlDictAddString(xmlDictPtr dict, const xmlChar *name, unsigned int namelen) {
+             else
+                 size = SIZE_MAX - sizeof(xmlDictStrings);
+         }
+-        if (size / 4 < namelen) {
+-            if ((size_t) namelen + 0 < (SIZE_MAX - sizeof(xmlDictStrings)) / 4)
+-                size = 4 * (size_t) namelen; /* just in case ! */
+-            else
+-                return(NULL);
++        /*
++         * Ensure the pool is large enough for very long names without
++         * over-allocating (important for tight memory limits).
++         */
++        {
++            size_t need = (size_t) namelen + 1; /* include NUL */
++            if (need > size) {
++                if (need <= (SIZE_MAX - sizeof(xmlDictStrings)) / 2)
++                    size = need;
++                else if (need <= SIZE_MAX - sizeof(xmlDictStrings))
++                    size = need;
++                else
++                    return(NULL);
++            }
+         }
+ 	pool = (xmlDictStringsPtr) xmlMalloc(sizeof(xmlDictStrings) + size);
+ 	if (pool == NULL)
+@@ -227,8 +236,21 @@ xmlDictAddQString(xmlDictPtr dict, const xmlChar *prefix, unsigned int plen,
+ 
+         if (size == 0) size = 1000;
+ 	else size *= 4; /* exponential growth */
+-        if (size < 4 * (namelen + plen + 1))
+-	    size = 4 * (namelen + plen + 1); /* just in case ! */
++        /*
++         * Ensure the pool is large enough for very long QNames without
++         * excessive over-allocation.
++         */
++        {
++            size_t need = (size_t) namelen + (size_t) plen + 2; /* ':' + NUL */
++            if (need > size) {
++                if (need <= (SIZE_MAX - sizeof(xmlDictStrings)) / 2)
++                    size = need;
++                else if (need <= SIZE_MAX - sizeof(xmlDictStrings))
++                    size = need;
++                else
++                    return(NULL);
++            }
++        }
+ 	pool = (xmlDictStringsPtr) xmlMalloc(sizeof(xmlDictStrings) + size);
+ 	if (pool == NULL)
+ 	    return(NULL);
+diff --git a/parser.c b/parser.c
+index 43ef214e..565cef87 100644
+--- a/parser.c
++++ b/parser.c
+@@ -3479,7 +3479,9 @@ xmlParseNCNameComplex(xmlParserCtxtPtr ctxt) {
+     int maxLength = (ctxt->options & XML_PARSE_HUGE) ?
+                     XML_MAX_TEXT_LENGTH :
+                     XML_MAX_NAME_LENGTH;
+-    size_t startPosition = 0;
++    ptrdiff_t startPosition;
++    ptrdiff_t curPosition;
++    ptrdiff_t avail;
+ 
+     ret.name = NULL;
+     ret.hashValue = 0;
+@@ -3488,6 +3490,12 @@ xmlParseNCNameComplex(xmlParserCtxtPtr ctxt) {
+      * Handler for more complex cases
+      */
+     startPosition = CUR_PTR - BASE_PTR;
++    avail = ctxt->input->end - BASE_PTR;
++    if ((startPosition < 0) || (avail < 0) || (startPosition > avail)) {
++        /* Defensive: base <= cur <= end must hold */
++        xmlFatalErr(ctxt, XML_ERR_INTERNAL_ERROR, "NCName");
++        return(ret);
++    }
+     c = CUR_CHAR(l);
+     if ((c == ' ') || (c == '>') || (c == '/') || /* accelerators */
+ 	(!xmlIsNameStartChar(ctxt, c) || (c == ':'))) {
+@@ -3505,6 +3513,21 @@ xmlParseNCNameComplex(xmlParserCtxtPtr ctxt) {
+         xmlFatalErr(ctxt, XML_ERR_NAME_TOO_LONG, "NCName");
+         return(ret);
+     }
++
++    /*
++     * Ensure the name start/length is within the current input buffer
++     * before passing it to the dictionary hashing code.
++     */
++    curPosition = CUR_PTR - BASE_PTR;
++    avail = ctxt->input->end - BASE_PTR;
++    if ((curPosition < 0) || (avail < 0) ||
++        (startPosition > curPosition) ||
++        (startPosition + (ptrdiff_t) len > curPosition) ||
++        (startPosition + (ptrdiff_t) len > avail)) {
++        xmlFatalErr(ctxt, XML_ERR_INTERNAL_ERROR, "NCName");
++        return(ret);
++    }
++
+     ret = xmlDictLookupHashed(ctxt->dict, (BASE_PTR + startPosition), len);
+     if (ret.name == NULL)
+         xmlErrMemory(ctxt, NULL);
+@@ -8796,13 +8819,23 @@ xmlParseEndTag(xmlParserCtxtPtr ctxt) {
+ static xmlHashedString
+ xmlParseQNameHashed(xmlParserCtxtPtr ctxt, xmlHashedString *prefix) {
+     xmlHashedString l, p;
+-    int start, isNCName = 0;
++    ptrdiff_t startPosition;
++    ptrdiff_t curPosition;
++    ptrdiff_t avail;
++    int isNCName = 0;
+ 
+     l.name = NULL;
+     p.name = NULL;
+ 
+     GROW;
+-    start = CUR_PTR - BASE_PTR;
++    startPosition = CUR_PTR - BASE_PTR;
++    avail = ctxt->input->end - BASE_PTR;
++    if ((startPosition < 0) || (avail < 0) || (startPosition > avail)) {
++        l.name = NULL;
++        p.name = NULL;
++        xmlFatalErr(ctxt, XML_ERR_INTERNAL_ERROR, "QName");
++        return(l);
++    }
+ 
+     l = xmlParseNCName(ctxt);
+     if (l.name != NULL) {
+@@ -8820,11 +8853,36 @@ xmlParseQNameHashed(xmlParserCtxtPtr ctxt, xmlHashedString *prefix) {
+         p.name = NULL;
+         if ((isNCName == 0) && (CUR != ':'))
+             return(l);
+-        tmp = xmlParseNmtoken(ctxt);
+-        if (tmp != NULL)
+-            xmlFree(tmp);
+-        l = xmlDictLookupHashed(ctxt->dict, BASE_PTR + start,
+-                                CUR_PTR - (BASE_PTR + start));
++        /*
++         * Consume the invalid QName token for error recovery without
++         * allocating a temporary Nmtoken buffer. This avoids spiking
++         * memory usage when xmllint is run with a tight --maxmem limit.
++         */
++        {
++            int c, ll;
++            c = CUR_CHAR(ll);
++            while (xmlIsNameChar(ctxt, c)) {
++                NEXTL(ll);
++                c = CUR_CHAR(ll);
++            }
++        }
++        {
++            ptrdiff_t len;
++            curPosition = CUR_PTR - BASE_PTR;
++            avail = ctxt->input->end - BASE_PTR;
++            if ((curPosition < 0) || (avail < 0) ||
++                (curPosition > avail) || (startPosition > curPosition)) {
++                xmlFatalErr(ctxt, XML_ERR_INTERNAL_ERROR, "QName");
++                return(l);
++            }
++            len = curPosition - startPosition;
++            if ((len < 0) || (len > INT_MAX)) {
++                xmlFatalErr(ctxt, XML_ERR_NAME_TOO_LONG, "QName");
++                return(l);
++            }
++            l = xmlDictLookupHashed(ctxt->dict, BASE_PTR + startPosition,
++                                    (int) len);
++        }
+         if (l.name == NULL) {
+             xmlErrMemory(ctxt, NULL);
+             return(l);
+diff --git a/xmlIO.c b/xmlIO.c
+index 520720bf..7f4c779a 100644
+--- a/xmlIO.c
++++ b/xmlIO.c
+@@ -68,7 +68,7 @@
+ 
+ /* #define VERBOSE_FAILURE */
+ 
+-#define MINLEN 4000
++#define MINLEN 256
+ 
+ /*
+  * Input I/O callback sets

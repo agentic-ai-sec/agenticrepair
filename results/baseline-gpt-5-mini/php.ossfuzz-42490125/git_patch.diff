@@ -1,0 +1,42 @@
+diff --git a/Zend/zend_hash.c b/Zend/zend_hash.c
+index 6d065cd03ea..b360257a5dd 100644
+--- a/Zend/zend_hash.c
++++ b/Zend/zend_hash.c
+@@ -652,9 +652,17 @@ static zend_always_inline Bucket *zend_hash_find_bucket(const HashTable *ht, zen
+ 	nIndex = h | ht->nTableMask;
+ 	idx = HT_HASH_EX(arData, nIndex);
+ 
++	/* Check for invalid index values coming from the hash area. If the index
++	 * is HT_INVALID_IDX there is no bucket. If the index is out of range of
++	 * the allocated bucket array treat it as a miss to avoid out-of-bounds
++	 * reads.
++	 */
+ 	if (UNEXPECTED(idx == HT_INVALID_IDX)) {
+ 		return NULL;
+ 	}
++	if (UNEXPECTED(idx >= HT_IDX_TO_HASH(ht->nTableSize))) {
++		return NULL;
++	}
+ 	p = HT_HASH_TO_BUCKET_EX(arData, idx);
+ 	if (EXPECTED(p->key == key)) { /* check for the same interned string */
+ 		return p;
+@@ -667,7 +675,10 @@ static zend_always_inline Bucket *zend_hash_find_bucket(const HashTable *ht, zen
+ 			return p;
+ 		}
+ 		idx = Z_NEXT(p->val);
+-		if (idx == HT_INVALID_IDX) {
++		if (UNEXPECTED(idx == HT_INVALID_IDX)) {
++			return NULL;
++		}
++		if (UNEXPECTED(idx >= HT_IDX_TO_HASH(ht->nTableSize))) {
+ 			return NULL;
+ 		}
+ 		p = HT_HASH_TO_BUCKET_EX(arData, idx);
+@@ -676,7 +687,6 @@ static zend_always_inline Bucket *zend_hash_find_bucket(const HashTable *ht, zen
+ 		}
+ 	}
+ }
+-
+ static zend_always_inline Bucket *zend_hash_str_find_bucket(const HashTable *ht, const char *str, size_t len, zend_ulong h)
+ {
+ 	uint32_t nIndex;

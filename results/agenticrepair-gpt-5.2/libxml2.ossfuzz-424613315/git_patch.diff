@@ -1,0 +1,18 @@
+diff --git a/parser.c b/parser.c
+index 9ca09455..a5afcecb 100644
+--- a/parser.c
++++ b/parser.c
+@@ -4446,7 +4446,12 @@ xmlParsePubidLiteral(xmlParserCtxt *ctxt) {
+                 xmlFree(buf);
+                 return(NULL);
+             }
+-	    tmp = xmlRealloc(buf, size);
++		/*
++		 * Grow allocation to match the new capacity computed above.
++		 * Using the old size here can leave the allocation unchanged while
++		 * the local 'size' bookkeeping is updated, leading to OOB writes.
++		 */
++		tmp = xmlRealloc(buf, newSize);
+ 	    if (tmp == NULL) {
+ 		xmlErrMemory(ctxt);
+ 		xmlFree(buf);

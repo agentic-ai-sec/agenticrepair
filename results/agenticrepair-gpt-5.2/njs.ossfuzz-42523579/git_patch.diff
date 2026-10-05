@@ -1,0 +1,111 @@
+diff --git a/src/njs_scope.h b/src/njs_scope.h
+--- a/src/njs_scope.h
++++ b/src/njs_scope.h
+@@ -79,8 +79,37 @@
+ njs_inline njs_value_t *
+ njs_scope_value(njs_vm_t *vm, njs_index_t index)
+ {
+-    return vm->levels[njs_scope_index_type(index)]
+-                     [njs_scope_index_value(index)];
++    njs_level_type_t  type;
++    njs_value_t       **level;
++
++    /*
++     * Scope indices are embedded into bytecode operands. A crafted/corrupted
++     * operand must not be able to crash the process by dereferencing a NULL
++     * level pointer.
++     */
++
++    type = njs_scope_index_type(index);
++
++    if (njs_slow_path(vm == NULL
++                      || index == NJS_INDEX_ERROR
++                      || type >= NJS_LEVEL_MAX))
++    {
++        static njs_value_t  dummy;
++
++        njs_set_undefined(&dummy);
++        return &dummy;
++    }
++
++    level = vm->levels[type];
++    if (njs_slow_path(level == NULL)) {
++        static njs_value_t  dummy;
++
++        njs_set_undefined(&dummy);
++        return &dummy;
++    }
++
++    return level[njs_scope_index_value(index)];
++
+ }
+ 
+ 
+@@ -91,6 +120,8 @@
+ 
+     value = njs_scope_value(vm, index);
+ 
++    /* njs_scope_value() always returns a non-NULL writable pointer. */
++
+     if (!njs_is_valid(value)) {
+         if (njs_scope_index_var(index) <= NJS_VARIABLE_LET) {
+             njs_reference_error(vm, "cannot access variable "
+@@ -102,14 +133,34 @@
+     }
+ 
+     return value;
++
+ }
+ 
+ 
+ njs_inline void
+ njs_scope_value_set(njs_vm_t *vm, njs_index_t index, njs_value_t *value)
+ {
+-    vm->levels[njs_scope_index_type(index)]
+-              [njs_scope_index_value(index)] = value;
++    njs_level_type_t  type;
++    njs_value_t       **level;
++
++    type = njs_scope_index_type(index);
++
++    if (njs_slow_path(vm == NULL
++                      || index == NJS_INDEX_ERROR
++                      || type >= NJS_LEVEL_MAX))
++    {
++        /* Ignore invalid/corrupted indices. */
++        return;
++    }
++
++    level = vm->levels[type];
++    if (njs_slow_path(level == NULL)) {
++        /* Ignore invalid/corrupted indices. */
++        return;
++    }
++
++    level[njs_scope_index_value(index)] = value;
++
+ }
+ 
+ 
+diff --git a/src/njs_vmcode.c b/src/njs_vmcode.c
+--- a/src/njs_vmcode.c
++++ b/src/njs_vmcode.c
+@@ -1467,7 +1467,17 @@
+         pnext = (njs_vmcode_prop_next_t *) pc;
+         retval = njs_scope_value(vm, pnext->retval);
+ 
+-        njs_assert(njs_is_data(value2, NJS_DATA_TAG_FOREACH_NEXT));
++        if (njs_slow_path(!njs_is_data(value2, NJS_DATA_TAG_FOREACH_NEXT))) {
++            /*
++             * Malformed/corrupted bytecode must not crash the process.
++             * Treat invalid foreach state as an empty iteration.
++             */
++            njs_set_undefined(retval);
++            ret = sizeof(njs_vmcode_prop_next_t);
++            BREAK;
++        }
++
++
+         next = njs_data(value2);
+ 
+         if (next->index < next->array->length) {

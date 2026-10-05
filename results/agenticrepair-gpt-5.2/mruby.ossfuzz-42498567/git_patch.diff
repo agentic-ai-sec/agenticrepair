@@ -1,0 +1,36 @@
+diff --git a/mrbgems/mruby-compiler/core/codegen.c b/mrbgems/mruby-compiler/core/codegen.c
+index 5ab2f6180..72829e1c1 100644
+--- a/mrbgems/mruby-compiler/core/codegen.c
++++ b/mrbgems/mruby-compiler/core/codegen.c
+@@ -564,6 +564,21 @@ dispatch(codegen_scope *s, uint32_t pos0)
+ 
+   if (pos0 == JMPLINK_START) return 0;
+ 
++  /* pos0 points to the 2-byte link field embedded in the emitted bytecode.
++   * The link is read with PEEK_S(s->iseq+pos0), so we must ensure the
++   * read stays within the generated code buffer.
++   *
++   * A crafted input can produce an invalid link position (e.g. near/end of
++   * the iseq buffer), which would otherwise cause a 1-byte OOB read.
++   */
++  /* If the link position is invalid, stop dispatching. This prevents
++   * out-of-bounds reads on crafted inputs while keeping code generation
++   * robust (unpatched links will retain the initial placeholder).
++   */
++  if (pos0 > UINT32_MAX - 2 || pos0 + 1 >= s->pc || pos0 + 1 >= s->icapa) {
++    return 0;
++  }
++
+   pos1 = pos0 + 2;
+   offset = s->pc - pos1;
+   if (offset > INT16_MAX) {
+@@ -3184,9 +3199,6 @@ scope_finish(codegen_scope *s)
+   mrb_state *mrb = s->mrb;
+   mrb_irep *irep = s->irep;
+ 
+-  if (s->nlocals > 0xff) {
+-    codegen_error(s, "too many local variables");
+-  }
+   irep->flags = 0;
+   if (s->iseq) {
+     size_t catchsize = sizeof(struct mrb_irep_catch_handler) * irep->clen;

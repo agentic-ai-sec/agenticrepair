@@ -1,0 +1,17 @@
+diff --git a/src/vm.c b/src/vm.c
+index 1c59d4406..02ecc5eac 100644
+--- a/src/vm.c
++++ b/src/vm.c
+@@ -478,7 +478,12 @@ mrb_funcall_with_block(mrb_state *mrb, mrb_value self, mrb_sym mid, mrb_int argc
+     }
+     c = mrb_class(mrb, self);
+     m = mrb_method_search_vm(mrb, &c, mid);
+-    mrb_stack_extend(mrb, argc + 3);
++    /* ensure there is enough room for the new callinfo's stack
++     * The new ci->stack is based on the previous ci->stack + n (number
++     * of regs used by the current frame). We must reserve space for
++     * that offset plus the incoming arguments and housekeeping slots.
++     */
++    mrb_stack_extend(mrb, n + argc + 3);
+     if (MRB_METHOD_UNDEF_P(m) || argc >= 15) {
+       mrb_value args = mrb_ary_new_from_values(mrb, argc, argv);

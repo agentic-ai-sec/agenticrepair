@@ -1,0 +1,143 @@
+diff --git a/ext/standard/file.c b/ext/standard/file.c
+index edaba57748c..1df1890b0ff 100644
+--- a/ext/standard/file.c
++++ b/ext/standard/file.c
+@@ -1938,6 +1938,27 @@ PHPAPI HashTable *php_fgetcsv(php_stream *stream, char delimiter, char enclosure
+ 	size_t temp_len, line_end_len;
+ 	int inc_len;
+ 	bool first_field = true;
++	/*
++	 * The CSV parser frequently uses pointer subtraction to compute memcpy lengths.
++	 * For malformed inputs, internal state transitions may lead to bptr < hunk_begin
++	 * (e.g. unterminated enclosure handling for str_getcsv()), which would make the
++	 * computed length negative and (after conversion to size_t) trigger an invalid
++	 * memcpy call (ASan: negative-size-param) and potential memory corruption.
++	 */
++	#define PHP_FGETCSV_COPY_FROM_HUNK(_dst, _src_begin, _src_end) do { \
++		ptrdiff_t __len = (_src_end) - (_src_begin); \
++		if (__len > 0) { \
++			memcpy((_dst), (_src_begin), (size_t)__len); \
++			(_dst) += (size_t)__len; \
++		} \
++	} while (0)
++	#define PHP_FGETCSV_COPY_FROM_HUNK_MINUS1(_dst, _src_begin, _src_end) do { \
++		ptrdiff_t __len = (_src_end) - (_src_begin) - 1; \
++		if (__len > 0) { \
++			memcpy((_dst), (_src_begin), (size_t)__len); \
++			(_dst) += (size_t)__len; \
++		} \
++	} while (0)
+ 
+ 	ZEND_ASSERT((escape_char >= 0 && escape_char <= UCHAR_MAX) || escape_char == PHP_CSV_NO_ESCAPE);
+ 
+@@ -1995,21 +2016,18 @@ PHPAPI HashTable *php_fgetcsv(php_stream *stream, char delimiter, char enclosure
+ 					case 0:
+ 						switch (state) {
+ 							case 2:
+-								memcpy(tptr, hunk_begin, bptr - hunk_begin - 1);
+-								tptr += (bptr - hunk_begin - 1);
++								PHP_FGETCSV_COPY_FROM_HUNK_MINUS1(tptr, hunk_begin, bptr);
+ 								hunk_begin = bptr;
+ 								goto quit_loop_2;
+ 
+ 							case 1:
+-								memcpy(tptr, hunk_begin, bptr - hunk_begin);
+-								tptr += (bptr - hunk_begin);
++								PHP_FGETCSV_COPY_FROM_HUNK(tptr, hunk_begin, bptr);
+ 								hunk_begin = bptr;
+ 								ZEND_FALLTHROUGH;
+ 
+ 							case 0: {
+ 								if (hunk_begin != line_end) {
+-									memcpy(tptr, hunk_begin, bptr - hunk_begin);
+-									tptr += (bptr - hunk_begin);
++									PHP_FGETCSV_COPY_FROM_HUNK(tptr, hunk_begin, bptr);
+ 									hunk_begin = bptr;
+ 								}
+ 
+@@ -2023,7 +2041,10 @@ PHPAPI HashTable *php_fgetcsv(php_stream *stream, char delimiter, char enclosure
+ 									if (bptr > limit) {
+ 										/* if the line ends with enclosure, we need to go back by
+ 										 * one character so the \0 character is not copied. */
+-										--bptr;
++										if (bptr > hunk_begin) {
++											--bptr;
++										}
++
+ 									}
+ 									goto quit_loop_2;
+ 								}
+@@ -2038,7 +2059,10 @@ PHPAPI HashTable *php_fgetcsv(php_stream *stream, char delimiter, char enclosure
+ 									if (bptr > limit) {
+ 										/* if the line ends with enclosure, we need to go back by
+ 										 * one character so the \0 character is not copied. */
+-										--bptr;
++										if (bptr > hunk_begin) {
++											--bptr;
++										}
++
+ 									}
+ 									goto quit_loop_2;
+ 								}
+@@ -2076,13 +2100,11 @@ PHPAPI HashTable *php_fgetcsv(php_stream *stream, char delimiter, char enclosure
+ 							case 2: /* embedded enclosure ? let's check it */
+ 								if (*bptr != enclosure) {
+ 									/* real enclosure */
+-									memcpy(tptr, hunk_begin, bptr - hunk_begin - 1);
+-									tptr += (bptr - hunk_begin - 1);
++									PHP_FGETCSV_COPY_FROM_HUNK_MINUS1(tptr, hunk_begin, bptr);
+ 									hunk_begin = bptr;
+ 									goto quit_loop_2;
+ 								}
+-								memcpy(tptr, hunk_begin, bptr - hunk_begin);
+-								tptr += (bptr - hunk_begin);
++								PHP_FGETCSV_COPY_FROM_HUNK(tptr, hunk_begin, bptr);
+ 								bptr++;
+ 								hunk_begin = bptr;
+ 								state = 0;
+@@ -2102,14 +2124,12 @@ PHPAPI HashTable *php_fgetcsv(php_stream *stream, char delimiter, char enclosure
+ 						switch (state) {
+ 							case 2:
+ 								/* real enclosure */
+-								memcpy(tptr, hunk_begin, bptr - hunk_begin - 1);
+-								tptr += (bptr - hunk_begin - 1);
++								PHP_FGETCSV_COPY_FROM_HUNK_MINUS1(tptr, hunk_begin, bptr);
+ 								hunk_begin = bptr;
+ 								goto quit_loop_2;
+ 							case 1:
+ 								bptr += inc_len;
+-								memcpy(tptr, hunk_begin, bptr - hunk_begin);
+-								tptr += (bptr - hunk_begin);
++								PHP_FGETCSV_COPY_FROM_HUNK(tptr, hunk_begin, bptr);
+ 								hunk_begin = bptr;
+ 								state = 0;
+ 								break;
+@@ -2147,8 +2167,7 @@ PHPAPI HashTable *php_fgetcsv(php_stream *stream, char delimiter, char enclosure
+ 			}
+ 
+ 		quit_loop_3:
+-			memcpy(tptr, hunk_begin, bptr - hunk_begin);
+-			tptr += (bptr - hunk_begin);
++			PHP_FGETCSV_COPY_FROM_HUNK(tptr, hunk_begin, bptr);
+ 			bptr += inc_len;
+ 			comp_end = tptr;
+ 		} else {
+@@ -2177,8 +2196,7 @@ PHPAPI HashTable *php_fgetcsv(php_stream *stream, char delimiter, char enclosure
+ 				inc_len = (bptr < limit ? (*bptr == '\0' ? 1 : php_mblen(bptr, limit - bptr)): 0);
+ 			}
+ 		quit_loop_4:
+-			memcpy(tptr, hunk_begin, bptr - hunk_begin);
+-			tptr += (bptr - hunk_begin);
++			PHP_FGETCSV_COPY_FROM_HUNK(tptr, hunk_begin, bptr);
+ 
+ 			comp_end = (char *)php_fgetcsv_lookup_trailing_spaces(temp, tptr - temp);
+ 			if (*bptr == delimiter) {
+@@ -2198,6 +2216,8 @@ PHPAPI HashTable *php_fgetcsv(php_stream *stream, char delimiter, char enclosure
+ 	if (stream) {
+ 		efree(buf);
+ 	}
++	#undef PHP_FGETCSV_COPY_FROM_HUNK
++	#undef PHP_FGETCSV_COPY_FROM_HUNK_MINUS1
+ 
+ 	return values;
+ }

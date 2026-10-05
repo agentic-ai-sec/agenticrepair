@@ -1,0 +1,25 @@
+diff --git a/xmlIO.c b/xmlIO.c
+index 80390f4b..37d3df8c 100644
+--- a/xmlIO.c
++++ b/xmlIO.c
+@@ -286,6 +286,12 @@ xmlEscapeText(const xmlChar *string, int flags) {
+         int c;
+         int offset;
+ 
++        /*
++         * Temporary buffer for numeric character references.
++         * Must stay in scope until the memcpy from 'repl' below.
++         */
++        char tempBuf[12];
++
+         base = cur;
+         offset = -1;
+ 
+@@ -315,7 +321,6 @@ xmlEscapeText(const xmlChar *string, int flags) {
+                 cur += 1;
+             }
+         } else {
+-            char tempBuf[12];
+             int val = 0, len = 4;
+ 
+             val = xmlGetUTF8Char(cur, &len);

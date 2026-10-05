@@ -1,0 +1,44 @@
+diff --git a/mrbgems/mruby-sprintf/src/sprintf.c b/mrbgems/mruby-sprintf/src/sprintf.c
+index 03e5729c6..813f9bde0 100644
+--- a/mrbgems/mruby-sprintf/src/sprintf.c
++++ b/mrbgems/mruby-sprintf/src/sprintf.c
+@@ -254,26 +254,32 @@ check_name_arg(mrb_state *mrb, int posarg, const char *name, size_t len)
+     tmp_v = GETNEXTARG(); \
+     p = t; \
+   } \
+-  num = mrb_as_int(mrb, tmp_v); \
++  { \
++    mrb_int tmp_n = mrb_as_int(mrb, tmp_v); \
++    if (tmp_n > INT_MAX || tmp_n < INT_MIN) { \
++      mrb_raise(mrb, E_ARGUMENT_ERROR, "too big specifier"); \
++    } \
++    num = (int)tmp_n; \
++  } \
+ } while (0)
+ 
+ static const char *
+ get_num(mrb_state *mrb, const char *p, const char *end, int *valp)
+ {
+-  mrb_int next_n = (int)*valp;
++  int next_n = *valp;
+   for (; p < end && ISDIGIT(*p); p++) {
+-    if (mrb_int_mul_overflow(10, next_n, &next_n)) {
+-      return NULL;
+-    }
+-    if (MRB_INT_MAX - (*p - '0') < next_n) {
++    int digit = *p - '0';
++
++    /* width/precision are stored in int; reject values that don't fit. */
++    if (next_n > (INT_MAX - digit) / 10) {
+       return NULL;
+     }
+-    next_n += *p - '0';
++    next_n = next_n * 10 + digit;
+   }
+   if (p >= end) {
+     mrb_raise(mrb, E_ARGUMENT_ERROR, "malformed format string - %%*[0-9]");
+   }
+-  *valp = (int)next_n;
++  *valp = next_n;
+   return p;
+ }

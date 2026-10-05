@@ -1,0 +1,214 @@
+{
+  "instance_id": "php.ossfuzz-42500752",
+  "final_status": "success",
+  "static_analyzer_output": {
+    "role": "static_analyzer",
+    "raw_output": "{\n  \"analysis_type\": \"allocation\",\n  \"findings\": [\n    {\n      \"file\": \"Zend/zend_closures.c\",\n      \"line\": 486,\n      \"message\": \"Potential UAF/double-release: zend_closure_free_storage calls zend_string_release(closure->func.common.function_name) for closures using zend_closure_call_magic; this pointer may not be owned by the closure.\",\n      \"severity\": \"error\"\n    },\n    {\n      \"file\": \"Zend/zend_closures.c\",\n      \"line\": 330,\n      \"message\": \"Ownership bug: call.function_name is assigned from mptr->common.function_name (trampoline) without addref/copy; trampoline is freed shortly after, leaving a dangling zend_string* stored in the closure\u2019s function.\",\n      \"severity\": \"error\"\n    },\n    {\n      \"file\": \"Zend/zend_closures.c\",\n      \"line\": 800,\n      \"message\": \"Similar aliasing pattern for trampoline.function_name = mptr->common.function_name; if trampoline lifetime is shorter than closure, later releases can hit freed memory.\",\n      \"severity\": \"warning\"\n    }\n  ],\n  \"dataflow_summary\": \"\",\n  \"key_insight\": \"The closure stores a borrowed zend_string* (function_name) originating from a trampoline function and then frees the trampoline; later, zend_closure_free_storage unconditionally zend_string_release()s that dangling pointer, producing heap-use-after-free in zend_string_release().\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Take ownership explicitly: when assigning function_name from mptr->common.function_name (trampoline path), use ZSTR_COPY()/zend_string_addref() and ensure exactly one matching zend_string_release() in the closure destructor.\",\n      \"reasoning\": \"Matches the observed root cause: a borrowed pointer survives past the trampoline\u2019s free; increasing the refcount (or making a copy) prevents the pointer from becoming dangling.\",\n      \"trade_offs\": \"Slight refcount/copy overhead; must ensure no leaks by releasing on all destruction paths.\"\n    },\n    {\n      \"approach\": \"Track ownership with a flag/field: only release closure->func.common.function_name in zend_closure_free_storage if the closure allocated/copied it (e.g., set a dedicated flag when creating the magic-call internal function).\",\n      \"reasoning\": \"Prevents releasing non-owned strings even if other code paths assign borrowed names.\",\n      \"trade_offs\": \"Requires careful auditing of all closure creation paths and increases state/complexity.\"\n    },\n    {\n      \"approach\": \"Avoid storing the trampoline\u2019s function_name pointer: set call.function_name to a known interned string (or NULL) and pass the original method name separately (e.g., as an argument or via a dedicated stored zval with proper refcounting).\",\n      \"reasoning\": \"Eliminates the aliasing between trampoline lifetime and closure lifetime.\",\n      \"trade_offs\": \"More invasive refactor; may impact reflection/debug output expectations and needs compatibility review.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "analysis_type": "allocation",
+      "findings": [
+        {
+          "file": "Zend/zend_closures.c",
+          "line": 486,
+          "message": "Potential UAF/double-release: zend_closure_free_storage calls zend_string_release(closure->func.common.function_name) for closures using zend_closure_call_magic; this pointer may not be owned by the closure.",
+          "severity": "error"
+        },
+        {
+          "file": "Zend/zend_closures.c",
+          "line": 330,
+          "message": "Ownership bug: call.function_name is assigned from mptr->common.function_name (trampoline) without addref/copy; trampoline is freed shortly after, leaving a dangling zend_string* stored in the closure\u2019s function.",
+          "severity": "error"
+        },
+        {
+          "file": "Zend/zend_closures.c",
+          "line": 800,
+          "message": "Similar aliasing pattern for trampoline.function_name = mptr->common.function_name; if trampoline lifetime is shorter than closure, later releases can hit freed memory.",
+          "severity": "warning"
+        }
+      ],
+      "dataflow_summary": "",
+      "key_insight": "The closure stores a borrowed zend_string* (function_name) originating from a trampoline function and then frees the trampoline; later, zend_closure_free_storage unconditionally zend_string_release()s that dangling pointer, producing heap-use-after-free in zend_string_release().",
+      "fix_suggestions": [
+        {
+          "approach": "Take ownership explicitly: when assigning function_name from mptr->common.function_name (trampoline path), use ZSTR_COPY()/zend_string_addref() and ensure exactly one matching zend_string_release() in the closure destructor.",
+          "reasoning": "Matches the observed root cause: a borrowed pointer survives past the trampoline\u2019s free; increasing the refcount (or making a copy) prevents the pointer from becoming dangling.",
+          "trade_offs": "Slight refcount/copy overhead; must ensure no leaks by releasing on all destruction paths."
+        },
+        {
+          "approach": "Track ownership with a flag/field: only release closure->func.common.function_name in zend_closure_free_storage if the closure allocated/copied it (e.g., set a dedicated flag when creating the magic-call internal function).",
+          "reasoning": "Prevents releasing non-owned strings even if other code paths assign borrowed names.",
+          "trade_offs": "Requires careful auditing of all closure creation paths and increases state/complexity."
+        },
+        {
+          "approach": "Avoid storing the trampoline\u2019s function_name pointer: set call.function_name to a known interned string (or NULL) and pass the original method name separately (e.g., as an argument or via a dedicated stored zval with proper refcounting).",
+          "reasoning": "Eliminates the aliasing between trampoline lifetime and closure lifetime.",
+          "trade_offs": "More invasive refactor; may impact reflection/debug output expectations and needs compatibility review."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 79430,
+      "output_tokens": 2582
+    },
+    "timing": {
+      "start_time": 1768946497.538279,
+      "end_time": 1768946604.6249113,
+      "duration": 107.0866322517395
+    },
+    "trajectory": {
+      "agent_role": "static_analyzer",
+      "task": "<uploaded_files>\n/src/php-src\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/php-src`. Consider the following issue description:\n\n<issue_description>\nHeap-use-after-free in Zend/zend_closures.c: zend_closure_free_storage can end up invoking zend_string_release on a function name that has already been freed, causing subsequent reads of freed heap memory (seen via zend_string_release and zend_objects_store_del). This use-after-free during closure/object destruction can ca",
+      "total_steps": 7,
+      "total_duration": 107.0866322517395,
+      "total_input_tokens": 79430,
+      "total_output_tokens": 2582,
+      "total_cost": 0.1269681,
+      "final_state": "success"
+    }
+  },
+  "dynamic_analyzer_output": {
+    "role": "dynamic_analyzer",
+    "raw_output": "{\n  \"tools_used\": [\"gdb\", \"ubsan\", \"valgrind\"],\n  \"crash_info\": {\n    \"address\": \"0x5060000145a4\",\n    \"type\": \"heap-use-after-free\",\n    \"location\": \"Zend/zend_string.h:319 (zend_string_release)\"\n  },\n  \"backtrace\": [\n    \"#0 zend_string_release (Zend/zend_string.h:319)\",\n    \"#1 zend_closure_free_storage (Zend/zend_closures.c:486)\",\n    \"#2 zend_objects_store_del (Zend/zend_objects_API.c:200)\",\n    \"#3 ZEND_UNSET_CV_SPEC_CV_UNUSED_HANDLER (Zend/zend_vm_execute.h:46971)\",\n    \"#4 execute_ex (Zend/zend_vm_execute.h:54290)\",\n    \"#5 zend_execute (Zend/zend_vm_execute.h:58843)\",\n    \"#6 zend_execute_scripts (Zend/zend.c:1761)\",\n    \"#7 php_execute_script (main/main.c:2519)\",\n    \"#8 do_cli (sapi/cli/php_cli.c:965)\",\n    \"#9 main (sapi/cli/php_cli.c:1367)\"\n  ],\n  \"memory_state\": \"ASan reports a 4-byte read inside a freed 64-byte zend_string region ([0x5060000145a0, 0x5060000145e0) in the observed run; original report shows similar: 4 bytes inside a freed 64-byte region). The free happens in zend_string_release called from zend_closure_free_storage, and a subsequent zend_string_release re-reads the already-freed string header/refcount.\",\n  \"root_cause_hint\": \"Runtime evidence (ASan stack) shows zend_closure_free_storage calling zend_string_release on a zend_string pointer that can be released earlier in the same destruction chain (double-release). The second zend_string_release reads the refcount field from already-freed memory, triggering heap-use-after-free during closure/object destruction.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Make closure-owned function_name handling strictly refcounted: ensure the closure stores its own reference (zend_string_addref when assigning/copying into the closure), and only release once in zend_closure_free_storage.\",\n      \"reasoning\": \"The ASan trace indicates the same zend_string is freed by zend_string_release and later read again by another zend_string_release in the closure free path, consistent with incorrect/shared ownership. Ensuring an explicit addref when the closure captures/sets the function name prevents the name from reaching refcount 0 earlier than intended.\",\n      \"trade_offs\": \"Slight refcount traffic overhead; requires auditing all assignment/copy sites for closure function_name to avoid leaks or mismatched ownership.\"\n    },\n    {\n      \"approach\": \"Defensive clear-after-release in zend_closure_free_storage: after zend_string_release(name), set the stored pointer to NULL (or an interned safe value) and guard against releasing NULL; additionally, avoid releasing if the string is known to be owned elsewhere (e.g., interned/static).\",\n      \"reasoning\": \"Even if ownership is subtle, clearing the pointer after release prevents a second release from operating on freed memory in repeated/free-reentry scenarios. This directly targets the observed UAF location (zend_closure_free_storage \u2192 zend_string_release).\",\n      \"trade_offs\": \"Mitigates double-release but may mask deeper ownership bugs; must ensure other code does not expect the pointer to remain valid after partial teardown.\"\n    },\n    {\n      \"approach\": \"Reorder/decouple teardown so the function name cannot be released twice: ensure only one component is responsible for releasing the function_name (either the closure wrapper or the underlying function/op_array), and document/enforce that invariant (e.g., move release responsibility into a single destructor path).\",\n      \"reasoning\": \"The dynamic trace suggests a destruction ordering problem where both closure storage and another destructor path may release the same string. Centralizing responsibility removes the possibility of two releases.\",\n      \"trade_offs\": \"Potentially larger refactor; needs careful verification across different closure kinds (user/internal, bound/unbound) to avoid regressions.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "tools_used": [
+        "gdb",
+        "ubsan",
+        "valgrind"
+      ],
+      "crash_info": {
+        "address": "0x5060000145a4",
+        "type": "heap-use-after-free",
+        "location": "Zend/zend_string.h:319 (zend_string_release)"
+      },
+      "backtrace": [
+        "#0 zend_string_release (Zend/zend_string.h:319)",
+        "#1 zend_closure_free_storage (Zend/zend_closures.c:486)",
+        "#2 zend_objects_store_del (Zend/zend_objects_API.c:200)",
+        "#3 ZEND_UNSET_CV_SPEC_CV_UNUSED_HANDLER (Zend/zend_vm_execute.h:46971)",
+        "#4 execute_ex (Zend/zend_vm_execute.h:54290)",
+        "#5 zend_execute (Zend/zend_vm_execute.h:58843)",
+        "#6 zend_execute_scripts (Zend/zend.c:1761)",
+        "#7 php_execute_script (main/main.c:2519)",
+        "#8 do_cli (sapi/cli/php_cli.c:965)",
+        "#9 main (sapi/cli/php_cli.c:1367)"
+      ],
+      "memory_state": "ASan reports a 4-byte read inside a freed 64-byte zend_string region ([0x5060000145a0, 0x5060000145e0) in the observed run; original report shows similar: 4 bytes inside a freed 64-byte region). The free happens in zend_string_release called from zend_closure_free_storage, and a subsequent zend_string_release re-reads the already-freed string header/refcount.",
+      "root_cause_hint": "Runtime evidence (ASan stack) shows zend_closure_free_storage calling zend_string_release on a zend_string pointer that can be released earlier in the same destruction chain (double-release). The second zend_string_release reads the refcount field from already-freed memory, triggering heap-use-after-free during closure/object destruction.",
+      "fix_suggestions": [
+        {
+          "approach": "Make closure-owned function_name handling strictly refcounted: ensure the closure stores its own reference (zend_string_addref when assigning/copying into the closure), and only release once in zend_closure_free_storage.",
+          "reasoning": "The ASan trace indicates the same zend_string is freed by zend_string_release and later read again by another zend_string_release in the closure free path, consistent with incorrect/shared ownership. Ensuring an explicit addref when the closure captures/sets the function name prevents the name from reaching refcount 0 earlier than intended.",
+          "trade_offs": "Slight refcount traffic overhead; requires auditing all assignment/copy sites for closure function_name to avoid leaks or mismatched ownership."
+        },
+        {
+          "approach": "Defensive clear-after-release in zend_closure_free_storage: after zend_string_release(name), set the stored pointer to NULL (or an interned safe value) and guard against releasing NULL; additionally, avoid releasing if the string is known to be owned elsewhere (e.g., interned/static).",
+          "reasoning": "Even if ownership is subtle, clearing the pointer after release prevents a second release from operating on freed memory in repeated/free-reentry scenarios. This directly targets the observed UAF location (zend_closure_free_storage \u2192 zend_string_release).",
+          "trade_offs": "Mitigates double-release but may mask deeper ownership bugs; must ensure other code does not expect the pointer to remain valid after partial teardown."
+        },
+        {
+          "approach": "Reorder/decouple teardown so the function name cannot be released twice: ensure only one component is responsible for releasing the function_name (either the closure wrapper or the underlying function/op_array), and document/enforce that invariant (e.g., move release responsibility into a single destructor path).",
+          "reasoning": "The dynamic trace suggests a destruction ordering problem where both closure storage and another destructor path may release the same string. Centralizing responsibility removes the possibility of two releases.",
+          "trade_offs": "Potentially larger refactor; needs careful verification across different closure kinds (user/internal, bound/unbound) to avoid regressions."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 18947,
+      "output_tokens": 1768
+    },
+    "timing": {
+      "start_time": 1768946604.6300278,
+      "end_time": 1768946733.377722,
+      "duration": 128.7476942539215
+    },
+    "trajectory": {
+      "agent_role": "dynamic_analyzer",
+      "task": "<uploaded_files>\n/src/php-src\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/php-src`. Consider the following issue description:\n\n<issue_description>\nHeap-use-after-free in Zend/zend_closures.c: zend_closure_free_storage can end up invoking zend_string_release on a function name that has already been freed, causing subsequent reads of freed heap memory (seen via zend_string_release and zend_objects_store_del). This use-after-free during closure/object destruction can ca",
+      "total_steps": 2,
+      "total_duration": 128.7476942539215,
+      "total_input_tokens": 18947,
+      "total_output_tokens": 1768,
+      "total_cost": 0.047627649999999994,
+      "final_state": "success"
+    }
+  },
+  "history_miner_output": {
+    "role": "history_miner",
+    "raw_output": "{\n  \"file_analyzed\": \"Zend/zend_closures.c\",\n  \"function_analyzed\": \"zend_closure_free_storage\",\n  \"relevant_commits\": [\n    {\n      \"hash\": \"c0b1bdcdc399\",\n      \"message\": \"Fixed bug #80929 (keep function name for CALL_VIA_TRAMPOLINE closures)\",\n      \"changes\": \"Stopped dtor\u2019ing param[0] in zend_closure_call_magic and added zend_string_release(closure->func.common.function_name) in zend_closure_free_storage when orig_internal_handler==zend_closure_call_magic.\",\n      \"relevance\": \"Introduces explicit ownership/release of closure->func.common.function_name for call-magic/trampoline closures; incorrect ownership/refcounting can lead to double-release/UAF during destruction (matches report line ~486).\"\n    },\n    {\n      \"hash\": \"008bfcc7ba7b\",\n      \"message\": \"Use NO_DYNAMIC_PROPERTIES for Closure\",\n      \"changes\": \"Refactored Closure object handlers and property behavior (large closure handler changes).\",\n      \"relevance\": \"Touches Closure object lifecycle/handlers; while not directly about function_name, it changes destruction/handler pathways that can influence when free_obj runs and ordering of releases.\" \n    },\n    {\n      \"hash\": \"814a9327348b\",\n      \"message\": \"Add ZEND_ACC_NOT_SERIALIZABLE flag\",\n      \"changes\": \"Adjusted Closure class registration, removing explicit serialize/unserialize deny handlers.\",\n      \"relevance\": \"Minor lifecycle-related change in same file; unlikely root cause, but useful context for Closure object behavior changes around the same period.\"\n    }\n  ],\n  \"vulnerability_origin\": \"Most likely originates from the trampoline/call-magic closure changes around c0b1bdcdc399: function_name is treated as owned by the closure (released in zend_closure_free_storage) but can be shared or already released elsewhere (e.g., via zend_free_trampoline or multiple closures referencing the same zend_string without an addref), causing a second zend_string_release() to read freed memory.\",\n  \"fix_hints\": \"History suggests the intent is: don\u2019t release the function_name during __call/__callstatic dispatch (to keep it callable multiple times), but do release it when the closure is destroyed. To make that safe, the closure must hold its own refcounted reference (addref/copy) to function_name, and the free_storage release must only occur when ownership is guaranteed.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"When building the call-magic internal function used for trampolines (in zend_create_closure_from_callable), explicitly increment the refcount of mptr->common.function_name before freeing the trampoline (zend_string_addref() or zend_string_copy()).\",\n      \"reasoning\": \"Directly addresses the most plausible ownership bug implied by c0b1bd\u2026: closure destruction releases function_name, so it must be a valid refcounted string for the lifetime of the closure, independent of the trampoline\u2019s lifetime.\",\n      \"trade_offs\": \"Slight refcount overhead; must ensure the matching release happens exactly once (avoid leaks).\"\n    },\n    {\n      \"approach\": \"Track explicit ownership of closure->func.common.function_name (e.g., a boolean flag in zend_closure) instead of relying on orig_internal_handler==zend_closure_call_magic as a proxy; only release if owned.\",\n      \"reasoning\": \"The current heuristic can be wrong if the function_name points to a shared/interned string or a string freed by another path; ownership tracking prevents accidental double-release.\",\n      \"trade_offs\": \"Requires struct change and careful initialization/cloning semantics; slightly more invasive.\n      \"\n    },\n    {\n      \"approach\": \"In zend_create_fake_closure()/zend_create_closure paths for non-user functions, ensure any assigned function_name is either interned or addref\u2019d when copied into the closure\u2019s zend_function.\",\n      \"reasoning\": \"Centralizes correctness: any closure copying a zend_function should take proper references to contained refcounted fields.\",\n      \"trade_offs\": \"Broader impact; must audit other zend_function fields to avoid inconsistent ownership changes.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "raw": "{\n  \"file_analyzed\": \"Zend/zend_closures.c\",\n  \"function_analyzed\": \"zend_closure_free_storage\",\n  \"relevant_commits\": [\n    {\n      \"hash\": \"c0b1bdcdc399\",\n      \"message\": \"Fixed bug #80929 (keep function name for CALL_VIA_TRAMPOLINE closures)\",\n      \"changes\": \"Stopped dtor\u2019ing param[0] in zend_closure_call_magic and added zend_string_release(closure->func.common.function_name) in zend_closure_free_storage when orig_internal_handler==zend_closure_call_magic.\",\n      \"relevance\": \"Introduces explicit ownership/release of closure->func.common.function_name for call-magic/trampoline closures; incorrect ownership/refcounting can lead to double-release/UAF during destruction (matches report line ~486).\"\n    },\n    {\n      \"hash\": \"008bfcc7ba7b\",\n      \"message\": \"Use NO_DYNAMIC_PROPERTIES for Closure\",\n      \"changes\": \"Refactored Closure object handlers and property behavior (large closure handler changes).\",\n      \"relevance\": \"Touches Closure object lifecycle/handlers; while not directly about function_name, it changes destruction/handler pathways that can influence when free_obj runs and ordering of releases.\" \n    },\n    {\n      \"hash\": \"814a9327348b\",\n      \"message\": \"Add ZEND_ACC_NOT_SERIALIZABLE flag\",\n      \"changes\": \"Adjusted Closure class registration, removing explicit serialize/unserialize deny handlers.\",\n      \"relevance\": \"Minor lifecycle-related change in same file; unlikely root cause, but useful context for Closure object behavior changes around the same period.\"\n    }\n  ],\n  \"vulnerability_origin\": \"Most likely originates from the trampoline/call-magic closure changes around c0b1bdcdc399: function_name is treated as owned by the closure (released in zend_closure_free_storage) but can be shared or already released elsewhere (e.g., via zend_free_trampoline or multiple closures referencing the same zend_string without an addref), causing a second zend_string_release() to read freed memory.\",\n  \"fix_hints\": \"History suggests the intent is: don\u2019t release the function_name during __call/__callstatic dispatch (to keep it callable multiple times), but do release it when the closure is destroyed. To make that safe, the closure must hold its own refcounted reference (addref/copy) to function_name, and the free_storage release must only occur when ownership is guaranteed.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"When building the call-magic internal function used for trampolines (in zend_create_closure_from_callable), explicitly increment the refcount of mptr->common.function_name before freeing the trampoline (zend_string_addref() or zend_string_copy()).\",\n      \"reasoning\": \"Directly addresses the most plausible ownership bug implied by c0b1bd\u2026: closure destruction releases function_name, so it must be a valid refcounted string for the lifetime of the closure, independent of the trampoline\u2019s lifetime.\",\n      \"trade_offs\": \"Slight refcount overhead; must ensure the matching release happens exactly once (avoid leaks).\"\n    },\n    {\n      \"approach\": \"Track explicit ownership of closure->func.common.function_name (e.g., a boolean flag in zend_closure) instead of relying on orig_internal_handler==zend_closure_call_magic as a proxy; only release if owned.\",\n      \"reasoning\": \"The current heuristic can be wrong if the function_name points to a shared/interned string or a string freed by another path; ownership tracking prevents accidental double-release.\",\n      \"trade_offs\": \"Requires struct change and careful initialization/cloning semantics; slightly more invasive.\n      \"\n    },\n    {\n      \"approach\": \"In zend_create_fake_closure()/zend_create_closure paths for non-user functions, ensure any assigned function_name is either interned or addref\u2019d when copied into the closure\u2019s zend_function.\",\n      \"reasoning\": \"Centralizes correctness: any closure copying a zend_function should take proper references to contained refcounted fields.\",\n      \"trade_offs\": \"Broader impact; must audit other zend_function fields to avoid inconsistent ownership changes.\"\n    }\n  ]\n}",
+      "parse_error": true
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 74821,
+      "output_tokens": 5471
+    },
+    "timing": {
+      "start_time": 1768946733.3810225,
+      "end_time": 1768947680.0249703,
+      "duration": 946.6439478397369
+    },
+    "trajectory": {
+      "agent_role": "history_miner",
+      "task": "<uploaded_files>\n/src/php-src\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/php-src`. Consider the following issue description:\n\n<issue_description>\nHeap-use-after-free in Zend/zend_closures.c: zend_closure_free_storage can end up invoking zend_string_release on a function name that has already been freed, causing subsequent reads of freed heap memory (seen via zend_string_release and zend_objects_store_del). This use-after-free during closure/object destruction can ca",
+      "total_steps": 7,
+      "total_duration": 946.6439478397369,
+      "total_input_tokens": 74821,
+      "total_output_tokens": 5471,
+      "total_cost": 0.10652914999999999,
+      "final_state": "success"
+    }
+  },
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "{\n  \"root_cause\": \"Closures created from CALL_VIA_TRAMPOLINE callables (magic __call/__callstatic dispatch) stored a borrowed zend_string* function_name from the trampoline (mptr->common.function_name) and then freed the trampoline. Later, zend_closure_free_storage() released closure->func.common.function_name (for orig_internal_handler==zend_closure_call_magic), potentially operating on an already-freed zend_string header, triggering a heap-use-after-free inside zend_string_release().\",\n  \"fix_approach\": \"When wrapping a trampoline callable into the internal zend_closure_call_magic function (in zend_create_closure_from_callable() and zend_closure_from_frame()), explicitly increment the refcount of mptr->common.function_name via zend_string_addref() before freeing the trampoline. This ensures the closure owns a valid reference that remains alive until zend_closure_free_storage() releases it.\",\n  \"files_modified\": [\n    \"Zend/zend_closures.c\"\n  ],\n  \"verification\": {\n    \"build_success\": true,\n    \"repro_success\": true,\n    \"exit_code\": 0,\n    \"asan_output\": \"No sanitizer errors detected\"\n  },\n  \"confidence\": \"high\"\n}",
+    "parsed_output": {
+      "root_cause": "Closures created from CALL_VIA_TRAMPOLINE callables (magic __call/__callstatic dispatch) stored a borrowed zend_string* function_name from the trampoline (mptr->common.function_name) and then freed the trampoline. Later, zend_closure_free_storage() released closure->func.common.function_name (for orig_internal_handler==zend_closure_call_magic), potentially operating on an already-freed zend_string header, triggering a heap-use-after-free inside zend_string_release().",
+      "fix_approach": "When wrapping a trampoline callable into the internal zend_closure_call_magic function (in zend_create_closure_from_callable() and zend_closure_from_frame()), explicitly increment the refcount of mptr->common.function_name via zend_string_addref() before freeing the trampoline. This ensures the closure owns a valid reference that remains alive until zend_closure_free_storage() releases it.",
+      "files_modified": [
+        "Zend/zend_closures.c"
+      ],
+      "verification": {
+        "build_success": true,
+        "repro_success": true,
+        "exit_code": 0,
+        "asan_output": "No sanitizer errors detected"
+      },
+      "confidence": "high"
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 339754,
+      "output_tokens": 6323
+    },
+    "timing": {
+      "start_time": 1768947680.0295558,
+      "end_time": 1768947860.4776049,
+      "duration": 180.44804906845093
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/php-src\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/php-src`. Consider the following issue description:\n\n<issue_description>\nHeap-use-after-free in Zend/zend_closures.c: zend_closure_free_storage can end up invoking zend_string_release on a function name that has already been freed, causing subsequent reads of freed heap memory (seen via zend_string_release and zend_objects_store_del). This use-after-free during closure/object destruction can ca",
+      "total_steps": 17,
+      "total_duration": 180.44804906845093,
+      "total_input_tokens": 339754,
+      "total_output_tokens": 6323,
+      "total_cost": 0.3044867,
+      "final_state": "success"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 512952,
+    "output_tokens": 16144
+  },
+  "timing": {
+    "total_duration": 1362.9477381706238
+  }
+}

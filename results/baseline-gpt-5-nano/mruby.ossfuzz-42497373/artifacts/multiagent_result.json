@@ -1,0 +1,43 @@
+{
+  "instance_id": "mruby.ossfuzz-42497373",
+  "final_status": "failed",
+  "static_analyzer_output": null,
+  "dynamic_analyzer_output": null,
+  "history_miner_output": null,
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "Patch plan: In src/fmt_fp.c, fix the corrupted NUL literal on the overflow guard. Replace the line containing the stray NUL with a proper C null terminator.\n\nBefore:\n  if ((size_t)(s - buf) + 1 >= buf_size) {\n    if (buf_size > 0) *buf = 0; // corrupted NUL in code (shown as a literal NUL)\n    return s - buf;\n  }\n\nAfter:\n  if ((size_t)(s - buf) + 1 >= buf_size) {\n    if (buf_size > 0) *buf = '\\\\0';\n    return s - buf;\n  }\n\nRationale: The stray NUL (shown as a glyph in the patch logs) caused a syntax/compile error. Using '\\0' ensures a valid C char literal and prevents buffer overflow handling from writing past the end of the buffer. After applying the patch, run the build (secb build) and repro (secb repro) to verify the sanitizer no longer reports the heap-buffer-overflow.",
+    "parsed_output": {
+      "raw": "Patch plan: In src/fmt_fp.c, fix the corrupted NUL literal on the overflow guard. Replace the line containing the stray NUL with a proper C null terminator.\n\nBefore:\n  if ((size_t)(s - buf) + 1 >= buf_size) {\n    if (buf_size > 0) *buf = 0; // corrupted NUL in code (shown as a literal NUL)\n    return s - buf;\n  }\n\nAfter:\n  if ((size_t)(s - buf) + 1 >= buf_size) {\n    if (buf_size > 0) *buf = '\\\\0';\n    return s - buf;\n  }\n\nRationale: The stray NUL (shown as a glyph in the patch logs) caused a syntax/compile error. Using '\\0' ensures a valid C char literal and prevents buffer overflow handling from writing past the end of the buffer. After applying the patch, run the build (secb build) and repro (secb repro) to verify the sanitizer no longer reports the heap-buffer-overflow.",
+      "parse_error": true
+    },
+    "success": false,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 833988,
+      "output_tokens": 158564
+    },
+    "timing": {
+      "start_time": 1769359973.4191573,
+      "end_time": 1769360626.3297615,
+      "duration": 652.9106042385101
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/mruby\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/mruby`. Consider the following issue description:\n\n<issue_description>\nA heap-buffer-overflow in mrb_format_float (src/fmt_fp.c): incorrect handling of floating-point formatting precision/width (reachable via fmt_float / mrb_str_format / mrb_f_sprintf) can cause writes past the end of the output buffer, leading to heap corruption, crashes, or potential code execution.\n---\n==697==ERROR: AddressSan",
+      "total_steps": 48,
+      "total_duration": 652.9106042385101,
+      "total_input_tokens": 833988,
+      "total_output_tokens": 158564,
+      "total_cost": 0.0351385,
+      "final_state": "failed"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 833988,
+    "output_tokens": 158564
+  },
+  "timing": {
+    "total_duration": 652.9201395511627
+  }
+}

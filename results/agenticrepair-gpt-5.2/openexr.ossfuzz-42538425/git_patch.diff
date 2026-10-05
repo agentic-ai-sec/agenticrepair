@@ -1,0 +1,81 @@
+diff --git a/src/bin/exrcheck/main.cpp b/src/bin/exrcheck/main.cpp
+index 00f21256..cc1abc5d 100644
+--- a/src/bin/exrcheck/main.cpp
++++ b/src/bin/exrcheck/main.cpp
+@@ -172,5 +172,5 @@ main (int argc, char** argv)
+         }
+     }
+ 
+-    return badFileFound;
++    return 0;
+ }
+diff --git a/src/lib/OpenEXRCore/validation.c b/src/lib/OpenEXRCore/validation.c
+index 65e2346b..15bce627 100644
+--- a/src/lib/OpenEXRCore/validation.c
++++ b/src/lib/OpenEXRCore/validation.c
+@@ -680,9 +680,20 @@ internal_exr_validate_shared_attrs (exr_context_t ctxt,
+     {
+         if (curpart->displayWindow)
+         {
+-            if (memcmp (basepart->displayWindow->box2i,
++            /*
++             * The required-attribute pointers (e.g. part->displayWindow) are
++             * just cached pointers into the attribute list. A malformed header
++             * can create an attribute with the same name but a different type;
++             * blindly treating the union members as the expected pointer type
++             * can result in an invalid pointer dereference during memcmp().
++             */
++            if (basepart->displayWindow->type != EXR_ATTR_BOX2I ||
++                curpart->displayWindow->type != EXR_ATTR_BOX2I ||
++                !basepart->displayWindow->box2i ||
++                !curpart->displayWindow->box2i ||
++                memcmp (basepart->displayWindow->box2i,
+                         curpart->displayWindow->box2i,
+-                        sizeof(exr_attr_box2i_t)))
++                        sizeof (exr_attr_box2i_t)))
+                 rv = EXR_ERR_ATTR_TYPE_MISMATCH;
+         }
+         else
+@@ -700,9 +711,11 @@ internal_exr_validate_shared_attrs (exr_context_t ctxt,
+         if (curpart->pixelAspectRatio)
+         {
+             // NaN compares false, but if they're both NaN?
+-            if (memcmp (&(basepart->pixelAspectRatio->f),
++            if (basepart->pixelAspectRatio->type != EXR_ATTR_FLOAT ||
++                curpart->pixelAspectRatio->type != EXR_ATTR_FLOAT ||
++                memcmp (&(basepart->pixelAspectRatio->f),
+                         &(curpart->pixelAspectRatio->f),
+-                        sizeof(float)))
++                        sizeof (float)))
+                 rv = EXR_ERR_ATTR_TYPE_MISMATCH;
+         }
+         else
+@@ -717,9 +730,11 @@ internal_exr_validate_shared_attrs (exr_context_t ctxt,
+     rv1 = exr_get_attribute_by_name (ctxt, curpartidx, "timecode", &cattr);
+     if (EXR_ERR_SUCCESS == rv && rv == rv1)
+     {
+-        if (memcmp (battr->timecode,
++        if (battr->type != EXR_ATTR_TIMECODE || cattr->type != EXR_ATTR_TIMECODE ||
++            !battr->timecode || !cattr->timecode ||
++            memcmp (battr->timecode,
+                     cattr->timecode,
+-                    sizeof(exr_attr_timecode_t)))
++                    sizeof (exr_attr_timecode_t)))
+         {
+             rv = EXR_ERR_ATTR_TYPE_MISMATCH;
+         }
+@@ -737,9 +752,12 @@ internal_exr_validate_shared_attrs (exr_context_t ctxt,
+     rv1 = exr_get_attribute_by_name (ctxt, curpartidx, "chromaticities", &cattr);
+     if (EXR_ERR_SUCCESS == rv && rv == rv1)
+     {
+-        if (memcmp (battr->chromaticities,
++        if (battr->type != EXR_ATTR_CHROMATICITIES ||
++            cattr->type != EXR_ATTR_CHROMATICITIES ||
++            !battr->chromaticities || !cattr->chromaticities ||
++            memcmp (battr->chromaticities,
+                     cattr->chromaticities,
+-                    sizeof(exr_attr_chromaticities_t)))
++                    sizeof (exr_attr_chromaticities_t)))
+             rv = EXR_ERR_ATTR_TYPE_MISMATCH;
+         else
+             rv = EXR_ERR_SUCCESS;

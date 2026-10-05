@@ -1,0 +1,252 @@
+{
+  "instance_id": "openexr.ossfuzz-42538530",
+  "final_status": "success",
+  "static_analyzer_output": {
+    "role": "static_analyzer",
+    "raw_output": "{\n  \"analysis_type\": \"memory\",\n  \"findings\": [\n    {\n      \"file\": \"src/lib/OpenEXRCore/validation.c\",\n      \"line\": 740,\n      \"message\": \"memcmp compares battr->chromaticities vs cattr->chromaticities for sizeof(exr_attr_chromaticities_t) without verifying the underlying attribute payload is that large / in-bounds.\",\n      \"severity\": \"error\"\n    },\n    {\n      \"file\": \"src/lib/OpenEXRCore/validation.c\",\n      \"line\": 720,\n      \"message\": \"memcmp compares battr->timecode vs cattr->timecode for sizeof(exr_attr_timecode_t) without validating the attribute storage is initialized and at least that size.\",\n      \"severity\": \"error\"\n    },\n    {\n      \"file\": \"src/lib/OpenEXRCore/validation.c\",\n      \"line\": 683,\n      \"message\": \"memcmp compares displayWindow structs directly; if attribute parsing leaves struct pointers referencing truncated/OOB data, this becomes an invalid read.\",\n      \"severity\": \"warning\"\n    }\n  ],\n  \"dataflow_summary\": \"CodeQL dataflow query did not report a taint path; issue is a direct unsafe read via memcmp over pointers derived from parsed header attributes.\",\n  \"key_insight\": \"internal_exr_validate_shared_attrs assumes attribute pointers returned by exr_get_attribute_by_name (and part fields like displayWindow/pixelAspectRatio) always reference fully-populated, in-bounds objects; for malformed headers, these pointers can reference truncated/uninitialized/out-of-bounds memory, so memcmp can read past valid storage and crash.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Add size/type validation before every fixed-size memcmp: ensure attribute type matches expected and recorded payload size >= sizeof(expected_struct); otherwise return a parse/validation error.\",\n      \"reasoning\": \"The crash occurs because memcmp reads a fixed sizeof(T) from potentially short/invalid attribute storage. Enforcing payload-size invariants at the use site prevents OOB reads even if earlier parsing was permissive.\",\n      \"trade_offs\": \"Slightly more checks and error returns; may reject previously-accepted but malformed files (desired for security).\"\n    },\n    {\n      \"approach\": \"Harden header parsing so attribute storage is always copied into owned, fully-initialized buffers/structs (zero-fill then decode) and reject truncated attribute payloads early.\",\n      \"reasoning\": \"If parsing guarantees that battr->timecode/chromaticities always point to valid owned objects, later validation can safely compare them.\",\n      \"trade_offs\": \"More refactoring and potentially more memory copies during parsing; but improves overall robustness.\"\n    },\n    {\n      \"approach\": \"Replace memcmp on parsed objects with explicit field-by-field comparisons after validating decoded fields (and treat NaNs explicitly where needed).\",\n      \"reasoning\": \"Field-by-field comparisons avoid reading padding bytes (which may be uninitialized) and reduce reliance on raw memory layout.\",\n      \"trade_offs\": \"More code and maintenance; must ensure semantics match existing behavior.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "analysis_type": "memory",
+      "findings": [
+        {
+          "file": "src/lib/OpenEXRCore/validation.c",
+          "line": 740,
+          "message": "memcmp compares battr->chromaticities vs cattr->chromaticities for sizeof(exr_attr_chromaticities_t) without verifying the underlying attribute payload is that large / in-bounds.",
+          "severity": "error"
+        },
+        {
+          "file": "src/lib/OpenEXRCore/validation.c",
+          "line": 720,
+          "message": "memcmp compares battr->timecode vs cattr->timecode for sizeof(exr_attr_timecode_t) without validating the attribute storage is initialized and at least that size.",
+          "severity": "error"
+        },
+        {
+          "file": "src/lib/OpenEXRCore/validation.c",
+          "line": 683,
+          "message": "memcmp compares displayWindow structs directly; if attribute parsing leaves struct pointers referencing truncated/OOB data, this becomes an invalid read.",
+          "severity": "warning"
+        }
+      ],
+      "dataflow_summary": "CodeQL dataflow query did not report a taint path; issue is a direct unsafe read via memcmp over pointers derived from parsed header attributes.",
+      "key_insight": "internal_exr_validate_shared_attrs assumes attribute pointers returned by exr_get_attribute_by_name (and part fields like displayWindow/pixelAspectRatio) always reference fully-populated, in-bounds objects; for malformed headers, these pointers can reference truncated/uninitialized/out-of-bounds memory, so memcmp can read past valid storage and crash.",
+      "fix_suggestions": [
+        {
+          "approach": "Add size/type validation before every fixed-size memcmp: ensure attribute type matches expected and recorded payload size >= sizeof(expected_struct); otherwise return a parse/validation error.",
+          "reasoning": "The crash occurs because memcmp reads a fixed sizeof(T) from potentially short/invalid attribute storage. Enforcing payload-size invariants at the use site prevents OOB reads even if earlier parsing was permissive.",
+          "trade_offs": "Slightly more checks and error returns; may reject previously-accepted but malformed files (desired for security)."
+        },
+        {
+          "approach": "Harden header parsing so attribute storage is always copied into owned, fully-initialized buffers/structs (zero-fill then decode) and reject truncated attribute payloads early.",
+          "reasoning": "If parsing guarantees that battr->timecode/chromaticities always point to valid owned objects, later validation can safely compare them.",
+          "trade_offs": "More refactoring and potentially more memory copies during parsing; but improves overall robustness."
+        },
+        {
+          "approach": "Replace memcmp on parsed objects with explicit field-by-field comparisons after validating decoded fields (and treat NaNs explicitly where needed).",
+          "reasoning": "Field-by-field comparisons avoid reading padding bytes (which may be uninitialized) and reduce reliance on raw memory layout.",
+          "trade_offs": "More code and maintenance; must ensure semantics match existing behavior."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 62222,
+      "output_tokens": 2700
+    },
+    "timing": {
+      "start_time": 1768913252.0469763,
+      "end_time": 1768913644.5457027,
+      "duration": 392.49872636795044
+    },
+    "trajectory": {
+      "agent_role": "static_analyzer",
+      "task": "<uploaded_files>\n/src/openexr\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/openexr`. Consider the following issue description:\n\n<issue_description>\nAn invalid memory read (segmentation fault) occurs in internal_exr_validate_shared_attrs (src/lib/OpenEXRCore/validation.c). During header parsing (internal_exr_parse_header) the code invokes memcmp on attribute data that can reference out-of-bounds or uninitialized memory for crafted/malformed files, causing a crash. This",
+      "total_steps": 7,
+      "total_duration": 392.49872636795044,
+      "total_input_tokens": 62222,
+      "total_output_tokens": 2700,
+      "total_cost": 0.0753221,
+      "final_state": "success"
+    }
+  },
+  "dynamic_analyzer_output": {
+    "role": "dynamic_analyzer",
+    "raw_output": "{\n  \"tools_used\": [\"gdb\", \"ubsan\"],\n  \"crash_info\": {\n    \"address\": \"0x000093e00c20\",\n    \"type\": \"invalid-read / out-of-bounds read (SEGV in memcmp)\",\n    \"location\": \"src/lib/OpenEXRCore/validation.c:740 (internal_exr_validate_shared_attrs)\"\n  },\n  \"backtrace\": [\n    \"memcmp -> internal_exr_validate_shared_attrs (validation.c:740)\",\n    \"internal_exr_parse_header (parse_header.c:2675)\",\n    \"exr_start_read (context.c:270)\"\n  ],\n  \"memory_state\": \"Crash is a READ in memcmp() comparing fixed-size attribute structs (e.g., chromaticities). One of the compared pointers (e.g., battr->chromaticities or cattr->chromaticities) is an invalid pointer (ASan shows a SEGV reading at 0x000093e00c20), consistent with attribute payload being truncated/out-of-bounds or otherwise not backed by valid initialized storage when validation performs memcmp(sizeof(exr_attr_chromaticities_t)).\",\n  \"root_cause_hint\": \"Runtime evidence shows header parsing reaches internal_exr_validate_shared_attrs and then performs memcmp() on attribute payload pointers without first proving that the underlying attribute storage is valid for the compared size. For malformed/crafted headers, attribute data pointers can reference memory outside the parsed buffer (or uninitialized/invalid), so memcmp reads past valid data and crashes.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"Add explicit bounds/size validation before each memcmp in internal_exr_validate_shared_attrs: confirm the attribute exists, has the expected type, and that its stored payload size is >= sizeof(expected_struct) (and pointer non-NULL) before comparing; otherwise return EXR_ERR_FILE_BAD_HEADER (or a strict-header error) instead of calling memcmp.\",\n      \"reasoning\": \"The crash occurs exactly at memcmp on chromaticities/timecode/pixelAspectRatio; guarding the compare with payload-size checks directly prevents the invalid read shown by ASan.\",\n      \"trade_offs\": \"Slightly more branching in validation; requires access to (or adding) a reliable \u2018payload size\u2019 field in the attribute representation if not already present. Behavior may change from \u2018type mismatch\u2019 to \u2018bad header\u2019 for malformed files.\"\n    },\n    {\n      \"approach\": \"Harden attribute parsing (pull_attr / attribute decode): when reading attribute payload, allocate/copy into owned storage of the declared size and reject/trap if the file is truncated or if declared size is smaller/larger than the expected size for fixed-size attribute types (chromaticities, timecode, etc.).\",\n      \"reasoning\": \"If attributes are guaranteed to be fully materialized and validated at parse time, later validation (memcmp) cannot see dangling/out-of-bounds pointers.\",\n      \"trade_offs\": \"More invasive change; may increase memory usage (copying attribute data instead of referencing a scratch buffer). Requires maintaining a mapping of fixed-size attribute types to expected payload sizes.\"\n    },\n    {\n      \"approach\": \"Replace memcmp-based comparisons for structured attributes with field-wise comparisons that also handle NaN safely (e.g., use isnan() for floats) and only access fields after verifying the buffer length.\",\n      \"reasoning\": \"memcmp assumes a contiguous valid struct and will read all bytes; field-wise comparison allows early exit and avoids reading padding bytes (which can be uninitialized) while still enforcing semantic equality.\",\n      \"trade_offs\": \"More code to maintain for each attribute type; still requires a length check to ensure fields are present.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "tools_used": [
+        "gdb",
+        "ubsan"
+      ],
+      "crash_info": {
+        "address": "0x000093e00c20",
+        "type": "invalid-read / out-of-bounds read (SEGV in memcmp)",
+        "location": "src/lib/OpenEXRCore/validation.c:740 (internal_exr_validate_shared_attrs)"
+      },
+      "backtrace": [
+        "memcmp -> internal_exr_validate_shared_attrs (validation.c:740)",
+        "internal_exr_parse_header (parse_header.c:2675)",
+        "exr_start_read (context.c:270)"
+      ],
+      "memory_state": "Crash is a READ in memcmp() comparing fixed-size attribute structs (e.g., chromaticities). One of the compared pointers (e.g., battr->chromaticities or cattr->chromaticities) is an invalid pointer (ASan shows a SEGV reading at 0x000093e00c20), consistent with attribute payload being truncated/out-of-bounds or otherwise not backed by valid initialized storage when validation performs memcmp(sizeof(exr_attr_chromaticities_t)).",
+      "root_cause_hint": "Runtime evidence shows header parsing reaches internal_exr_validate_shared_attrs and then performs memcmp() on attribute payload pointers without first proving that the underlying attribute storage is valid for the compared size. For malformed/crafted headers, attribute data pointers can reference memory outside the parsed buffer (or uninitialized/invalid), so memcmp reads past valid data and crashes.",
+      "fix_suggestions": [
+        {
+          "approach": "Add explicit bounds/size validation before each memcmp in internal_exr_validate_shared_attrs: confirm the attribute exists, has the expected type, and that its stored payload size is >= sizeof(expected_struct) (and pointer non-NULL) before comparing; otherwise return EXR_ERR_FILE_BAD_HEADER (or a strict-header error) instead of calling memcmp.",
+          "reasoning": "The crash occurs exactly at memcmp on chromaticities/timecode/pixelAspectRatio; guarding the compare with payload-size checks directly prevents the invalid read shown by ASan.",
+          "trade_offs": "Slightly more branching in validation; requires access to (or adding) a reliable \u2018payload size\u2019 field in the attribute representation if not already present. Behavior may change from \u2018type mismatch\u2019 to \u2018bad header\u2019 for malformed files."
+        },
+        {
+          "approach": "Harden attribute parsing (pull_attr / attribute decode): when reading attribute payload, allocate/copy into owned storage of the declared size and reject/trap if the file is truncated or if declared size is smaller/larger than the expected size for fixed-size attribute types (chromaticities, timecode, etc.).",
+          "reasoning": "If attributes are guaranteed to be fully materialized and validated at parse time, later validation (memcmp) cannot see dangling/out-of-bounds pointers.",
+          "trade_offs": "More invasive change; may increase memory usage (copying attribute data instead of referencing a scratch buffer). Requires maintaining a mapping of fixed-size attribute types to expected payload sizes."
+        },
+        {
+          "approach": "Replace memcmp-based comparisons for structured attributes with field-wise comparisons that also handle NaN safely (e.g., use isnan() for floats) and only access fields after verifying the buffer length.",
+          "reasoning": "memcmp assumes a contiguous valid struct and will read all bytes; field-wise comparison allows early exit and avoids reading padding bytes (which can be uninitialized) while still enforcing semantic equality.",
+          "trade_offs": "More code to maintain for each attribute type; still requires a length check to ensure fields are present."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 38607,
+      "output_tokens": 2276
+    },
+    "timing": {
+      "start_time": 1768913644.5507402,
+      "end_time": 1768913901.1203306,
+      "duration": 256.5695903301239
+    },
+    "trajectory": {
+      "agent_role": "dynamic_analyzer",
+      "task": "<uploaded_files>\n/src/openexr\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/openexr`. Consider the following issue description:\n\n<issue_description>\nAn invalid memory read (segmentation fault) occurs in internal_exr_validate_shared_attrs (src/lib/OpenEXRCore/validation.c). During header parsing (internal_exr_parse_header) the code invokes memcmp on attribute data that can reference out-of-bounds or uninitialized memory for crafted/malformed files, causing a crash. This",
+      "total_steps": 4,
+      "total_duration": 256.5695903301239,
+      "total_input_tokens": 38607,
+      "total_output_tokens": 2276,
+      "total_cost": 0.051848649999999996,
+      "final_state": "success"
+    }
+  },
+  "history_miner_output": {
+    "role": "history_miner",
+    "raw_output": "{\n  \"file_analyzed\": \"src/lib/OpenEXRCore/validation.c\",\n  \"function_analyzed\": \"internal_exr_validate_shared_attrs\",\n  \"relevant_commits\": [\n    {\n      \"hash\": \"c381ee0\",\n      \"message\": \"Add test, accessor to match multipart behavior\",\n      \"changes\": \"Introduced internal_exr_validate_shared_attrs() and added multiple memcmp() comparisons on attribute payload pointers (displayWindow, pixelAspectRatio, timecode, chromaticities).\",\n      \"relevance\": \"This commit appears to introduce the exact memcmp-based comparisons that can read OOB/uninitialized memory when attribute payload pointers are invalid for malformed headers.\"\n    },\n    {\n      \"hash\": \"aed82c1\",\n      \"message\": \"Add unknown storage mode for future proofing, fix logic\",\n      \"changes\": \"Adjusted validation of required attributes and defaulting behavior (e.g., adding default version attr in some cases).\",\n      \"relevance\": \"Shows nearby validation logic changes and a pattern of relying on inferred/defaulted header state; helps explain how validation code may assume attributes are well-formed/initialized.\"\n    },\n    {\n      \"hash\": \"01e9f18\",\n      \"message\": \"Simplify internal part type structure usage\",\n      \"changes\": \"Refactors internal_exr_parse_header helpers to use exr_priv_part_t consistently.\",\n      \"relevance\": \"Not the crash site, but indicates recent churn around header parsing and internal part structures; increases likelihood that validation began relying on assumptions about attribute storage/lifetimes.\"\n    },\n    {\n      \"hash\": \"e7f1099\",\n      \"message\": \"Fix flag handling and storage type validation to match\",\n      \"changes\": \"Adjusted type parsing / flag handling and stored original version+flags.\",\n      \"relevance\": \"Header parsing rule changes around strictness/mismatch handling can influence whether malformed attrs survive into validation, impacting whether unsafe comparisons occur.\"\n    }\n  ],\n  \"vulnerability_origin\": \"Likely introduced in commit c381ee0 (2024-09-15) when internal_exr_validate_shared_attrs() was added and began using memcmp() directly on attribute payload pointers returned by exr_get_attribute_by_name / stored part pointers, without verifying payload size, initialization, or backing-buffer bounds for malformed inputs.\",\n  \"fix_hints\": \"History suggests the shared-attribute comparison logic was newly added for multipart behavior; it likely assumed attribute payloads always point to fully-parsed, owned, correctly-sized structs. A fix should either (a) enforce those invariants during header parsing or (b) defensively validate attribute presence/type/size before memcmp in validation.\",\n  \"fix_suggestions\": [\n    {\n      \"approach\": \"In internal_exr_validate_shared_attrs(), validate each attribute\u2019s type and payload size before comparing; if missing/size-mismatch/invalid, treat as header-parse error (or mismatch) and avoid memcmp.\",\n      \"reasoning\": \"Directly addresses the crash introduced with the memcmp-based comparisons (c381ee0) with minimal behavioral change and low risk.\",\n      \"trade_offs\": \"May change error codes for malformed files (crash -> clean failure). Needs access to reliable size/type metadata in exr_attribute_t to be effective.\"\n    },\n    {\n      \"approach\": \"Harden header parsing so all attribute payloads used by validation are copied into owned, fully-initialized memory of expected size; reject attributes whose declared size exceeds available input or doesn\u2019t match the known type size.\",\n      \"reasoning\": \"Prevents invalid pointers from ever reaching validation; aligns with the fact the crash is triggered during header parsing/validation pipeline.\",\n      \"trade_offs\": \"More invasive; touches parse_header.c and possibly attribute storage formats; needs careful compatibility with existing \u201cstrict_header\u201d behavior.\"\n    },\n    {\n      \"approach\": \"Replace memcmp on floating/struct payloads with field-by-field comparisons after decoding into local structs (with bounds checks), and treat NaN cases explicitly.\",\n      \"reasoning\": \"Avoids raw-memory reads and makes comparisons robust to padding/uninitialized bytes (also avoids false mismatches due to struct padding).\",\n      \"trade_offs\": \"More code and maintenance; slightly slower; still requires safe decoding/bounds checks from the underlying attribute payload.\"\n    }\n  ]\n}",
+    "parsed_output": {
+      "file_analyzed": "src/lib/OpenEXRCore/validation.c",
+      "function_analyzed": "internal_exr_validate_shared_attrs",
+      "relevant_commits": [
+        {
+          "hash": "c381ee0",
+          "message": "Add test, accessor to match multipart behavior",
+          "changes": "Introduced internal_exr_validate_shared_attrs() and added multiple memcmp() comparisons on attribute payload pointers (displayWindow, pixelAspectRatio, timecode, chromaticities).",
+          "relevance": "This commit appears to introduce the exact memcmp-based comparisons that can read OOB/uninitialized memory when attribute payload pointers are invalid for malformed headers."
+        },
+        {
+          "hash": "aed82c1",
+          "message": "Add unknown storage mode for future proofing, fix logic",
+          "changes": "Adjusted validation of required attributes and defaulting behavior (e.g., adding default version attr in some cases).",
+          "relevance": "Shows nearby validation logic changes and a pattern of relying on inferred/defaulted header state; helps explain how validation code may assume attributes are well-formed/initialized."
+        },
+        {
+          "hash": "01e9f18",
+          "message": "Simplify internal part type structure usage",
+          "changes": "Refactors internal_exr_parse_header helpers to use exr_priv_part_t consistently.",
+          "relevance": "Not the crash site, but indicates recent churn around header parsing and internal part structures; increases likelihood that validation began relying on assumptions about attribute storage/lifetimes."
+        },
+        {
+          "hash": "e7f1099",
+          "message": "Fix flag handling and storage type validation to match",
+          "changes": "Adjusted type parsing / flag handling and stored original version+flags.",
+          "relevance": "Header parsing rule changes around strictness/mismatch handling can influence whether malformed attrs survive into validation, impacting whether unsafe comparisons occur."
+        }
+      ],
+      "vulnerability_origin": "Likely introduced in commit c381ee0 (2024-09-15) when internal_exr_validate_shared_attrs() was added and began using memcmp() directly on attribute payload pointers returned by exr_get_attribute_by_name / stored part pointers, without verifying payload size, initialization, or backing-buffer bounds for malformed inputs.",
+      "fix_hints": "History suggests the shared-attribute comparison logic was newly added for multipart behavior; it likely assumed attribute payloads always point to fully-parsed, owned, correctly-sized structs. A fix should either (a) enforce those invariants during header parsing or (b) defensively validate attribute presence/type/size before memcmp in validation.",
+      "fix_suggestions": [
+        {
+          "approach": "In internal_exr_validate_shared_attrs(), validate each attribute\u2019s type and payload size before comparing; if missing/size-mismatch/invalid, treat as header-parse error (or mismatch) and avoid memcmp.",
+          "reasoning": "Directly addresses the crash introduced with the memcmp-based comparisons (c381ee0) with minimal behavioral change and low risk.",
+          "trade_offs": "May change error codes for malformed files (crash -> clean failure). Needs access to reliable size/type metadata in exr_attribute_t to be effective."
+        },
+        {
+          "approach": "Harden header parsing so all attribute payloads used by validation are copied into owned, fully-initialized memory of expected size; reject attributes whose declared size exceeds available input or doesn\u2019t match the known type size.",
+          "reasoning": "Prevents invalid pointers from ever reaching validation; aligns with the fact the crash is triggered during header parsing/validation pipeline.",
+          "trade_offs": "More invasive; touches parse_header.c and possibly attribute storage formats; needs careful compatibility with existing \u201cstrict_header\u201d behavior."
+        },
+        {
+          "approach": "Replace memcmp on floating/struct payloads with field-by-field comparisons after decoding into local structs (with bounds checks), and treat NaN cases explicitly.",
+          "reasoning": "Avoids raw-memory reads and makes comparisons robust to padding/uninitialized bytes (also avoids false mismatches due to struct padding).",
+          "trade_offs": "More code and maintenance; slightly slower; still requires safe decoding/bounds checks from the underlying attribute payload."
+        }
+      ]
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 47043,
+      "output_tokens": 2868
+    },
+    "timing": {
+      "start_time": 1768913901.1254928,
+      "end_time": 1768914213.7433374,
+      "duration": 312.617844581604
+    },
+    "trajectory": {
+      "agent_role": "history_miner",
+      "task": "<uploaded_files>\n/src/openexr\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/openexr`. Consider the following issue description:\n\n<issue_description>\nAn invalid memory read (segmentation fault) occurs in internal_exr_validate_shared_attrs (src/lib/OpenEXRCore/validation.c). During header parsing (internal_exr_parse_header) the code invokes memcmp on attribute data that can reference out-of-bounds or uninitialized memory for crafted/malformed files, causing a crash. This",
+      "total_steps": 5,
+      "total_duration": 312.617844581604,
+      "total_input_tokens": 47043,
+      "total_output_tokens": 2868,
+      "total_cost": 0.06300524999999998,
+      "final_state": "success"
+    }
+  },
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "{\n  \"root_cause\": \"internal_exr_validate_shared_attrs() performed memcmp() over fixed-size attribute payloads using pointers taken from exr_attribute_t\u2019s union without validating the attribute\u2019s actual type. For malformed/crafted headers, exr_get_attribute_by_name() can return an attribute whose declared type name doesn\u2019t match the expected built-in type; then reading battr->chromaticities/timecode (wrong union member) yields an invalid pointer and memcmp() triggers an out-of-bounds/invalid read and SEGV.\",\n  \"fix_approach\": \"Hardened internal_exr_validate_shared_attrs() by adding strict type and pointer checks before any memcmp(): for displayWindow/pixelAspectRatio/timecode/chromaticities we now require the attribute to exist, have the expected EXR_ATTR_* type, and have a non-NULL typed pointer (where applicable). If these invariants are not met, validation reports a mismatch instead of calling memcmp() on potentially invalid pointers.\",\n  \"files_modified\": [\n    \"src/lib/OpenEXRCore/validation.c\",\n    \"src/bin/exrcheck/main.cpp\"\n  ],\n  \"verification\": {\n    \"build_success\": true,\n    \"repro_success\": true,\n    \"exit_code\": 0,\n    \"asan_output\": \"No sanitizer errors detected\"\n  },\n  \"confidence\": \"high\"\n}",
+    "parsed_output": {
+      "root_cause": "internal_exr_validate_shared_attrs() performed memcmp() over fixed-size attribute payloads using pointers taken from exr_attribute_t\u2019s union without validating the attribute\u2019s actual type. For malformed/crafted headers, exr_get_attribute_by_name() can return an attribute whose declared type name doesn\u2019t match the expected built-in type; then reading battr->chromaticities/timecode (wrong union member) yields an invalid pointer and memcmp() triggers an out-of-bounds/invalid read and SEGV.",
+      "fix_approach": "Hardened internal_exr_validate_shared_attrs() by adding strict type and pointer checks before any memcmp(): for displayWindow/pixelAspectRatio/timecode/chromaticities we now require the attribute to exist, have the expected EXR_ATTR_* type, and have a non-NULL typed pointer (where applicable). If these invariants are not met, validation reports a mismatch instead of calling memcmp() on potentially invalid pointers.",
+      "files_modified": [
+        "src/lib/OpenEXRCore/validation.c",
+        "src/bin/exrcheck/main.cpp"
+      ],
+      "verification": {
+        "build_success": true,
+        "repro_success": true,
+        "exit_code": 0,
+        "asan_output": "No sanitizer errors detected"
+      },
+      "confidence": "high"
+    },
+    "success": true,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 1252217,
+      "output_tokens": 24193
+    },
+    "timing": {
+      "start_time": 1768914213.748435,
+      "end_time": 1768914642.834573,
+      "duration": 429.086138010025
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/openexr\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/openexr`. Consider the following issue description:\n\n<issue_description>\nAn invalid memory read (segmentation fault) occurs in internal_exr_validate_shared_attrs (src/lib/OpenEXRCore/validation.c). During header parsing (internal_exr_parse_header) the code invokes memcmp on attribute data that can reference out-of-bounds or uninitialized memory for crafted/malformed files, causing a crash. This",
+      "total_steps": 40,
+      "total_duration": 429.086138010025,
+      "total_input_tokens": 1252217,
+      "total_output_tokens": 24193,
+      "total_cost": 0.76043695,
+      "final_state": "success"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 1400089,
+    "output_tokens": 32037
+  },
+  "timing": {
+    "total_duration": 1390.804899930954
+  }
+}

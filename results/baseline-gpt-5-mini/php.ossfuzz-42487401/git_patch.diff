@@ -1,0 +1,15 @@
+diff --git a/Zend/zend_generators.c b/Zend/zend_generators.c
+index baca12f66b5..a678653039d 100644
+--- a/Zend/zend_generators.c
++++ b/Zend/zend_generators.c
+@@ -524,9 +524,8 @@ static zend_generator *zend_generator_get_child(zend_generator_node *node, zend_
+ 
+ static zend_generator_node *zend_generator_search_multi_children_node(zend_generator_node *node)
+ {
+-	while (node->children == 1) {
+-		node = &node->child.single.child->node;
+-	}
++	/* Do not follow child pointers here — they may point to freed generators.
++	 * Only consider the current node if it already has multiple children. */
+ 	return node->children > 1 ? node : NULL;
+ }

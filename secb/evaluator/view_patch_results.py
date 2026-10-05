@@ -69,8 +69,8 @@ def parse_args():
     parser.add_argument(
         "--agent",
         required=True,
-        choices=["swea", "oh", "aider"],
-        help="Agent type (swea, oh, or aider)",
+        choices=["swea", "oh", "aider", "smolagent"],
+        help="Agent type (swea, oh, aider, or smolagent)",
     )
     parser.add_argument(
         "--input-dir", required=True, help="Input directory containing report files"

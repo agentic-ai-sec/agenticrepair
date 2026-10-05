@@ -1,0 +1,43 @@
+{
+  "instance_id": "php.ossfuzz-42501725",
+  "final_status": "failed",
+  "static_analyzer_output": null,
+  "dynamic_analyzer_output": null,
+  "history_miner_output": null,
+  "fixer_verifier_output": {
+    "role": "fixer_verifier",
+    "raw_output": "No new observation provided.",
+    "parsed_output": {
+      "raw": "No new observation provided.",
+      "parse_error": true
+    },
+    "success": false,
+    "error": null,
+    "token_usage": {
+      "input_tokens": 665532,
+      "output_tokens": 108111
+    },
+    "timing": {
+      "start_time": 1769384050.9382915,
+      "end_time": 1769385207.1829267,
+      "duration": 1156.244635105133
+    },
+    "trajectory": {
+      "agent_role": "fixer_verifier",
+      "task": "<uploaded_files>\n/src/php-src\n</uploaded_files>\nI've uploaded a code repository in the directory `/src/php-src`. Consider the following issue description:\n\n<issue_description>\nHeap-use-after-free in the Zend VM: ZEND_FE_FETCH_RW_SPEC_VAR_HANDLER (Zend/zend_vm_execute.h) performs a read from heap memory that has already been freed. The freed region is released via zend_array_destroy (zend_hash.c) during ArrayIterator setup (ext/spl/spl_array.c, zim_ArrayIterator___construct / spl_array_set_array)",
+      "total_steps": 42,
+      "total_duration": 1156.244635105133,
+      "total_input_tokens": 665532,
+      "total_output_tokens": 108111,
+      "total_cost": 0.024681299999999996,
+      "final_state": "failed"
+    }
+  },
+  "total_token_usage": {
+    "input_tokens": 665532,
+    "output_tokens": 108111
+  },
+  "timing": {
+    "total_duration": 1156.2554800510406
+  }
+}

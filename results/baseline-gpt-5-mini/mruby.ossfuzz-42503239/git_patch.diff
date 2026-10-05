@@ -1,0 +1,17 @@
+diff --git a/src/vm.c b/src/vm.c
+index 1c59d4406..a29b7185d 100644
+--- a/src/vm.c
++++ b/src/vm.c
+@@ -478,7 +478,12 @@ mrb_funcall_with_block(mrb_state *mrb, mrb_value self, mrb_sym mid, mrb_int argc
+     }
+     c = mrb_class(mrb, self);
+     m = mrb_method_search_vm(mrb, &c, mid);
+-    mrb_stack_extend(mrb, argc + 3);
++    /* Ensure enough stack space for both argc-related and register-related slots. */
++    {
++      mrb_int need = argc + 3;
++      if (n + 2 > need) need = n + 2;
++      mrb_stack_extend(mrb, need);
++    }
+     if (MRB_METHOD_UNDEF_P(m) || argc >= 15) {
+       mrb_value args = mrb_ary_new_from_values(mrb, argc, argv);

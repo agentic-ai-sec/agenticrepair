@@ -1,0 +1,16 @@
+diff --git a/HTMLparser.c b/HTMLparser.c
+index 67c39385..73125468 100644
+--- a/HTMLparser.c
++++ b/HTMLparser.c
+@@ -2758,7 +2758,10 @@ htmlParseHTMLAttribute(htmlParserCtxtPtr ctxt, const xmlChar stop) {
+     /*
+      * Ok loop until we reach one of the ending chars
+      */
+-    while ((CUR != 0) && (CUR != stop)) {
++    for (;;) {
++	GROW;
++	if ((CUR == 0) || (CUR == stop)) break;
++		GROW;
+ 	if ((stop == 0) && (CUR == '>')) break;
+ 	if ((stop == 0) && (IS_BLANK_CH(CUR))) break;
+         if (CUR == '&') {

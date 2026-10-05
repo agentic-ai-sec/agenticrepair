@@ -1,0 +1,39 @@
+diff --git a/src/p_lx_elf.cpp b/src/p_lx_elf.cpp
+index f0a7bf72..d1d91576 100644
+--- a/src/p_lx_elf.cpp
++++ b/src/p_lx_elf.cpp
+@@ -7405,7 +7405,9 @@ void PackLinuxElf64::unpack(OutputFile *fo)
+                         }
+                     }
+                     int boff = find_le32(peek_arr, sizeof(peek_arr), size);
+-                    if (boff < 0) {
++                    // find_le32() guarantees only that 4 bytes are readable at the match.
++                    // We will treat the match as a full b_info header, so ensure it fits.
++                    if (boff < 0 || (unsigned)boff > sizeof(peek_arr) - sizeof(b_info)) {
+                         throwCantUnpack("b_info corrupted");
+                     }
+                     bp = (b_info *)(void *)&peek_arr[boff];
+@@ -8551,7 +8553,9 @@ void PackLinuxElf32::unpack(OutputFile *fo)
+                         }
+                     }
+                     int boff = find_le32(peek_arr, sizeof(peek_arr), size);
+-                    if (boff < 0) {
++                    // find_le32() guarantees only that 4 bytes are readable at the match.
++                    // We will treat the match as a full b_info header, so ensure it fits.
++                    if (boff < 0 || (unsigned)boff > sizeof(peek_arr) - sizeof(b_info)) {
+                         throwCantUnpack("b_info corrupted");
+                     }
+                     bp = (b_info *)(void *)&peek_arr[boff];
+diff --git a/src/util/util.cpp b/src/util/util.cpp
+index d6208c80..0b939385 100644
+--- a/src/util/util.cpp
++++ b/src/util/util.cpp
+@@ -278,7 +278,7 @@ void upx_memswap(void *a, void *b, size_t n) {
+ 
+ // much better memswap(), optimized for our use case in sort functions below
+ static void memswap_no_overlap(byte *a, byte *b, size_t n) {
+-#if defined(__clang__) && __clang_major__ < 15
++#if defined(__clang__)
+     // work around a clang < 15 ICE (Internal Compiler Error)
+     // @COMPILER_BUG @CLANG_BUG
+     upx_memswap(a, b, n);

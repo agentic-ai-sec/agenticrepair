@@ -1,0 +1,11 @@
+{
+  "instance_id": "mupdf.ossfuzz-42524969",
+  "final_status": "failed",
+  "total_token_usage": {
+    "input_tokens": 220058,
+    "output_tokens": 54689
+  },
+  "timing": {
+    "total_duration": 274.80980229377747
+  }
+}

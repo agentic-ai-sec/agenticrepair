@@ -1,0 +1,114 @@
+diff --git a/src/lib/OpenEXRCore/compression.c b/src/lib/OpenEXRCore/compression.c
+index 1d2eaea5..9836a1e7 100644
+--- a/src/lib/OpenEXRCore/compression.c
++++ b/src/lib/OpenEXRCore/compression.c
+@@ -10,6 +10,8 @@
+ 
+ #include <libdeflate.h>
+ 
++#include <string.h>
++
+ #if (                                                                          \
+     LIBDEFLATE_VERSION_MAJOR > 1 ||                                            \
+     (LIBDEFLATE_VERSION_MAJOR == 1 && LIBDEFLATE_VERSION_MINOR > 18))
+@@ -119,6 +121,36 @@ exr_uncompress_buffer (
+     enum libdeflate_result              res;
+     size_t                              actual_in_bytes;
+     const struct _internal_exr_context* pctxt = EXR_CCTXT (ctxt);
++    void*                               padded_in = NULL;
++    const void*                         in_ptr    = in;
++
++    /*
++     * libdeflate's zlib decoder can perform small unaligned 16-bit reads past
++     * the end of the provided input buffer when the input is malformed.
++     *
++     * To prevent out-of-bounds reads (ASan crash / potential info leak) when
++     * processing crafted files, make a temporary padded copy of the input.
++     * The logical input size passed to libdeflate remains unchanged.
++     */
++    if (in_bytes > (SIZE_MAX - 2)) return EXR_ERR_OUT_OF_MEMORY;
++
++    {
++        exr_memory_allocation_func_t allocfn =
++            pctxt ? pctxt->alloc_fn : internal_exr_alloc;
++
++        padded_in = allocfn (in_bytes + 2);
++        if (!padded_in) return EXR_ERR_OUT_OF_MEMORY;
++        if (in_bytes > 0 && in)
++        {
++            volatile const uint8_t* src = (volatile const uint8_t*) in;
++            uint8_t*       dst = (uint8_t*) padded_in;
++            for (size_t i = 0; i < in_bytes; ++i)
++                dst[i] = src[i];
++        }
++        ((uint8_t*) padded_in)[in_bytes + 0] = 0;
++        ((uint8_t*) padded_in)[in_bytes + 1] = 0;
++        in_ptr = padded_in;
++    }
+ #ifdef EXR_USE_CONFIG_DEFLATE_STRUCT
+     struct libdeflate_options opt = {
+         .sizeof_options = sizeof (struct libdeflate_options),
+@@ -137,7 +169,7 @@ exr_uncompress_buffer (
+     {
+         res = libdeflate_zlib_decompress_ex (
+             decomp,
+-            in,
++            in_ptr,
+             in_bytes,
+             out,
+             out_bytes_avail,
+@@ -146,6 +178,12 @@ exr_uncompress_buffer (
+ 
+         libdeflate_free_decompressor (decomp);
+ 
++        if (padded_in)
++        {
++            (pctxt ? pctxt->free_fn : internal_exr_free) (padded_in);
++            padded_in = NULL;
++        }
++
+         if (res == LIBDEFLATE_SUCCESS)
+         {
+             if (in_bytes == actual_in_bytes) return EXR_ERR_SUCCESS;
+@@ -153,5 +191,10 @@ exr_uncompress_buffer (
+         }
+         return EXR_ERR_CORRUPT_CHUNK;
+     }
++    if (padded_in)
++    {
++        (pctxt ? pctxt->free_fn : internal_exr_free) (padded_in);
++        padded_in = NULL;
++    }
+     return EXR_ERR_OUT_OF_MEMORY;
+ }
+diff --git a/src/lib/OpenEXRCore/internal_dwa_compressor.h b/src/lib/OpenEXRCore/internal_dwa_compressor.h
+index 688bd51a..ab21aa7b 100644
+--- a/src/lib/OpenEXRCore/internal_dwa_compressor.h
++++ b/src/lib/OpenEXRCore/internal_dwa_compressor.h
+@@ -794,15 +794,25 @@ DwaCompressor_uncompress (
+     }
+     else
+     {
+-        uint64_t ruleSize;
++        uint64_t ruleSize = 0;
+         rv =
+             DwaCompressor_readChannelRules (me, &dataPtr, &dataLeft, &ruleSize);
+ 
++        /* Ensure ruleSize accounting cannot overflow. */
++        if (ruleSize > (UINT64_MAX - headerSize))
++        {
++            return EXR_ERR_CORRUPT_CHUNK;
++        }
+         headerSize += ruleSize;
+     }
+ 
+     if (rv != EXR_ERR_SUCCESS) return rv;
+ 
++    /* After reading any optional channel rule data, ensure the remaining
++     * bytes are sufficient for the compressed payload sizes declared in
++     * the header counters. */
++    if (dataLeft < compressedSize) { return EXR_ERR_CORRUPT_CHUNK; }
++
+     outBufferSize = 0;
+     rv            = DwaCompressor_initializeBuffers (me, &outBufferSize);
+     if (rv != EXR_ERR_SUCCESS) return rv;

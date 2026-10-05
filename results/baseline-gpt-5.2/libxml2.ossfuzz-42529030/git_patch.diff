@@ -1,0 +1,53 @@
+diff --git a/error.c b/error.c
+index 1b4fe767..ab290df5 100644
+--- a/error.c
++++ b/error.c
+@@ -11,6 +11,7 @@
+ 
+ #include <string.h>
+ #include <stdarg.h>
++#include <stdint.h>
+ #include <libxml/parser.h>
+ #include <libxml/xmlerror.h>
+ #include <libxml/xmlmemory.h>
+@@ -177,10 +178,39 @@ xmlParserPrintFileContextInternal(xmlParserInputPtr input ,
+     unsigned int n, col;	/* GCC warns if signed, because compared with sizeof() */
+     xmlChar  content[81]; /* space for 80 chars + line terminator */
+     xmlChar *ctnt;
++    uintptr_t curp, basep;
+ 
+-    if ((input == NULL) || (input->cur == NULL))
++    if ((input == NULL) || (input->cur == NULL) || (input->base == NULL))
+         return;
+ 
++    /*
++     * Error reporting must not dereference parser input pointers if they were
++     * invalidated by a buffer reallocation.
++     *
++     * The parser input can point into the content of input->buf->buffer.
++     * When that buffer grows, it may be realloc'ed which frees the old
++     * allocation. If an error is raised before the parser updates input->base
++     * and input->cur, reading from them would be a heap-use-after-free.
++     *
++     * If the input is backed by a buffer, validate that base/cur still point
++     * into the current buffer content.
++     */
++    if ((input->buf != NULL) && (input->buf->buffer != NULL) &&
++        (xmlBufContent(input->buf->buffer) != NULL)) {
++        xmlBufPtr buf = input->buf->buffer;
++        const xmlChar *bufContent = xmlBufContent(buf);
++        size_t bufUse = xmlBufUse(buf);
++        uintptr_t bufp = (uintptr_t) bufContent;
++        uintptr_t bufend = bufp + (uintptr_t) bufUse;
++
++        curp = (uintptr_t) input->cur;
++        basep = (uintptr_t) input->base;
++
++        if ((basep < bufp) || (basep > bufend) ||
++            (curp < bufp) || (curp > bufend))
++            return;
++    }
++
+     cur = input->cur;
+     base = input->base;
+     /* skip backwards over any end-of-lines */

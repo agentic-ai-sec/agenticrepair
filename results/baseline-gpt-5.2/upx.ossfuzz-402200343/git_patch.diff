@@ -1,0 +1,69 @@
+diff --git a/src/p_lx_elf.cpp b/src/p_lx_elf.cpp
+index d7f435aa..bdaa6593 100644
+--- a/src/p_lx_elf.cpp
++++ b/src/p_lx_elf.cpp
+@@ -2381,7 +2381,7 @@ PackLinuxElf32::invert_pt_dynamic(Elf32_Dyn const *dynp, u32_t headway)
+     // Find end of DT_SYMTAB
+     unsigned const tmp2 = elf_find_table_size(Elf32_Dyn::DT_SYMTAB,
+         Elf32_Shdr::SHT_DYNSYM);
+-    symnum_max = (~0u == tmp2) ? 0 : tmp1 / sizeof(Elf32_Sym);
++    symnum_max = (~0u == tmp2) ? 0 : tmp2 / sizeof(Elf32_Sym);
+ 
+     unsigned v_sym = dt_table[Elf32_Dyn::DT_SYMTAB];
+     if (v_sym) {
+@@ -8473,7 +8473,7 @@ PackLinuxElf64::invert_pt_dynamic(Elf64_Dyn const *dynp, upx_uint64_t headway)
+     // Find end of DT_SYMTAB
+     unsigned const tmp2 = elf_find_table_size(Elf64_Dyn::DT_SYMTAB,
+         Elf64_Shdr::SHT_DYNSYM);
+-    symnum_max = (~0u == tmp2) ? 0 : tmp1 / sizeof(Elf64_Sym);
++    symnum_max = (~0u == tmp2) ? 0 : tmp2 / sizeof(Elf64_Sym);
+ 
+     unsigned v_sym = dt_table[Elf64_Dyn::DT_SYMTAB];
+     if (v_sym) {
+@@ -8667,6 +8667,8 @@ Elf32_Sym const *PackLinuxElf32::elf_lookup(char const *name) const
+             if (l_hash <= &buckets[m])
+                 throwCantPack("bad DT_HASH %u", m);
+             for (si= get_te32(&buckets[m]); si; si = get_te32(&chains[si])) {
++                if (symnum_max && symnum_max <= si)
++                    throwCantPack("bad DT_HASH chain %d\n", si);
+                 if (l_sym <= &dynsym[si])
+                     throwCantPack("bad DT_HASH chain %d\n", si);
+                 char const *const p= get_dynsym_name(si, (unsigned)-1);
+@@ -8693,7 +8695,7 @@ Elf32_Sym const *PackLinuxElf32::elf_lookup(char const *name) const
+         }
+         if (!n_bitmask
+         || (unsigned)(file_size - ((char const *)bitmask - (char const *)(void const *)file_image))
+-                <= sizeof(unsigned)*n_bitmask ) {
++                <= sizeof(*bitmask)*n_bitmask ) {
+             throwCantPack("bad n_bitmask %#x\n", n_bitmask);
+         }
+         if (n_bucket) { // -rust-musl can have "empty" hashtab
+@@ -8704,6 +8706,8 @@ Elf32_Sym const *PackLinuxElf32::elf_lookup(char const *name) const
+ 
+             if (1& (w>>hbit1) & (w>>hbit2)) {
+                 unsigned const hhead = get_te32(&buckets[h % n_bucket]);
++                if (symnum_max && symnum_max <= hhead)
++                    throwCantPack("bad DT_GNU_HASH head=%u\n", hhead);
+                 if (n_bucket <= (hhead - symbias)) {
+                     throwCantPack("bad DT_GNU_HASH n_bucket{%#x} <= buckets[%d]{%#x} - symbias{%#x}\n",
+                             n_bucket, h % n_bucket, hhead, symbias);
+@@ -8768,6 +8772,8 @@ Elf64_Sym const *PackLinuxElf64::elf_lookup(char const *name) const
+             if (l_hash <= &buckets[m])
+                 throwCantPack("bad DT_HASH %u", m);
+             for (si= get_te32(&buckets[m]); si; si = get_te32(&chains[si])) {
++                if (symnum_max && symnum_max <= si)
++                    throwCantPack("bad DT_HASH chain %d\n", si);
+                 if (l_sym <= &dynsym[si])
+                     throwCantPack("bad DT_HASH chain %d\n", si);
+                 char const *const p= get_dynsym_name(si, (unsigned)-1);
+@@ -8805,6 +8811,10 @@ Elf64_Sym const *PackLinuxElf64::elf_lookup(char const *name) const
+             upx_uint64_t const w = get_te64(&bitmask[(n_bitmask -1) & (h>>6)]);
+             if (1& (w>>hbit1) & (w>>hbit2)) {
+                 unsigned hhead = get_te32(&buckets[h % n_bucket]);
++                if (hhead < symbias)
++                    throwCantPack("bad gnu_hash head=%u < symbias=%u\n", hhead, symbias);
++                if (symnum_max && symnum_max <= hhead)
++                    throwCantPack("bad gnu_hash head=%u\n", hhead);
+                 if (hhead) {
+                     Elf64_Sym const *dsp = &dynsym[hhead];
+                     unsigned const *hp = &hasharr[hhead - symbias];

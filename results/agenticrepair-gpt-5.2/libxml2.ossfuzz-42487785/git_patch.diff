@@ -1,0 +1,103 @@
+diff --git a/xinclude.c b/xinclude.c
+index f48e0af5..f72cf35b 100644
+--- a/xinclude.c
++++ b/xinclude.c
+@@ -401,8 +401,13 @@ xmlXIncludeFreeContext(xmlXIncludeCtxtPtr ctxt) {
+     }
+     if (ctxt->incTab != NULL)
+ 	xmlFree(ctxt->incTab);
+-    if (ctxt->txtTab != NULL)
++    if (ctxt->txtTab != NULL) {
++	for (i = 0;i < ctxt->txtNr;i++) {
++	    if (ctxt->txtTab[i] != NULL)
++		xmlFreeNode(ctxt->txtTab[i]);
++	}
+ 	xmlFree(ctxt->txtTab);
++    }
+     if (ctxt->txturlTab != NULL)
+ 	xmlFree(ctxt->txturlTab);
+     if (ctxt->base != NULL) {
+@@ -765,40 +770,64 @@ xmlXIncludeRecurseDoc(xmlXIncludeCtxtPtr ctxt, xmlDocPtr doc,
+  */
+ static void
+ xmlXIncludeAddTxt(xmlXIncludeCtxtPtr ctxt, xmlNodePtr txt, const xmlURL url) {
++    xmlNodePtr copy;
+ #ifdef DEBUG_XINCLUDE
+     xmlGenericError(xmlGenericErrorContext, "Adding text %s\n", url);
+ #endif
++
++    if ((ctxt == NULL) || (txt == NULL))
++        return;
++
++    /*
++     * The XMLReader can free nodes it created while XInclude processing is
++     * still caching them. Never cache a node whose lifetime is not clearly
++     * owned by the XInclude context. Cache an independent copy instead.
++     */
++    if (txt->type == XML_TEXT_NODE) {
++        copy = xmlNewText(txt->content);
++    } else {
++        copy = xmlCopyNode(txt, 1);
++    }
++    if (copy == NULL) {
++        xmlXIncludeErrMemory(ctxt, NULL, "processing text");
++        return;
++    }
++
+     if (ctxt->txtMax == 0) {
+-	ctxt->txtMax = 4;
++        ctxt->txtMax = 4;
+         ctxt->txtTab = (xmlNodePtr *) xmlMalloc(ctxt->txtMax *
+-		                          sizeof(ctxt->txtTab[0]));
++                                      sizeof(ctxt->txtTab[0]));
+         if (ctxt->txtTab == NULL) {
+-	    xmlXIncludeErrMemory(ctxt, NULL, "processing text");
+-	    return;
+-	}
++            xmlXIncludeErrMemory(ctxt, NULL, "processing text");
++            xmlFreeNode(copy);
++            return;
++        }
+         ctxt->txturlTab = (xmlURL *) xmlMalloc(ctxt->txtMax *
+-		                          sizeof(ctxt->txturlTab[0]));
++                                      sizeof(ctxt->txturlTab[0]));
+         if (ctxt->txturlTab == NULL) {
+-	    xmlXIncludeErrMemory(ctxt, NULL, "processing text");
+-	    return;
+-	}
++            xmlXIncludeErrMemory(ctxt, NULL, "processing text");
++            xmlFreeNode(copy);
++            return;
++        }
+     }
+     if (ctxt->txtNr >= ctxt->txtMax) {
+-	ctxt->txtMax *= 2;
++        ctxt->txtMax *= 2;
+         ctxt->txtTab = (xmlNodePtr *) xmlRealloc(ctxt->txtTab,
+-	             ctxt->txtMax * sizeof(ctxt->txtTab[0]));
++                     ctxt->txtMax * sizeof(ctxt->txtTab[0]));
+         if (ctxt->txtTab == NULL) {
+-	    xmlXIncludeErrMemory(ctxt, NULL, "processing text");
+-	    return;
+-	}
++            xmlXIncludeErrMemory(ctxt, NULL, "processing text");
++            xmlFreeNode(copy);
++            return;
++        }
+         ctxt->txturlTab = (xmlURL *) xmlRealloc(ctxt->txturlTab,
+-	             ctxt->txtMax * sizeof(ctxt->txturlTab[0]));
++                     ctxt->txtMax * sizeof(ctxt->txturlTab[0]));
+         if (ctxt->txturlTab == NULL) {
+-	    xmlXIncludeErrMemory(ctxt, NULL, "processing text");
+-	    return;
+-	}
++            xmlXIncludeErrMemory(ctxt, NULL, "processing text");
++            xmlFreeNode(copy);
++            return;
++        }
+     }
+-    ctxt->txtTab[ctxt->txtNr] = txt;
++    ctxt->txtTab[ctxt->txtNr] = copy;
+     ctxt->txturlTab[ctxt->txtNr] = xmlStrdup(url);
+     ctxt->txtNr++;
+ }

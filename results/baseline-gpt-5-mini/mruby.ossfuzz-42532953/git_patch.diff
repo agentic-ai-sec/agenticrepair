@@ -1,0 +1,65 @@
+diff --git a/src/string.c b/src/string.c
+index e214ad4c2..ea66bd056 100644
+--- a/src/string.c
++++ b/src/string.c
+@@ -624,6 +624,11 @@ memsearch_swar(const char *xs, long m, const char *ys, long n)
+       if (zeros & MASK4) {
+         const mrb_int idx = i + j;
+         const char* p = s0 + idx + 1;
++        /* ensure the full match window [idx, idx+m) is inside ys[0..n)
++         * This avoids calling memcmp past the end of the target buffer
++         * when a candidate position is detected near the end.
++         */
++        if (idx + m > n) continue;
+         if (memcmp(p, xs + 1, m - 2) == 0) {
+           return idx;
+         }
+@@ -640,10 +645,12 @@ memsearch_swar(const char *xs, long m, const char *ys, long n)
+   if (i+m < n) {
+     const char *p = s0;
+     const char *e = ys + n;
+-    for (;p<e;) {
+-      size_t len = e-p;
+-      p = (const char*)memchr(p, *xs, len);
+-      if (p == NULL || len < m) break;
++    for (; p < e; ) {
++      size_t rem = (size_t)(e - p);
++      p = (const char*)memchr(p, *xs, rem);
++      if (p == NULL) break;
++      rem = (size_t)(e - p);
++      if (rem < (size_t)m) break;
+       if (memcmp(p+1, xs+1, m-1) == 0) return (mrb_int)(p - ys);
+       p++;
+     }
+@@ -668,7 +675,30 @@ mrb_memsearch(const char *x, mrb_int m, const char *y, mrb_int n)
+     if (p) return (mrb_int)(p - y);
+     return -1;
+   }
+-  return memsearch_swar(x, m, y, n);
++  /* Use a safe fallback search implementation instead of memsearch_swar
++   * which has triggered out-of-bounds reads in some cases. This simple
++   * implementation is bounds-checked to avoid calling memcmp past the end
++   * of the target buffer.
++   */
++  {
++    const char *p = y;
++    const char *end = y + n;
++    if (m <= 0) return 0;
++    if (m == 1) {
++      const char *q = (const char*)memchr(y, *x, n);
++      return q ? (mrb_int)(q - y) : -1;
++    }
++    if (n < m) return -1;
++    const char *limit = end - m + 1;
++    while (p <= limit) {
++      size_t rem = (size_t)(limit - p + 1);
++      p = (const char*)memchr(p, *x, rem);
++      if (p == NULL) return -1;
++      if (memcmp(p, x, (size_t)m) == 0) return (mrb_int)(p - y);
++      p++;
++    }
++    return -1;
++  }
+ }
+ 
+ static void

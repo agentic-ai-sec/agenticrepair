@@ -1,0 +1,94 @@
+diff --git a/parser.c b/parser.c
+index cd89fdb6..22a08389 100644
+--- a/parser.c
++++ b/parser.c
+@@ -2289,9 +2289,6 @@ static int spacePop(xmlParserCtxtPtr ctxt) {
+ #define CUR_CHAR(l) xmlCurrentChar(ctxt, &l)
+ #define CUR_SCHAR(s, l) xmlStringCurrentChar(ctxt, s, &l)
+ 
+-#define COPY_BUF(l,b,i,v)						\
+-    if (l == 1) b[i++] = v;						\
+-    else i += xmlCopyCharMultiByte(&b[i],v)
+ 
+ /**
+  * xmlSkipBlankChars:
+@@ -3970,6 +3967,7 @@ xmlParseEntityValue(xmlParserCtxtPtr ctxt, xmlChar **orig) {
+             goto error;
+         }
+     }
++    if ((len) >= (size)) { xmlChar *new_buf; size_t new_size = size * 2; new_buf = (xmlChar *) xmlRealloc((buf), new_size); if (new_buf == NULL) { xmlFree(buf); return; } buf = new_buf; size = new_size; }
+     buf[len] = 0;
+     if (ctxt->instate == XML_PARSER_EOF)
+         goto error;
+@@ -4268,6 +4266,7 @@ xmlParseAttValueComplex(xmlParserCtxtPtr ctxt, int *attlen, int normalize) {
+     if ((in_space) && (normalize)) {
+         while ((len > 0) && (buf[len - 1] == 0x20)) len--;
+     }
++    if ((len) >= (size)) { xmlChar *new_buf; size_t new_size = size * 2; new_buf = (xmlChar *) xmlRealloc((buf), new_size); if (new_buf == NULL) { xmlFree(buf); return; } buf = new_buf; size = new_size; }
+     buf[len] = 0;
+     if (RAW == '<') {
+ 	xmlFatalErr(ctxt, XML_ERR_LT_IN_ATTRIBUTE, NULL);
+@@ -4404,6 +4403,7 @@ xmlParseSystemLiteral(xmlParserCtxtPtr ctxt) {
+ 	NEXTL(l);
+ 	cur = CUR_CHAR(l);
+     }
++    if ((len) >= (size)) { xmlChar *new_buf; size_t new_size = size * 2; new_buf = (xmlChar *) xmlRealloc((buf), new_size); if (new_buf == NULL) { xmlFree(buf); return; } buf = new_buf; size = new_size; }
+     buf[len] = 0;
+     if (ctxt->instate == XML_PARSER_EOF) {
+         xmlFree(buf);
+@@ -4482,6 +4482,7 @@ xmlParsePubidLiteral(xmlParserCtxtPtr ctxt) {
+ 	NEXT;
+ 	cur = CUR;
+     }
++    if ((len) >= (size)) { xmlChar *new_buf; size_t new_size = size * 2; new_buf = (xmlChar *) xmlRealloc((buf), new_size); if (new_buf == NULL) { xmlFree(buf); return; } buf = new_buf; size = new_size; }
+     buf[len] = 0;
+     if (ctxt->instate == XML_PARSER_EOF) {
+         xmlFree(buf);
+@@ -4978,6 +4979,7 @@ xmlParseCommentComplex(xmlParserCtxtPtr ctxt, xmlChar *buf,
+ 	cur = CUR_CHAR(l);
+ 
+     }
++    if ((len) >= (size)) { xmlChar *new_buf; size_t new_size = size * 2; new_buf = (xmlChar *) xmlRealloc((buf), new_size); if (new_buf == NULL) { xmlFree(buf); return; } buf = new_buf; size = new_size; }
+     buf[len] = 0;
+     if (ctxt->instate == XML_PARSER_EOF) {
+         xmlFree(buf);
+@@ -5113,6 +5115,7 @@ get_more:
+ 		}
+ 		memcpy(&buf[len], ctxt->input->cur, nbchar);
+ 		len += nbchar;
++    if ((len) >= (size)) { xmlChar *new_buf; size_t new_size = size * 2; new_buf = (xmlChar *) xmlRealloc((buf), new_size); if (new_buf == NULL) { xmlFree(buf); return; } buf = new_buf; size = new_size; }
+ 		buf[len] = 0;
+ 	    }
+ 	}
+@@ -5398,6 +5401,7 @@ xmlParsePI(xmlParserCtxtPtr ctxt) {
+ 		NEXTL(l);
+ 		cur = CUR_CHAR(l);
+ 	    }
++    if ((len) >= (size)) { xmlChar *new_buf; size_t new_size = size * 2; new_buf = (xmlChar *) xmlRealloc((buf), new_size); if (new_buf == NULL) { xmlFree(buf); return; } buf = new_buf; size = new_size; }
+ 	    buf[len] = 0;
+             if (ctxt->instate == XML_PARSER_EOF) {
+                 xmlFree(buf);
+@@ -10229,6 +10233,7 @@ xmlParseCDSect(xmlParserCtxtPtr ctxt) {
+ 	NEXTL(l);
+ 	cur = CUR_CHAR(l);
+     }
++    if ((len) >= (size)) { xmlChar *new_buf; size_t new_size = size * 2; new_buf = (xmlChar *) xmlRealloc((buf), new_size); if (new_buf == NULL) { xmlFree(buf); return; } buf = new_buf; size = new_size; }
+     buf[len] = 0;
+     if (ctxt->instate == XML_PARSER_EOF) {
+         xmlFree(buf);
+@@ -10625,6 +10630,7 @@ xmlParseVersionNum(xmlParserCtxtPtr ctxt) {
+ 	NEXT;
+ 	cur=CUR;
+     }
++    if ((len) >= (size)) { xmlChar *new_buf; size_t new_size = size * 2; new_buf = (xmlChar *) xmlRealloc((buf), new_size); if (new_buf == NULL) { xmlFree(buf); return; } buf = new_buf; size = new_size; }
+     buf[len] = 0;
+     return(buf);
+ }
+@@ -10738,6 +10744,7 @@ xmlParseEncName(xmlParserCtxtPtr ctxt) {
+ 	    NEXT;
+ 	    cur = CUR;
+         }
++    if ((len) >= (size)) { xmlChar *new_buf; size_t new_size = size * 2; new_buf = (xmlChar *) xmlRealloc((buf), new_size); if (new_buf == NULL) { xmlFree(buf); return; } buf = new_buf; size = new_size; }
+ 	buf[len] = 0;
+     } else {
+ 	xmlFatalErr(ctxt, XML_ERR_ENCODING_NAME, NULL);

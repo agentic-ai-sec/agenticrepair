@@ -1,0 +1,29 @@
+diff --git a/xmlreader.c b/xmlreader.c
+index a9b9ef93..1e01c06b 100644
+--- a/xmlreader.c
++++ b/xmlreader.c
+@@ -357,13 +357,18 @@ xmlTextReaderFreeProp(xmlTextReaderPtr reader, xmlAttrPtr cur) {
+ 
+     if ((__xmlRegisterCallbacks) && (xmlDeregisterNodeDefaultValue))
+ 	xmlDeregisterNodeDefaultValue((xmlNodePtr) cur);
+-
+-    /* Check for ID removal -> leading to invalid references ! */
+-    if ((cur->parent != NULL) && (cur->parent->doc != NULL) &&
+-	((cur->parent->doc->intSubset != NULL) ||
+-	 (cur->parent->doc->extSubset != NULL))) {
++    /*
++     * Remove IDs/refs pointing to this attribute before freeing it.
++     *
++     * In streaming mode (xmlTextReader), nodes/attributes can be freed
++     * while other processing (e.g. XInclude/XPointer) might still perform
++     * ID lookups. If we don't clear doc->ids entries for attributes like
++     * xml:id (which doesn't require a DTD), xmlGetID can return dangling
++     * pointers and trigger use-after-free in XPath.
++     */
++    if ((cur->parent != NULL) && (cur->parent->doc != NULL)) {
+         if (xmlIsID(cur->parent->doc, cur->parent, cur))
+-	    xmlTextReaderRemoveID(cur->parent->doc, cur);
++            xmlTextReaderRemoveID(cur->parent->doc, cur);
+         if (xmlIsRef(cur->parent->doc, cur->parent, cur))
+             xmlTextReaderRemoveRef(cur->parent->doc, cur);
+     }

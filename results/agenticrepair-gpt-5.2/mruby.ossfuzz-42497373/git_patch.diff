@@ -1,0 +1,186 @@
+diff --git a/src/fmt_fp.c b/src/fmt_fp.c
+index 807debe11..97ae5f8d3 100644
+--- a/src/fmt_fp.c
++++ b/src/fmt_fp.c
+@@ -76,50 +76,54 @@ static const mrb_float g_neg_pow[] = {
+  *       sign character for positive numbers.
+  */
+ 
++
+ int
+ mrb_format_float(mrb_float f, char *buf, size_t buf_size, char fmt, int prec, char sign) {
++  if (buf_size == 0) {
++    return 0;
++  }
++
+   char *s = buf;
+-  int buf_remaining = buf_size - 1;
++  char *end = buf + buf_size - 1; /* last valid position for the terminating NUL */
++  int buf_remaining = (int)buf_size - 1;
+   int alt_form = 0;
+ 
++#define PUTC(ch) do {   if (s >= end) goto out;   *s++ = (ch); } while (0)
++
+   if ((uint8_t)fmt & 0x80) {
+     fmt &= 0x7f;  /* turn off alt_form flag */
+     alt_form = 1;
+   }
+   if (buf_size <= FLT_MIN_BUF_SIZE) {
+-    // Smallest exp notion is -9e+99 (-9e+199) which is 6 (7) chars plus terminating
+-    // null.
++    /* Smallest exp notion is -9e+99 (-9e+199) which is 6 (7) chars plus terminating
++       null. */
+ 
+     if (buf_size >= 2) {
+-      *s++ = '?';
+-    }
+-    if (buf_size >= 1) {
+-      *s++ = '\0';
++      PUTC('?');
+     }
+-    return buf_size >= 2;
++    *s = '\0';
++    return (int)(s - buf);
+   }
+   if (signbit(f)) {
+-    *s++ = '-';
++    PUTC('-');
+     f = -f;
+   } else if (sign) {
+-    *s++ = sign;
++    PUTC(sign);
+   }
+-  buf_remaining -= (s - buf); // Adjust for sign
++  buf_remaining -= (int)(s - buf); // Adjust for sign
+ 
+   {
+     char uc = fmt & 0x20;
+     if (isinf(f)) {
+-      *s++ = 'I' ^ uc;
+-      *s++ = 'N' ^ uc;
+-      *s++ = 'F' ^ uc;
+-      goto ret;
++      PUTC('I' ^ uc);
++      PUTC('N' ^ uc);
++      PUTC('F' ^ uc);
++      goto out;
+     } else if (isnan(f)) {
+-      *s++ = 'N' ^ uc;
+-      *s++ = 'A' ^ uc;
+-      *s++ = 'N' ^ uc;
+-    ret:
+-      *s = '\0';
+-      return s - buf;
++      PUTC('N' ^ uc);
++      PUTC('A' ^ uc);
++      PUTC('N' ^ uc);
++      goto out;
+     }
+   }
+ 
+@@ -178,7 +182,7 @@ mrb_format_float(mrb_float f, char *buf, size_t buf_size, char fmt, int prec, ch
+     if (fmt == 'f' || (fmt == 'g' && e <= 4)) {
+       fmt = 'f';
+       dec = -1;
+-      *s++ = first_dig;
++      PUTC(first_dig);
+ 
+       if (prec + e + 1 > buf_remaining) {
+         prec = buf_remaining - e - 1;
+@@ -189,9 +193,9 @@ mrb_format_float(mrb_float f, char *buf, size_t buf_size, char fmt, int prec, ch
+       }
+       num_digits = prec;
+       if (num_digits || alt_form) {
+-        *s++ = '.';
++        PUTC('.');
+         while (--e && num_digits) {
+-          *s++ = '0';
++          PUTC('0');
+           num_digits--;
+         }
+       }
+@@ -278,9 +282,9 @@ mrb_format_float(mrb_float f, char *buf, size_t buf_size, char fmt, int prec, ch
+   // Print the digits of the mantissa
+   for (int i = 0; i < num_digits; ++i, --dec) {
+     int8_t d = f;
+-    *s++ = '0' + d;
++    PUTC('0' + d);
+     if (dec == 0 && (prec > 0 || alt_form)) {
+-      *s++ = '.';
++      PUTC('.');
+     }
+     f -= (mrb_float)d;
+     f *= 10.0;
+@@ -323,6 +327,7 @@ mrb_format_float(mrb_float f, char *buf, size_t buf_size, char fmt, int prec, ch
+           e++;
+         }
+       }
++      if (s >= end) goto out;
+       s++;
+       char *ss = s;
+       while (ss > rs) {
+@@ -339,29 +344,37 @@ mrb_format_float(mrb_float f, char *buf, size_t buf_size, char fmt, int prec, ch
+ 
+   if (org_fmt == 'g' && prec > 0 && !alt_form) {
+     // Remove trailing zeros and a trailing decimal point
+-    while (s[-1] == '0') {
++    while (s > buf && s[-1] == '0') {
+       s--;
+     }
+-    if (s[-1] == '.') {
++    if (s > buf && s[-1] == '.') {
+       s--;
+     }
+   }
+   // Append the exponent
+   if (e_sign) {
+-    *s++ = e_char;
+-    *s++ = e_sign;
++    PUTC(e_char);
++    PUTC(e_sign);
+     if (e >= 100) {
+-      *s++ = '0' + (e / 100);
++      PUTC('0' + (e / 100));
+       e %= 100;
+     }
+-    *s++ = '0' + (e / 10);
+-    *s++ = '0' + (e % 10);
++    PUTC('0' + (e / 10));
++    PUTC('0' + (e % 10));
++  }
++
++out:
++  /* always terminate without writing past the provided buffer */
++  if (s > end) {
++    s = end;
+   }
+   *s = '\0';
+ 
+-  return s - buf;
++#undef PUTC
++  return (int)(s - buf);
+ }
+ 
++
+ MRB_API mrb_value
+ mrb_float_to_str(mrb_state *mrb, mrb_value flo)
+ {
+@@ -381,7 +394,17 @@ mrb_float_to_str(mrb_state *mrb, mrb_value flo)
+       goto exit;
+     }
+   }
+-  strcat(buf, ".0");
++  {
++    size_t len = strlen(buf);
++    if (len + 2 < sizeof(buf)) {
++      buf[len] = '.';
++      buf[len+1] = '0';
++      buf[len+2] = '\0';
++    }
++    else {
++      buf[sizeof(buf)-1] = '\0';
++    }
++  }
+  exit:
+   return mrb_str_new_cstr(mrb, buf);
+ }

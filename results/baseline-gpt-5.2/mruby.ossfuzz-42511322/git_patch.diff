@@ -1,0 +1,29 @@
+diff --git a/src/vm.c b/src/vm.c
+index bff02877a..555ba99ec 100644
+--- a/src/vm.c
++++ b/src/vm.c
+@@ -98,7 +98,9 @@ stack_clear(mrb_value *from, size_t count)
+ static inline void
+ stack_copy(mrb_value *dst, const mrb_value *src, size_t size)
+ {
+-  memcpy(dst, src, sizeof(mrb_value)*size);
++  /* src and dst may point into the same VM stack; use memmove() to
++     tolerate overlap safely. */
++  memmove(dst, src, sizeof(mrb_value)*size);
+ }
+ 
+ static void
+@@ -525,6 +527,13 @@ mrb_funcall_with_block(mrb_state *mrb, mrb_value self, mrb_sym mid, mrb_int argc
+     c = mrb_class(mrb, self);
+     m = mrb_method_search_vm(mrb, &c, mid);
+     mrb_stack_extend(mrb, n + argc + 3);
++
++    /* If argv points into the VM stack, it may have been reallocated by
++       mrb_stack_extend(). Refresh the pointer before using it. */
++    if (voff >= 0) {
++      argv = mrb->c->stbase + voff;
++    }
++
+     if (argc >= 15) {
+       ci->stack[n+1] = mrb_ary_new_from_values(mrb, argc, argv);
+       ci->stack[n+2] = blk;

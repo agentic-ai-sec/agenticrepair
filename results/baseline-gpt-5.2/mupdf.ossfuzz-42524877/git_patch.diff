@@ -1,0 +1,70 @@
+diff --git a/source/fitz/load-bmp.c b/source/fitz/load-bmp.c
+index 3d27d749e..32ff4fc85 100644
+--- a/source/fitz/load-bmp.c
++++ b/source/fitz/load-bmp.c
+@@ -600,13 +600,25 @@ bmp_read_bitmap(fz_context *ctx, struct info *info, const unsigned char *begin,
+ 	height = info->height;
+ 
+ 	sstride = ((width * bitcount + 31) / 32) * 4;
+-	if (ssp + sstride * height > end)
++	if (sstride == 0)
++		fz_throw(ctx, FZ_ERROR_GENERIC, "invalid stride in bmp image");
++
++	/*
++	 * Avoid pointer arithmetic overflow and out-of-bounds reads on truncated/
++	 * crafted files. If there is insufficient bitmap data, we'll warn and
++	 * decode as much as we can (possibly nothing), leaving the remainder
++	 * cleared.
++	 */
+ 	{
+-		int32_t h = (end - ssp) / sstride;
+-		if (h == 0 || h > SHRT_MAX)
++		size_t avail = (ssp < end) ? (size_t)(end - ssp) : 0;
++		size_t needed = (size_t)sstride * (size_t)height;
++		if (needed > avail)
+ 		{
+-			fz_free(ctx, decompressed);
+-			fz_throw(ctx, FZ_ERROR_GENERIC, "image dimensions out of range in bmp image");
++			int32_t h = (int32_t)(avail / (size_t)sstride);
++			if (h < 0) h = 0;
++			if (h > SHRT_MAX) h = SHRT_MAX;
++			if (h == 0)
++				fz_warn(ctx, "premature end in bitmap data in bmp image");
+ 		}
+ 	}
+ 
+@@ -932,15 +944,31 @@ static const unsigned char *
+ bmp_read_palette(fz_context *ctx, struct info *info, const unsigned char *begin, const unsigned char *end, const unsigned char *p)
+ {
+ 	int i, expected, present, entry_size;
+-	const unsigned char *bitmap;
++	const unsigned char *palend;	
++	uint32_t bitmapoffset;
++	size_t palbytes;
+ 
+ 	entry_size = palette_entry_size(info);
+-	bitmap = begin + info->bitmapoffset;
++
++	/*
++	 * The palette occupies the bytes between the end of the headers and the
++	 * start of the bitmap data (bitmapoffset). Crafted files can set
++	 * bitmapoffset to values beyond the end of the provided buffer (or even
++	 * before the current position), which can otherwise lead to pointer
++	 * arithmetic issues and out-of-bounds reads when we walk the palette.
++	 */
++	bitmapoffset = info->bitmapoffset;
++	if (bitmapoffset > (uint32_t)(end - begin))
++		bitmapoffset = (uint32_t)(end - begin);
++	palend = begin + bitmapoffset;
++	if (palend < p)
++		palend = p;
++	palbytes = (size_t)(palend - p);
+ 
+ 	expected = fz_mini(info->colors, 1 << info->bitcount);
+ 	if (expected == 0)
+ 		expected = 1 << info->bitcount;
+-	present = fz_mini(expected, (bitmap - p) / entry_size);
++	present = fz_mini(expected, (int)(palbytes / (size_t)entry_size));
+ 
+ 	for (i = 0; i < present; i++)
+ 	{

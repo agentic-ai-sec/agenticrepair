@@ -1,0 +1,17 @@
+diff --git a/src/array.c b/src/array.c
+index 739b2b3e1..dbb758e4b 100644
+--- a/src/array.c
++++ b/src/array.c
+@@ -589,6 +589,12 @@ mrb_ary_shift_m(mrb_state *mrb, mrb_value self)
+   if (mrb_get_args(mrb, "|i", &n) == 0) {
+     return mrb_ary_shift(mrb, self);
+   };
++  if (n < 0) {
++    /* Ruby-compatible behavior: Array#shift(-n) raises ArgumentError.
++       Without this guard, negative values can underflow pointer arithmetic
++       and cause out-of-bounds reads. */
++    mrb_raise(mrb, E_ARGUMENT_ERROR, "negative array size");
++  }
+   ary_modify_check(mrb, a);
+   if (len == 0 || n == 0) return mrb_ary_new(mrb);
+   if (n > len) n = len;

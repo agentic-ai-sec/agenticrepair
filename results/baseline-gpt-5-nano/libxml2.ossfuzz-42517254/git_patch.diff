@@ -1,0 +1,14 @@
+diff --git a/xinclude.c b/xinclude.c
+index e14176c6..7baf751f 100644
+--- a/xinclude.c
++++ b/xinclude.c
+@@ -1159,7 +1159,8 @@ xmlXIncludeCopyXPointer(xmlXIncludeCtxtPtr ctxt, xmlDocPtr target,
+ 	    for (i = 0;i < set->nodeNr;i++) {
+ 		if (set->nodeTab[i] == NULL)
+ 		    continue;
+-		switch (set->nodeTab[i]->type) {
++		xmlNodePtr n = set->nodeTab[i];
++		switch (n->type) {
+ 		    case XML_TEXT_NODE:
+ 		    case XML_CDATA_SECTION_NODE:
+ 		    case XML_ELEMENT_NODE:
